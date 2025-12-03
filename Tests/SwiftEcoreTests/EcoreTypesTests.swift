@@ -7,6 +7,7 @@
 //
 import Testing
 @testable import SwiftEcore
+import BigInt
 
 // MARK: - Test Constants
 
@@ -23,11 +24,16 @@ private let doubleValue = 3.14159
 private let byteValue: Int8 = 127
 private let shortValue: Int16 = 32767
 private let longValue: Int64 = 9223372036854775807
+private let bigIntString = "123456789012345678901234567890"
+private let bigIntValue = BigInt("123456789012345678901234567890")
+private let veryLargeBigIntString = "999999999999999999999999999999999999999999999999999999999999999999"
+private let veryLargeBigIntValue = BigInt("999999999999999999999999999999999999999999999999999999999999999999")
 
 // Invalid values
 private let invalidNumber = "not a number"
 private let invalidBoolString = "not a bool"
 private let invalidFloatString = "not a float"
+private let invalidBigIntString = "not a big integer"
 
 @Test func testStringTypeAlias() {
     let value: EString = testString
@@ -106,4 +112,43 @@ private let invalidFloatString = "not a float"
 
     let invalidFloat = EcoreTypeConverter.fromString(invalidFloatString, as: EFloat.self)
     #expect(invalidFloat == nil)
+
+    let invalidBigInt = EcoreTypeConverter.fromString(invalidBigIntString, as: EBigInteger.self)
+    #expect(invalidBigInt == nil)
+}
+
+@Test func testBigIntegerTypeAlias() {
+    let value: EBigInteger = bigIntValue
+    #expect(value == bigIntValue)
+}
+
+@Test func testBigIntegerFromString() {
+    let convertedBigInt = EcoreTypeConverter.fromString(bigIntString, as: EBigInteger.self)
+    #expect(convertedBigInt == bigIntValue)
+}
+
+@Test func testBigIntegerToString() {
+    let bigIntStringResult = EcoreTypeConverter.toString(bigIntValue)
+    #expect(bigIntStringResult == bigIntString)
+}
+
+@Test func testBigIntegerIsEcoreValue() {
+    let value: any EcoreValue = bigIntValue
+    #expect(value as? BigInt == bigIntValue)
+}
+
+@Test func testVeryLargeBigInteger() {
+    let value: EBigInteger = veryLargeBigIntValue
+    #expect(value == veryLargeBigIntValue)
+    
+    // Verify it's much larger than Int.max
+    #expect(veryLargeBigIntValue > BigInt(Int.max))
+    
+    // Test string conversion round trip
+    let stringResult = EcoreTypeConverter.toString(veryLargeBigIntValue)
+    #expect(stringResult == veryLargeBigIntString)
+    
+    // Test parsing from string
+    let parsedValue = EcoreTypeConverter.fromString(veryLargeBigIntString, as: EBigInteger.self)
+    #expect(parsedValue == veryLargeBigIntValue)
 }

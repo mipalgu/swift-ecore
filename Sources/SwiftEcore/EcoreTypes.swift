@@ -6,6 +6,7 @@
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
 import Foundation
+import BigInt
 
 // MARK: - Marker Protocol
 
@@ -79,9 +80,8 @@ public typealias EBigDecimal = Decimal
 
 /// Arbitrary-precision integer type for Ecore models.
 ///
-/// Maps to Swift's `Int` type as Swift doesn't have a built-in BigInteger.
-/// Consider using a third-party library for true arbitrary-precision integers if needed.
-public typealias EBigInteger = Int
+/// Maps to the BigInt library's `BigInt` type for true arbitrary-precision integers.
+public typealias EBigInteger = BigInt
 
 // MARK: - EcoreValue Conformances
 
@@ -96,6 +96,7 @@ extension EByte: EcoreValue {}
 extension EShort: EcoreValue {}
 extension ELong: EcoreValue {}
 extension EBigDecimal: EcoreValue {}
+extension EBigInteger: EcoreValue {}
 extension EUUID: EcoreValue {}
 
 /// Type conversion utilities for Ecore primitive types.
@@ -124,6 +125,8 @@ public enum EcoreTypeConverter: Sendable {
             return Float(value) as? T
         case is EDouble.Type:
             return Double(value) as? T
+        case is EBigInteger.Type:
+            return BigInt(value, radix: 10) as? T
         default:
             return nil
         }
