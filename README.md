@@ -8,6 +8,7 @@ A pure Swift implementation of the Eclipse Modeling Framework (EMF) Ecore metamo
 - ✅ **Cross-Platform**: Full support for macOS and Linux
 - ✅ **Value Types**: Sendable structs and enums for thread safety
 - ✅ **BigInt Support**: Full arbitrary-precision integer support via swift-numerics
+- ✅ **Resource Infrastructure**: EMF-compliant object management and ID-based reference resolution
 - 🚧 **XMI Serialization**: Load and save .ecore and .xmi files (coming soon)
 - 🚧 **JSON Serialization**: Load and save JSON models (coming soon)
 - 🚧 **ATL Transformations**: Model-to-model transformations (coming soon)
@@ -54,9 +55,10 @@ ssh plucky.local "cd src/swift/rh/Metamodels/swift-modelling && git pull && swif
 - [x] EModelElement (annotations)
 - [x] ENamedElement
 - [x] EClassifier hierarchy (EDataType, EEnum, EEnumLiteral)
-- [ ] EClass with features
-- [ ] EAttribute and EReference
-- [ ] EPackage and EFactory
+- [x] EClass with structural features
+- [x] EStructuralFeature (EAttribute and EReference with ID-based opposites)
+- [x] EPackage and EFactory
+- [x] Resource and ResourceSet infrastructure
 
 ### Phase 3: Serialization 🚧
 
@@ -83,7 +85,7 @@ ssh plucky.local "cd src/swift/rh/Metamodels/swift-modelling && git pull && swif
 - **ECore module**: Core library implementing the Ecore metamodel
 - **swift-ecore executable**: Command-line tool for validation, conversion, and code generation
 
-All types are value types (structs) for thread safety, with ID-based reference resolution for bidirectional relationships.
+All types are value types (structs) for thread safety, with ID-based reference resolution for bidirectional relationships. Resources provide EMF-compliant object ownership and cross-reference resolution using actor-based concurrency.
 
 ## Licence
 
