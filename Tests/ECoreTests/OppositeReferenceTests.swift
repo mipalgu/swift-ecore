@@ -235,8 +235,8 @@ struct OppositeReferenceTests {
         studentClass.eStructuralFeatures = [coursesRef]
         courseClass.eStructuralFeatures = [studentsRef]
 
-        var student1 = DynamicEObject(eClass: studentClass)
-        var student2 = DynamicEObject(eClass: studentClass)
+        let student1 = DynamicEObject(eClass: studentClass)
+        let student2 = DynamicEObject(eClass: studentClass)
         let course1 = DynamicEObject(eClass: courseClass)
         let course2 = DynamicEObject(eClass: courseClass)
 
@@ -283,8 +283,8 @@ struct OppositeReferenceTests {
         authorClass.eStructuralFeatures = [booksRef]
         bookClass.eStructuralFeatures = [authorsRef]
 
-        var author1 = DynamicEObject(eClass: authorClass)
-        var author2 = DynamicEObject(eClass: authorClass)
+        let author1 = DynamicEObject(eClass: authorClass)
+        let author2 = DynamicEObject(eClass: authorClass)
         let book1 = DynamicEObject(eClass: bookClass)
         let book2 = DynamicEObject(eClass: bookClass)
 
@@ -381,9 +381,9 @@ struct OppositeReferenceTests {
         departmentClass.eStructuralFeatures = [companyRef, employeesRef]
         employeeClass.eStructuralFeatures = [deptRef]
 
-        var company = DynamicEObject(eClass: companyClass)
-        var dept1 = DynamicEObject(eClass: departmentClass)
-        var dept2 = DynamicEObject(eClass: departmentClass)
+        let company = DynamicEObject(eClass: companyClass)
+        let dept1 = DynamicEObject(eClass: departmentClass)
+        let dept2 = DynamicEObject(eClass: departmentClass)
         let emp1 = DynamicEObject(eClass: employeeClass)
         let emp2 = DynamicEObject(eClass: employeeClass)
         let emp3 = DynamicEObject(eClass: employeeClass)
@@ -455,8 +455,8 @@ struct OppositeReferenceTests {
         
         bookClass.eStructuralFeatures = [reviewsRef]
         reviewClass.eStructuralFeatures = [bookRef]
-        
-        var book = DynamicEObject(eClass: bookClass)
+
+        let book = DynamicEObject(eClass: bookClass)
         let review1 = DynamicEObject(eClass: reviewClass)
         let review2 = DynamicEObject(eClass: reviewClass)
         

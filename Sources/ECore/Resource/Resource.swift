@@ -359,7 +359,7 @@ public actor Resource {
     @discardableResult
     public func eSet(objectId: EUUID, feature featureName: String, value: (any EcoreValue)?) async -> Bool {
         guard var object = objects[objectId] as? DynamicEObject else { return false }
-        guard let eClass = object.eClass as? EClass else { return false }
+        let eClass = object.eClass
         guard let feature = eClass.getStructuralFeature(name: featureName) else { return false }
 
         // Handle bidirectional references
@@ -371,8 +371,8 @@ public actor Resource {
                     for oldValueId in oldValues {
                         if var oldTarget = objects[oldValueId] as? DynamicEObject {
                             // Target is in same resource - update directly
-                            if let targetClass = oldTarget.eClass as? EClass,
-                               let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
+                            let targetClass = oldTarget.eClass
+                            if let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
                                 if oppositeRef.isMany {
                                     // Remove from array
                                     if var oppositeArray = oldTarget.eGet(oppositeRef) as? [EUUID] {
@@ -406,8 +406,8 @@ public actor Resource {
                     for newValueId in newValues {
                         if var newTarget = objects[newValueId] as? DynamicEObject {
                             // Target is in same resource - update directly
-                            if let targetClass = newTarget.eClass as? EClass,
-                               let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
+                            let targetClass = newTarget.eClass
+                            if let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
                                 if oppositeRef.isMany {
                                     // Add to array
                                     var oppositeArray = (newTarget.eGet(oppositeRef) as? [EUUID]) ?? []
@@ -438,8 +438,8 @@ public actor Resource {
                 if let oldValueId = object.eGet(reference) as? EUUID {
                     if var oldTarget = objects[oldValueId] as? DynamicEObject {
                         // Target is in same resource - update directly
-                        if let targetClass = oldTarget.eClass as? EClass,
-                           let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
+                        let targetClass = oldTarget.eClass
+                        if let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
                             if oppositeRef.isMany {
                                 // Remove from array
                                 if var oppositeArray = oldTarget.eGet(oppositeRef) as? [EUUID] {
@@ -471,8 +471,8 @@ public actor Resource {
                 if let newValueId = value as? EUUID {
                     if var newTarget = objects[newValueId] as? DynamicEObject {
                         // Target is in same resource - update directly
-                        if let targetClass = newTarget.eClass as? EClass,
-                           let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
+                        let targetClass = newTarget.eClass
+                        if let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
                             if oppositeRef.isMany {
                                 // Add to array
                                 var oppositeArray = (newTarget.eGet(oppositeRef) as? [EUUID]) ?? []

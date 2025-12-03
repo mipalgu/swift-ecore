@@ -272,7 +272,7 @@ public actor ResourceSet {
             // Handle protocol prefixes manually
             if let protocolRange = converted.range(of: "://") {
                 let protocolPart = String(converted[..<protocolRange.upperBound])
-                var pathPart = String(converted[protocolRange.upperBound...])
+                let pathPart = String(converted[protocolRange.upperBound...])
 
                 // Check if there's a leading slash after protocol (e.g., file:///)
                 let hasLeadingSlash = pathPart.hasPrefix("/")
@@ -421,7 +421,7 @@ public actor ResourceSet {
             if await resource.contains(id: targetId) {
                 // Find the target object and update its opposite reference
                 guard var target = await resource.resolve(targetId) as? DynamicEObject else { continue }
-                guard let targetClass = target.eClass as? EClass else { continue }
+                let targetClass = target.eClass
                 guard let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeRefId }) else { continue }
 
                 // Determine multiplicity from the opposite reference itself
