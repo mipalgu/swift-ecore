@@ -19,7 +19,7 @@ A pure Swift implementation of the Eclipse Modeling Framework (EMF) Ecore metamo
 ## Requirements
 
 - Swift 6.0 or later
-- macOS 14.0+ or Linux
+- macOS 15.0+ or Linux (macOS 15.0+ required for SwiftXML dependency)
 
 ## Building
 
@@ -51,7 +51,7 @@ ssh plucky.local "cd src/swift/rh/Metamodels/swift-modelling && git pull && swif
 - [x] Type conversion utilities
 - [x] 100% test coverage for primitive types
 
-### Phase 2: Metamodel Core 🚧
+### Phase 2: Metamodel Core ✅
 
 - [x] EObject protocol
 - [x] EModelElement (annotations)
@@ -62,20 +62,39 @@ ssh plucky.local "cd src/swift/rh/Metamodels/swift-modelling && git pull && swif
 - [x] EPackage and EFactory
 - [x] Resource and ResourceSet infrastructure
 
-### Phase 3: Serialization 🚧
+### Phase 3: In-Memory Model Testing ✅
 
-- [ ] XMI parser and serializer
-- [ ] JSON parser and serializer
-- [ ] Cross-format conversion
+- [x] Binary tree containment tests (BinTree model)
+- [x] Company cross-reference tests
+- [x] Shared reference tests
+- [x] Multi-level containment hierarchy tests
 
-### Phase 4: CLI Tool 🚧
+### Phase 3.5: JSON Serialization ✅
+
+- [x] JSON parser for model instances
+- [x] JSON serializer with sorted keys
+- [x] Round-trip tests for all data types
+- [x] Comprehensive error handling
+
+### Phase 4: XMI Serialization 🚧
+
+- [x] SwiftXML dependency added
+- [x] XMI parser foundation (Step 4.1)
+- [ ] XMI metamodel deserialization (Step 4.2)
+- [ ] XMI instance deserialization (Step 4.3)
+- [ ] XPath reference resolution (Step 4.4)
+- [ ] XMI serializer (Step 4.5)
+- [ ] Cross-resource references (Step 4.6)
+- [ ] Round-trip tests (Step 4.7)
+
+### Phase 5: CLI Tool 🚧
 
 - [ ] Validate command
 - [ ] Convert command
 - [ ] Generate command
 - [ ] Query command
 
-### Phase 5: ATL 🚧
+### Phase 6: ATL 🚧
 
 - [ ] ATL lexer and parser
 - [ ] ATL interpreter

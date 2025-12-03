@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "swift-ecore",
     platforms: [
-        .macOS(.v14),
+        .macOS(.v15),
     ],
     products: [
         .library(
@@ -19,12 +19,14 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.6.2"),
         .package(url: "https://github.com/attaswift/BigInt.git", from: "5.7.0"),
+        .package(url: "https://github.com/swiftxml/SwiftXML.git", from: "1.0.0"),
     ],
     targets: [
         .target(
             name: "ECore",
             dependencies: [
                 .product(name: "BigInt", package: "BigInt"),
+                .product(name: "SwiftXML", package: "SwiftXML"),
             ],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
