@@ -29,7 +29,7 @@ import Foundation
 ///     serialisable: true
 /// )
 /// ```
-public struct EDataType: ENamedElement {
+public struct EDataType: EClassifier, ENamedElement {
     /// The type of classifier for this data type.
     public typealias Classifier = EDataTypeClassifier
 
@@ -243,7 +243,7 @@ public struct EEnumLiteral: ENamedElement {
 /// let literal = birdType.getLiteral(name: "thrush")
 /// print(literal?.value)  // 1
 /// ```
-public struct EEnum: ENamedElement {
+public struct EEnum: EClassifier, ENamedElement {
     /// The type of classifier for this enum.
     public typealias Classifier = EEnumClassifier
 

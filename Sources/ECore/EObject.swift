@@ -31,18 +31,6 @@ public protocol EStructuralFeature: Sendable, Identifiable, Hashable where ID ==
     var name: String { get }
 }
 
-/// An attribute in the Ecore metamodel.
-///
-/// Attributes represent data-valued properties of a class, such as strings, numbers, or enumerations.
-/// Unlike references, attributes do not point to other objects but hold primitive or data type values.
-public protocol EAttribute: EStructuralFeature {}
-
-/// A reference in the Ecore metamodel.
-///
-/// References represent relationships between classes, pointing to other model objects.
-/// References can be containment (parent-child) or non-containment (associations).
-public protocol EReference: EStructuralFeature {}
-
 /// An operation in the Ecore metamodel.
 ///
 /// Operations represent the behavioural methods that can be invoked on instances of a class.

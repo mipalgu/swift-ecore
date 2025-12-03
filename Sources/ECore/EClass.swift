@@ -42,7 +42,7 @@ import Foundation
 ///
 /// Structural features can be accessed by name using ``getStructuralFeature(name:)``
 /// or filtered by type using ``allAttributes`` and ``allReferences``.
-public struct EClass: ENamedElement {
+public struct EClass: EClassifier, ENamedElement {
     /// The type of classifier for this class.
     ///
     /// All instances of `EClass` use ``EClassClassifier`` as their metaclass.
@@ -150,27 +150,23 @@ public struct EClass: ENamedElement {
     /// All attributes including inherited ones.
     ///
     /// Filters ``allStructuralFeatures`` to return only attributes.
-    public var allAttributes: [any EAttribute] {
-        return allStructuralFeatures.compactMap { $0 as? any EAttribute }
+    public var allAttributes: [EAttribute] {
+        return allStructuralFeatures.compactMap { $0 as? EAttribute }
     }
 
     /// All references including inherited ones.
     ///
     /// Filters ``allStructuralFeatures`` to return only references.
-    public var allReferences: [any EReference] {
-        return allStructuralFeatures.compactMap { $0 as? any EReference }
+    public var allReferences: [EReference] {
+        return allStructuralFeatures.compactMap { $0 as? EReference }
     }
 
     /// All containment references including inherited ones.
     ///
     /// Filters ``allReferences`` to return only containment references.
     /// Containment references define parent-child relationships in the model.
-    public var allContainments: [any EReference] {
-        return allReferences.filter { reference in
-            // Will check containment property when EReference is fully implemented
-            // For now, return empty array
-            return false
-        }
+    public var allContainments: [EReference] {
+        return allReferences.filter { $0.containment }
     }
 
     /// All supertypes including transitive ones.
@@ -207,7 +203,7 @@ public struct EClass: ENamedElement {
     ///
     /// - Parameter name: The name of the attribute to find.
     /// - Returns: The matching attribute, or `nil` if not found.
-    public func getEAttribute(name: String) -> (any EAttribute)? {
+    public func getEAttribute(name: String) -> EAttribute? {
         return allAttributes.first { $0.name == name }
     }
 
@@ -217,7 +213,7 @@ public struct EClass: ENamedElement {
     ///
     /// - Parameter name: The name of the reference to find.
     /// - Returns: The matching reference, or `nil` if not found.
-    public func getEReference(name: String) -> (any EReference)? {
+    public func getEReference(name: String) -> EReference? {
         return allReferences.first { $0.name == name }
     }
 

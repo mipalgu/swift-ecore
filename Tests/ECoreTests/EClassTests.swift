@@ -212,7 +212,7 @@ private let comparableInterfaceName = "Comparable"
 @Test func testAllContainmentsEmpty() {
     let eClass = EClass(name: personClassName)
 
-    // Until EReference is fully implemented, this should be empty
+    // Class with no features has no containments
     #expect(eClass.allContainments.isEmpty)
 }
 
