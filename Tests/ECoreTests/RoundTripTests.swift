@@ -645,7 +645,17 @@ struct RoundTripTests {
             try xmiString.write(to: xmiTempURL, atomically: true, encoding: .utf8)
             defer { try? FileManager.default.removeItem(at: xmiTempURL) }
 
+            // Debug XMI serialization for multiple roots
+
+
             let xmiResource = try await xmiParser.parse(xmiTempURL)
+            let xmiRoots = await xmiResource.getRootObjects()
+            
+            // Verify XMI serialization preserved root count
+            #expect(xmiRoots.count == originalRoots.count,
+                   "XMI round-trip should preserve root object count for \(fileName)")
+            
+
 
             // Step 3: Resource → JSON → Resource
             let finalJSONString = try await jsonSerializer.serialize(xmiResource)
@@ -656,13 +666,6 @@ struct RoundTripTests {
 
             let finalResource = try await parser.parse(jsonTempURL)
             let finalRoots = await finalResource.getRootObjects()
-
-            // Note: XMI round-trip currently has limitations with multiple root objects
-            // This is a known issue in the XMI parser/serializer, not the JSON functionality
-            if fileName == "multiple_roots.json" {
-                // Skip multiple roots check for XMI round-trip due to known XMI limitation
-                continue
-            }
 
             // Verify structure preservation
             #expect(originalRoots.count == finalRoots.count,

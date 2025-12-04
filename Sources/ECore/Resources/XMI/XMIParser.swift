@@ -115,7 +115,7 @@ public actor XMIParser {
         fragmentMap.removeAll()
         referenceMap.removeAll()
 
-        // Get the root element (e.g., <ecore:EPackage>)
+        // Get the root element (e.g., <ecore:EPackage> or <xmi:XMI>)
         guard let rootElement = document.children.first else {
             throw XMIError.invalidXML("No root element found in document")
         }
@@ -128,9 +128,19 @@ public actor XMIParser {
             }
         }
 
-        // Parse the root element itself as the root object
-        if let rootObject = try await parseElement(rootElement, in: resource) {
-            await resource.add(rootObject)
+        // Check if root element is xmi:XMI wrapper (for multiple root objects)
+        if rootElement.name == "xmi:XMI" || rootElement.name.hasSuffix(":XMI") {
+            // Multiple root objects wrapped in xmi:XMI
+            for childElement in rootElement.children {
+                if let rootObject = try await parseElement(childElement, in: resource) {
+                    await resource.add(rootObject)
+                }
+            }
+        } else {
+            // Single root object
+            if let rootObject = try await parseElement(rootElement, in: resource) {
+                await resource.add(rootObject)
+            }
         }
 
         // Second pass: resolve references

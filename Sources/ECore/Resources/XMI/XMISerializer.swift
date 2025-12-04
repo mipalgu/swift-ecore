@@ -57,15 +57,42 @@ public struct XMISerializer: Sendable {
     public func serialize(_ resource: Resource) async throws -> String {
         let roots = await resource.getRootObjects()
 
-        guard let rootObject = roots.first else {
+        guard !roots.isEmpty else {
             throw XMIError.parseError("No root object to serialise")
         }
 
         // Build XML document
         var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
 
-        // Serialise root object and its children
-        xml += try await serializeObject(rootObject, in: resource, indentLevel: 0)
+        if roots.count == 1 {
+            // Single root object - serialize directly as the root element
+            let rootObject = roots[0]
+            xml += try await serializeObject(rootObject, in: resource, indentLevel: 0)
+        } else {
+            // Multiple root objects - wrap in xmi:XMI element like pyecore
+            xml += "<xmi:XMI xmi:version=\"2.0\" xmlns:xmi=\"http://www.omg.org/XMI\""
+            
+            // Collect all namespaces from all root objects
+            var namespaces: Set<String> = []
+            for rootObject in roots {
+                let objectNamespaces = await collectNamespaces(rootObject, in: resource)
+                namespaces.formUnion(objectNamespaces)
+            }
+            
+            // Add namespace declarations
+            for namespace in namespaces.sorted() {
+                xml += " \(namespace)"
+            }
+            xml += ">\n"
+            
+            // Serialize each root object as a child of xmi:XMI
+            for rootObject in roots {
+                xml += try await serializeObject(rootObject, in: resource, indentLevel: 1)
+                xml += "\n"
+            }
+            
+            xml += "</xmi:XMI>"
+        }
         xml += "\n"
 
         return xml
@@ -487,6 +514,39 @@ public struct XMISerializer: Sendable {
         }
 
         return references
+    }
+
+    /// Collect all namespace declarations needed for an object and its children
+    ///
+    /// - Parameters:
+    ///   - object: The object to analyze
+    ///   - resource: The Resource for context
+    /// - Returns: Set of namespace declaration strings
+    private func collectNamespaces(_ object: any EObject, in resource: Resource) async -> Set<String> {
+        var namespaces: Set<String> = []
+
+        // Get object's class name
+        let className = getClassName(object)
+        let (_, _) = getElementName(object, className: className)
+
+        // Add this object's namespace using same logic as addNamespaceDeclarations
+        if className.hasPrefix("E") {
+            // Ecore metamodel object
+            namespaces.insert("xmlns:ecore=\"http://www.eclipse.org/emf/2002/Ecore\"")
+        } else {
+            // Instance object - use generic namespace based on class name
+            let prefix = className.lowercased()
+            let namespaceDecl = "xmlns:\(prefix)=\"http://swift-modelling.org/test/\(prefix)\""
+            namespaces.insert(namespaceDecl)
+        }
+
+        // Add XSI namespace if needed (for type declarations)
+        namespaces.insert("xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\"")
+
+        // For now, just collect namespaces from this object
+        // TODO: Add recursive collection from contained objects if needed
+        
+        return namespaces
     }
 
     /// Get element name and namespace prefix
