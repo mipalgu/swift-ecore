@@ -80,6 +80,22 @@ public actor Resource {
 
     // MARK: - Object Management
     
+    /// Registers an object with this resource without adding it as a root object.
+    ///
+    /// This method adds the object to the resource's object map for ID resolution,
+    /// but does not add it to the root objects list. Use this for objects that will
+    /// be contained by other objects (e.g., during XMI parsing when parent-child
+    /// relationships will be established separately).
+    ///
+    /// - Parameter object: The object to register with this resource.
+    /// - Returns: `true` if the object was registered, `false` if it already exists.
+    @discardableResult
+    public func register(_ object: any EObject) -> Bool {
+        let isNew = objects[object.id] == nil
+        objects[object.id] = object
+        return isNew
+    }
+
     /// Adds an object to this resource.
     ///
     /// The object becomes owned by this resource and can be resolved by its identifier.
@@ -93,23 +109,22 @@ public actor Resource {
 
         // Update or add the object
         objects[object.id] = object
-        
-        // Only update root objects if this was a new object
-        if isNew {
-            // Check if this is a root object (not contained by another)
-            let isContained = objects.values.contains { container in
-                // Check if any object contains this one through containment references
-                if let eClass = container.eClass as? EClass {
-                    return eClass.allReferences.contains { reference in
-                        reference.containment && doesObjectContain(container, objectId: object.id, through: reference)
-                    }
-                }
-                return false
-            }
 
-            if !isContained && !rootObjects.contains(object.id) {
-                rootObjects.append(object.id)
+        // Check if this should be a root object (not contained by another)
+        // This check happens regardless of whether the object is new, because
+        // objects might be registered first and then added as roots later
+        let isContained = objects.values.contains { container in
+            // Check if any object contains this one through containment references
+            if let eClass = container.eClass as? EClass {
+                return eClass.allReferences.contains { reference in
+                    reference.containment && doesObjectContain(container, objectId: object.id, through: reference)
+                }
             }
+            return false
+        }
+
+        if !isContained && !rootObjects.contains(object.id) {
+            rootObjects.append(object.id)
         }
 
         return isNew
@@ -360,7 +375,14 @@ public actor Resource {
     public func eSet(objectId: EUUID, feature featureName: String, value: (any EcoreValue)?) async -> Bool {
         guard var object = objects[objectId] as? DynamicEObject else { return false }
         let eClass = object.eClass
-        guard let feature = eClass.getStructuralFeature(name: featureName) else { return false }
+
+        // Check if feature is defined in the eClass
+        guard let feature = eClass.getStructuralFeature(name: featureName) else {
+            // Feature not defined - use dynamic storage (for XMI parsing without full metamodel)
+            object.eSet(featureName, value: value)
+            objects[objectId] = object
+            return true
+        }
 
         // Handle bidirectional references
         if let reference = feature as? EReference, let oppositeId = reference.opposite {

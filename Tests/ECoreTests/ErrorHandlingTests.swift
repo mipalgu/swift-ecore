@@ -246,17 +246,24 @@ struct ErrorHandlingTests {
         var personClass = EClass(name: "Person")
         let nameAttr = EAttribute(name: "name", eType: EDataType(name: "EString"))
         personClass.eStructuralFeatures = [nameAttr]
-        
+
         let resourceSet = ResourceSet()
         let resource = await resourceSet.createResource(uri: "test://invalid")
         var person = DynamicEObject(eClass: personClass)
         await resource.add(person)
-        
-        // Try to access non-existent feature
+
+        // DynamicEObject supports dynamic features for undefined features in the eClass
+        // This is necessary for XMI parsing where metamodels may be incomplete
         person.eSet("nonexistent", value: "value")
         let value = person.eGet("nonexistent")
-        
-        #expect(value == nil)  // Should return nil for non-existent features
+
+        // Dynamic features are supported - value should be retrievable
+        #expect(value as? String == "value")
+
+        // But accessing defined features should still work normally
+        person.eSet("name", value: "Alice")
+        let name = person.eGet("name")
+        #expect(name as? String == "Alice")
     }
     
     @Test func testInvalidContainmentOperations() async throws {

@@ -148,12 +148,20 @@ public struct EObjectStorage: Sendable {
     /// Set of feature identifiers that have been explicitly set.
     private var isset: Set<EUUID>
 
+    /// Dictionary mapping feature names to values (for dynamic features without IDs).
+    private var nameValues: [String: any EcoreValue]
+
+    /// Set of feature names that have been explicitly set (for dynamic features).
+    private var nameIsset: Set<String>
+
     /// Creates a new empty storage.
     ///
     /// The storage is initialised with no features set.
     public init() {
         self.values = [:]
         self.isset = []
+        self.nameValues = [:]
+        self.nameIsset = []
     }
 
     /// Retrieves the value for a feature.
@@ -199,6 +207,51 @@ public struct EObjectStorage: Sendable {
         values.removeValue(forKey: feature)
         isset.remove(feature)
     }
+
+    // MARK: - Name-based Access (for Dynamic Features)
+
+    /// Retrieves the value for a feature by name.
+    ///
+    /// This is used for dynamic features that don't have defined EStructuralFeature objects.
+    ///
+    /// - Parameter name: The name of the feature to retrieve.
+    /// - Returns: The feature's value, or `nil` if not set.
+    public func get(name: String) -> (any EcoreValue)? {
+        return nameValues[name]
+    }
+
+    /// Sets the value for a feature by name.
+    ///
+    /// This is used for dynamic features that don't have defined EStructuralFeature objects.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the feature to set.
+    ///   - value: The new value, or `nil` to unset.
+    public mutating func set(name: String, value: (any EcoreValue)?) {
+        if let value = value {
+            nameValues[name] = value
+            nameIsset.insert(name)
+        } else {
+            nameValues.removeValue(forKey: name)
+            nameIsset.remove(name)
+        }
+    }
+
+    /// Checks whether a feature has been explicitly set by name.
+    ///
+    /// - Parameter name: The name of the feature to check.
+    /// - Returns: `true` if the feature has been set, `false` otherwise.
+    public func isSet(name: String) -> Bool {
+        return nameIsset.contains(name)
+    }
+
+    /// Unsets a feature by name, removing its value and set status.
+    ///
+    /// - Parameter name: The name of the feature to unset.
+    public mutating func unset(name: String) {
+        nameValues.removeValue(forKey: name)
+        nameIsset.remove(name)
+    }
 }
 
 extension EObjectStorage: Equatable {
@@ -214,8 +267,9 @@ extension EObjectStorage: Equatable {
     public static func == (lhs: EObjectStorage, rhs: EObjectStorage) -> Bool {
         // Compare isset first for efficiency
         guard lhs.isset == rhs.isset else { return false }
+        guard lhs.nameIsset == rhs.nameIsset else { return false }
 
-        // Compare each set value
+        // Compare each ID-based set value
         for key in lhs.isset {
             guard let lValue = lhs.values[key],
                   let rValue = rhs.values[key] else {
@@ -228,6 +282,19 @@ extension EObjectStorage: Equatable {
                 return false
             }
         }
+
+        // Compare each name-based set value
+        for name in lhs.nameIsset {
+            guard let lValue = lhs.nameValues[name],
+                  let rValue = rhs.nameValues[name] else {
+                return false
+            }
+
+            if String(describing: lValue) != String(describing: rValue) {
+                return false
+            }
+        }
+
         return true
     }
 }
@@ -239,11 +306,20 @@ extension EObjectStorage: Hashable {
     ///
     /// - Parameter hasher: The hasher to use for combining components.
     public func hash(into hasher: inout Hasher) {
+        // Hash ID-based features
         hasher.combine(isset)
-        // Hash the values in a deterministic order
         for key in isset.sorted() {
             if let value = values[key] {
                 hasher.combine(key)
+                hasher.combine(String(describing: value))
+            }
+        }
+
+        // Hash name-based features
+        hasher.combine(nameIsset)
+        for name in nameIsset.sorted() {
+            if let value = nameValues[name] {
+                hasher.combine(name)
                 hasher.combine(String(describing: value))
             }
         }

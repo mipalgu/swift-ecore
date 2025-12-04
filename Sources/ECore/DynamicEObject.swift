@@ -160,10 +160,13 @@ public struct DynamicEObject: EObject {
     /// - Parameter featureName: The name of the structural feature to retrieve.
     /// - Returns: The feature's current value, or `nil` if not set or not found.
     public func eGet(_ featureName: String) -> (any EcoreValue)? {
-        guard let feature = eClass.getStructuralFeature(name: featureName) else {
-            return nil
+        if let feature = eClass.getStructuralFeature(name: featureName) {
+            // Use the proper feature if it exists in the eClass
+            return eGet(feature)
+        } else {
+            // For dynamic objects without full metamodel, retrieve by name
+            return storage.get(name: featureName)
         }
-        return eGet(feature)
     }
 
     /// Reflectively sets the value of a feature by name.
@@ -172,10 +175,14 @@ public struct DynamicEObject: EObject {
     ///   - featureName: The name of the structural feature to modify.
     ///   - value: The new value, or `nil` to unset.
     public mutating func eSet(_ featureName: String, value: (any EcoreValue)?) {
-        guard let feature = eClass.getStructuralFeature(name: featureName) else {
-            return
+        if let feature = eClass.getStructuralFeature(name: featureName) {
+            // Use the proper feature if it exists in the eClass
+            eSet(feature, value)
+        } else {
+            // For dynamic objects without full metamodel, store by name
+            // This allows XMI parsing to work even when eClass doesn't have all features defined
+            storage.set(name: featureName, value: value)
         }
-        eSet(feature, value)
     }
 
     /// Checks whether a feature has been explicitly set by name.

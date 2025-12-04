@@ -12,7 +12,7 @@ import Foundation
 // MARK: - JSON Load Test Suite
 
 @Suite("JSON Loading Tests")
-struct JsonLoadTests {
+struct JSONLoadTests {
     
     // MARK: - Test Constants
     
