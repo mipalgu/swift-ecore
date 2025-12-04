@@ -14,6 +14,7 @@ A pure Swift implementation of the Eclipse Modeling Framework (EMF) Ecore metamo
 - ✅ **Bidirectional References**: Automatic opposite reference management across resources
 - ✅ **XMI Parsing**: Load .ecore metamodels and .xmi instance files
 - ✅ **Dynamic Attribute Parsing**: Arbitrary XML attributes with automatic type inference (Int, Double, Bool, String)
+- ✅ **XPath Reference Resolution**: Same-resource references with XPath-style navigation (//@feature.index)
 - 🚧 **XMI Serialization**: Write models to XMI format (in progress)
 - 🚧 **ATL Transformations**: Model-to-model transformations (coming soon)
 - 🚧 **Code Generation**: Generate Swift, C++, C, LLVM IR via ATL (coming soon)
@@ -82,11 +83,11 @@ ssh plucky.local "cd src/swift/rh/Metamodels/swift-modelling && git pull && swif
 
 - [x] SwiftXML dependency added
 - [x] XMI parser foundation (Step 4.1)
-- [x] XMI metamodel deserialization (Step 4.2) - EPackage, EClass, EEnum, EAttribute, EReference
+- [x] XMI metamodel deserialization (Step 4.2) - EPackage, EClass, EEnum, EDataType, EAttribute, EReference
 - [x] XMI instance deserialization (Step 4.3) - Dynamic object creation from instance files
 - [x] Dynamic attribute parsing with type inference - Arbitrary XML attributes parsed without hardcoding
-- [ ] XPath reference resolution (Step 4.4) - Next up
-- [ ] XMI serializer (Step 4.5)
+- [x] XPath reference resolution (Step 4.4) - Same-resource references with XPath-style navigation
+- [ ] XMI serializer (Step 4.5) - Next up
 - [ ] Cross-resource references (Step 4.6)
 - [ ] Round-trip tests (Step 4.7)
 

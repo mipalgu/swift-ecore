@@ -228,6 +228,7 @@ struct XMIParserTests {
     /// - Containment reference parsing
     /// - Multiple contained objects
     /// - Cross-references within same resource
+    /// - XPath reference resolution (leader href="#//@members.0")
     @Test("Parse team instance with members and references")
     func testParseTeamInstance() async throws {
         let resourcesURL = try getResourcesURL()
@@ -259,6 +260,17 @@ struct XMIParserTests {
         if let firstMemberId = members?.first {
             let memberName = await resource.eGet(objectId: firstMemberId, feature: "name") as? String
             #expect(memberName == "Alice")
+
+            // Verify XPath reference resolution - leader should point to first member
+            let leaderId = await resource.eGet(objectId: team!.id, feature: "leader") as? EUUID
+            #expect(leaderId != nil, "Leader reference should be resolved")
+            #expect(leaderId == firstMemberId, "Leader should reference the first member (Alice)")
+
+            // Verify leader's name is Alice
+            if let leaderId = leaderId {
+                let leaderName = await resource.eGet(objectId: leaderId, feature: "name") as? String
+                #expect(leaderName == "Alice", "Leader's name should be Alice")
+            }
         }
     }
 

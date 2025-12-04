@@ -628,14 +628,27 @@ public actor XMIParser {
     private func resolveReferences(in resource: Resource) async throws {
         let allObjects = await resource.getAllObjects()
 
+        // Create XPath resolver for this resource
+        let xpathResolver = XPathResolver(resource: resource)
+
         for object in allObjects {
-            // Resolve eType references
+            // Resolve eType references (metamodel)
             if let eTypeRef = await resource.eGet(objectId: object.id, feature: "_eType_ref") as? String {
-                if let resolvedId = resolveReference(eTypeRef) {
+                if let resolvedId = await resolveReference(eTypeRef) {
                     await resource.eSet(objectId: object.id, feature: "eType", value: resolvedId)
                 }
                 // Clear temporary reference
                 await resource.eSet(objectId: object.id, feature: "_eType_ref", value: nil)
+            }
+
+            // Resolve instance-level references from referenceMap
+            if let references = referenceMap[object.id] {
+                for (featureName, href) in references {
+                    // Resolve the href using XPath or fragment lookup
+                    if let resolvedId = await resolveReference(href, using: xpathResolver) {
+                        await resource.eSet(objectId: object.id, feature: featureName, value: resolvedId)
+                    }
+                }
             }
         }
     }
@@ -643,15 +656,27 @@ public actor XMIParser {
     /// Resolve a reference string to an object ID
     ///
     /// Handles:
+    /// - XPath references: `#//@members.0` (using XPathResolver)
     /// - Fragment references: `#//ClassName`
     /// - XMI ID references: `#xmi-id`
     /// - External references: `ecore:EDataType http://...#//EString`
     ///
-    /// - Parameter reference: The reference string
+    /// - Parameters:
+    ///   - reference: The reference string
+    ///   - xpathResolver: Optional XPathResolver for XPath-style references
     /// - Returns: The resolved object ID, or `nil` if not found
-    private func resolveReference(_ reference: String) -> EUUID? {
+    private func resolveReference(_ reference: String, using xpathResolver: XPathResolver? = nil) async -> EUUID? {
         if reference.hasPrefix("#") {
             let fragment = String(reference.dropFirst())
+
+            // First try XPath resolution (for paths like //@members.0)
+            if let resolver = xpathResolver, fragment.contains("/") {
+                if let id = await resolver.resolve(reference) {
+                    return id
+                }
+            }
+
+            // Fall back to fragment map or xmi:id map
             return fragmentMap[fragment] ?? xmiIdMap[fragment]
         }
 
