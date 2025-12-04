@@ -208,9 +208,32 @@ public struct DynamicEObject: EObject {
 
     /// Get all feature names that have been set on this object.
     ///
+    /// Returns names for both metamodel-defined features (stored by ID) and
+    /// dynamic features (stored by name). This ensures cross-format serialization
+    /// works correctly - features stored in ID-based storage after JSON parsing
+    /// will be included when serializing to XMI.
+    ///
     /// - Returns: Array of feature names
     public func getFeatureNames() -> [String] {
-        return storage.getFeatureNames()
+        var featureNames = Set<String>()
+
+        // Add names from metamodel-defined features that have been set (ID-based storage)
+        for attribute in eClass.allAttributes {
+            if storage.isSet(feature: attribute.id) {
+                featureNames.insert(attribute.name)
+            }
+        }
+
+        for reference in eClass.allReferences {
+            if storage.isSet(feature: reference.id) {
+                featureNames.insert(reference.name)
+            }
+        }
+
+        // Add names from dynamic features (name-based storage)
+        featureNames.formUnion(storage.getFeatureNames())
+
+        return Array(featureNames)
     }
 
     // MARK: - Equatable & Hashable
@@ -266,20 +289,39 @@ extension DynamicEObject: Codable {
         let eClassIdentifier = EMFURIUtils.generateURI(for: eClass, in: package)
         try container.encode(eClassIdentifier, forKey: DynamicCodingKey(stringValue: "eClass")!)
 
-        // Encode all set attributes
+        // Track which features we've encoded from the metamodel
+        var encodedFeatures = Set<String>()
+
+        // Encode all set attributes from metamodel
         for attribute in eClass.allAttributes {
             guard eIsSet(attribute), let value = eGet(attribute) else { continue }
 
             let key = DynamicCodingKey(stringValue: attribute.name)!
             try encodeValue(value, for: attribute, to: &container, key: key)
+            encodedFeatures.insert(attribute.name)
         }
 
-        // Encode all set references
+        // Encode all set references from metamodel
         for reference in eClass.allReferences {
             guard eIsSet(reference), let value = eGet(reference) else { continue }
 
             let key = DynamicCodingKey(stringValue: reference.name)!
             try encodeReference(value, for: reference, to: &container, key: key)
+            encodedFeatures.insert(reference.name)
+        }
+
+        // Encode all dynamically set features that aren't in the metamodel
+        // This is crucial for XMI → JSON conversion where the EClass may not have all features defined
+        for featureName in storage.getFeatureNames() {
+            // Skip if already encoded from metamodel
+            guard !encodedFeatures.contains(featureName) else { continue }
+            guard let value = storage.get(name: featureName) else { continue }
+
+            let key = DynamicCodingKey(stringValue: featureName)!
+
+            // Encode the value directly without type checking
+            // (we don't have feature metadata for dynamic features)
+            try encodeDynamicValue(value, to: &container, key: key)
         }
     }
 
@@ -348,6 +390,26 @@ extension DynamicEObject: Codable {
             let key = DynamicCodingKey(stringValue: reference.name)!
             if let value = try? decodeReference(for: reference, from: container, key: key, decoder: decoder) {
                 storage.set(feature: reference.id, value: value)
+            }
+        }
+
+        // Decode dynamic features not defined in eClass
+        // This makes init(from:) symmetric with encode(to:) for cross-format conversion
+        // Without this, fields in JSON that aren't in the metamodel are silently lost
+
+        // Get all keys from JSON
+        let allKeys = Set(container.allKeys.map { $0.stringValue })
+
+        // Get keys already processed from eClass
+        var processedKeys = Set(eClass.allAttributes.map { $0.name })
+        processedKeys.formUnion(eClass.allReferences.map { $0.name })
+        processedKeys.insert("eClass")
+
+        // Process remaining dynamic keys not defined in the metamodel
+        for keyString in allKeys.subtracting(processedKeys) {
+            let key = DynamicCodingKey(stringValue: keyString)!
+            if let value = try? decodeGenericValue(from: container, forKey: key) {
+                storage.set(name: keyString, value: value)
             }
         }
     }
@@ -556,8 +618,65 @@ extension DynamicEObject: Codable {
         }
     }
 
-    /// Helper to encode an attribute value to JSON.
+    /// Helper to encode a dynamically stored value to JSON (without metamodel information).
     ///
+    /// This method handles encoding values that don't have associated EStructuralFeature metadata.
+    /// It performs type inference to encode values appropriately for JSON.
+    ///
+    /// - Parameters:
+    ///   - value: The value to encode.
+    ///   - container: The keyed encoding container to write the value to.
+    ///   - key: The coding key for this feature.
+    /// - Throws: Encoding errors if serialisation fails.
+    private func encodeDynamicValue(
+        _ value: any EcoreValue,
+        to container: inout KeyedEncodingContainer<DynamicCodingKey>,
+        key: DynamicCodingKey
+    ) throws {
+        // Handle different value types
+        switch value {
+        case let string as String:
+            try container.encode(string, forKey: key)
+        case let int as Int:
+            try container.encode(int, forKey: key)
+        case let bool as Bool:
+            try container.encode(bool, forKey: key)
+        case let double as Double:
+            try container.encode(double, forKey: key)
+        case let float as Float:
+            try container.encode(float, forKey: key)
+        case let date as Date:
+            // Format date to match pyecore
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX"
+            formatter.timeZone = TimeZone(secondsFromGMT: 0)
+            let dateString = formatter.string(from: date)
+            try container.encode(dateString, forKey: key)
+        case let object as DynamicEObject:
+            // Nested object
+            try container.encode(object, forKey: key)
+        case let id as EUUID:
+            // ID reference
+            try container.encode(id.uuidString, forKey: key)
+        case let array as [any EcoreValue]:
+            // Array of values - try to encode as JSON array
+            if let stringArray = array as? [String] {
+                try container.encode(stringArray, forKey: key)
+            } else if let intArray = array as? [Int] {
+                try container.encode(intArray, forKey: key)
+            } else if let objectArray = array as? [DynamicEObject] {
+                try container.encode(objectArray, forKey: key)
+            } else {
+                // Fallback: encode as array of strings
+                let stringArray = array.map { String(describing: $0) }
+                try container.encode(stringArray, forKey: key)
+            }
+        default:
+            // For other types, use string representation
+            try container.encode(String(describing: value), forKey: key)
+        }
+    }
+
     /// Encodes attribute values using appropriate JSON representations for each
     /// Ecore data type. Handles special cases like dates (ISO 8601 format) and
     /// maintains type fidelity where possible.
@@ -630,6 +749,48 @@ extension DynamicEObject: Codable {
             // ID reference - encode as string
             try container.encode(id.uuidString, forKey: key)
         }
+    }
+
+    /// Helper to decode a value without metamodel type information.
+    ///
+    /// Tries to decode as common types in order until one succeeds.
+    /// Used for dynamic attributes not defined in the metamodel during cross-format conversion.
+    ///
+    /// This method enables symmetric encoding/decoding: just as `encode(to:)` encodes dynamic
+    /// features not in the metamodel, this method decodes JSON fields that aren't defined
+    /// in `eClass.allAttributes` or `eClass.allReferences`.
+    ///
+    /// - Parameters:
+    ///   - container: The keyed decoding container containing the JSON data.
+    ///   - key: The coding key for the field to decode.
+    /// - Returns: The decoded value as an `EcoreValue`, or `nil` if all type attempts fail.
+    private func decodeGenericValue(
+        from container: KeyedDecodingContainer<DynamicCodingKey>,
+        forKey key: DynamicCodingKey
+    ) throws -> (any EcoreValue)? {
+        // Try primitive types in order of specificity
+        // Bool first because JSON true/false could also parse as string
+        if let value = try? container.decode(Bool.self, forKey: key) { return value }
+
+        // Integers before doubles to preserve precision
+        if let value = try? container.decode(Int.self, forKey: key) { return value }
+        if let value = try? container.decode(Double.self, forKey: key) { return value }
+
+        // String is very common and flexible
+        if let value = try? container.decode(String.self, forKey: key) { return value }
+
+        // Try collections
+        if let value = try? container.decode([String].self, forKey: key) { return value }
+        if let value = try? container.decode([Int].self, forKey: key) { return value }
+        if let value = try? container.decode([Bool].self, forKey: key) { return value }
+        if let value = try? container.decode([Double].self, forKey: key) { return value }
+
+        // Try nested objects (last as they're most complex)
+        if let value = try? container.decode(DynamicEObject.self, forKey: key) { return value }
+        if let value = try? container.decode([DynamicEObject].self, forKey: key) { return value }
+
+        // All type attempts failed
+        return nil
     }
 }
 

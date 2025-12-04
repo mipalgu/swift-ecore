@@ -241,7 +241,222 @@ struct RoundTripTests {
         #expect(inactive2 == false, "Bool attribute (false) should be preserved")
     }
 
-    // MARK: - TODO: Cross-Format Round-Trip Tests
-    // These tests require proper integration between XMI and JSON serialization
-    // Will be implemented once JSON serialization is refactored to work with Resource
+    // MARK: - JSON Round-Trip Tests
+
+    /// Test JSON → memory → JSON round-trip with simple.json
+    @Test("JSON round-trip: simple.json")
+    func testJSONRoundTripSimple() async throws {
+        let resourcesURL = try getResourcesURL()
+        let inputURL = resourcesURL.appendingPathComponent("json").appendingPathComponent("simple.json")
+
+        guard FileManager.default.fileExists(atPath: inputURL.path) else {
+            throw TestError.fileNotFound("simple.json")
+        }
+
+        // Parse JSON
+        let parser = JSONParser()
+        let resource1 = try await parser.parse(inputURL)
+
+        // Verify in-memory model
+        let roots1 = await resource1.getRootObjects()
+        #expect(roots1.count == 1)
+
+        let person1 = roots1[0] as? DynamicEObject
+        #expect(person1 != nil)
+
+        let name1 = await resource1.eGet(objectId: person1!.id, feature: "name") as? String
+        #expect(name1 == "John Doe")
+
+        let age1 = await resource1.eGet(objectId: person1!.id, feature: "age") as? Int
+        #expect(age1 == 30)
+
+        // Serialize to JSON
+        let serializer = JSONSerializer()
+        let outputJSON = try await serializer.serialize(resource1)
+
+        // Write to temporary file
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".json")
+        try outputJSON.write(to: tempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        // Parse the serialized JSON
+        let resource2 = try await parser.parse(tempURL)
+
+        // Verify round-trip integrity
+        let roots2 = await resource2.getRootObjects()
+        #expect(roots2.count == 1)
+
+        let person2 = roots2[0] as? DynamicEObject
+        #expect(person2 != nil)
+
+        let name2 = await resource2.eGet(objectId: person2!.id, feature: "name") as? String
+        #expect(name2 == "John Doe", "Name should be preserved after JSON round-trip")
+
+        let age2 = await resource2.eGet(objectId: person2!.id, feature: "age") as? Int
+        #expect(age2 == 30, "Age should be preserved after JSON round-trip")
+    }
+
+    // MARK: - Cross-Format Conversion Tests
+
+    /// Test XMI → Resource → JSON → Resource → XMI conversion
+    @Test("XMI → JSON → XMI cross-format conversion")
+    func testXMIToJSONToXMI() async throws {
+        let resourcesURL = try getResourcesURL()
+        let xmiInputURL = resourcesURL.appendingPathComponent("xmi").appendingPathComponent("zoo.xmi")
+
+        guard FileManager.default.fileExists(atPath: xmiInputURL.path) else {
+            throw TestError.fileNotFound("zoo.xmi")
+        }
+
+        // Parse XMI
+        let xmiParser = XMIParser()
+        let xmiResource = try await xmiParser.parse(xmiInputURL)
+
+        // Verify original data
+        let xmiRoots = await xmiResource.getRootObjects()
+        #expect(xmiRoots.count == 1)
+
+        let originalAnimal = xmiRoots[0] as? DynamicEObject
+        #expect(originalAnimal != nil)
+
+        let originalName = await xmiResource.eGet(objectId: originalAnimal!.id, feature: "name") as? String
+        let originalSpecies = await xmiResource.eGet(objectId: originalAnimal!.id, feature: "species") as? String
+
+        // Serialize to JSON
+        let jsonSerializer = JSONSerializer()
+        let jsonString = try await jsonSerializer.serialize(xmiResource)
+
+        // Debug: Print JSON to see what's being serialized
+        print("XMI → JSON conversion:")
+        print(jsonString)
+        print()
+
+        // Write JSON to temporary file
+        let jsonTempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".json")
+        try jsonString.write(to: jsonTempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: jsonTempURL) }
+
+        // Parse JSON
+        let jsonParser = JSONParser()
+        let jsonResource = try await jsonParser.parse(jsonTempURL)
+
+        // Verify data in JSON-loaded resource
+        let jsonRoots = await jsonResource.getRootObjects()
+        #expect(jsonRoots.count == 1)
+
+        let jsonAnimal = jsonRoots[0] as? DynamicEObject
+        #expect(jsonAnimal != nil)
+
+        let jsonName = await jsonResource.eGet(objectId: jsonAnimal!.id, feature: "name") as? String
+        let jsonSpecies = await jsonResource.eGet(objectId: jsonAnimal!.id, feature: "species") as? String
+
+        #expect(jsonName == originalName, "Name should match after XMI → JSON conversion")
+        #expect(jsonSpecies == originalSpecies, "Species should match after XMI → JSON conversion")
+
+        // Serialize back to XMI
+        let xmiSerializer = XMISerializer()
+        let finalXMI = try await xmiSerializer.serialize(jsonResource)
+
+        // Write XMI to temporary file
+        let xmiTempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".xmi")
+        try finalXMI.write(to: xmiTempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: xmiTempURL) }
+
+        // Parse final XMI
+        let finalResource = try await xmiParser.parse(xmiTempURL)
+
+        // Verify final data matches original
+        let finalRoots = await finalResource.getRootObjects()
+        #expect(finalRoots.count == 1)
+
+        let finalAnimal = finalRoots[0] as? DynamicEObject
+        #expect(finalAnimal != nil)
+
+        let finalName = await finalResource.eGet(objectId: finalAnimal!.id, feature: "name") as? String
+        let finalSpecies = await finalResource.eGet(objectId: finalAnimal!.id, feature: "species") as? String
+
+        #expect(finalName == originalName, "Name should match after full XMI → JSON → XMI round-trip")
+        #expect(finalSpecies == originalSpecies, "Species should match after full XMI → JSON → XMI round-trip")
+    }
+
+    /// Test JSON → Resource → XMI → Resource → JSON conversion
+    @Test("JSON → XMI → JSON cross-format conversion")
+    func testJSONToXMIToJSON() async throws {
+        let resourcesURL = try getResourcesURL()
+        let jsonInputURL = resourcesURL.appendingPathComponent("json").appendingPathComponent("simple.json")
+
+        guard FileManager.default.fileExists(atPath: jsonInputURL.path) else {
+            throw TestError.fileNotFound("simple.json")
+        }
+
+        // Parse JSON
+        let jsonParser = JSONParser()
+        let jsonResource = try await jsonParser.parse(jsonInputURL)
+
+        // Verify original data
+        let jsonRoots = await jsonResource.getRootObjects()
+        #expect(jsonRoots.count == 1)
+
+        let originalPerson = jsonRoots[0] as? DynamicEObject
+        #expect(originalPerson != nil)
+
+        let originalName = await jsonResource.eGet(objectId: originalPerson!.id, feature: "name") as? String
+        let originalAge = await jsonResource.eGet(objectId: originalPerson!.id, feature: "age") as? Int
+
+        // Serialize to XMI
+        let xmiSerializer = XMISerializer()
+        let xmiString = try await xmiSerializer.serialize(jsonResource)
+
+        // Write XMI to temporary file
+        let xmiTempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".xmi")
+        try xmiString.write(to: xmiTempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: xmiTempURL) }
+
+        // Parse XMI
+        let xmiParser = XMIParser()
+        let xmiResource = try await xmiParser.parse(xmiTempURL)
+
+        // Verify data in XMI-loaded resource
+        let xmiRoots = await xmiResource.getRootObjects()
+        #expect(xmiRoots.count == 1)
+
+        let xmiPerson = xmiRoots[0] as? DynamicEObject
+        #expect(xmiPerson != nil)
+
+        let xmiName = await xmiResource.eGet(objectId: xmiPerson!.id, feature: "name") as? String
+        let xmiAge = await xmiResource.eGet(objectId: xmiPerson!.id, feature: "age") as? Int
+
+        #expect(xmiName == originalName, "Name should match after JSON → XMI conversion")
+        #expect(xmiAge == originalAge, "Age should match after JSON → XMI conversion")
+
+        // Serialize back to JSON
+        let jsonSerializer = JSONSerializer()
+        let finalJSON = try await jsonSerializer.serialize(xmiResource)
+
+        // Write JSON to temporary file
+        let jsonTempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".json")
+        try finalJSON.write(to: jsonTempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: jsonTempURL) }
+
+        // Parse final JSON
+        let finalResource = try await jsonParser.parse(jsonTempURL)
+
+        // Verify final data matches original
+        let finalRoots = await finalResource.getRootObjects()
+        #expect(finalRoots.count == 1)
+
+        let finalPerson = finalRoots[0] as? DynamicEObject
+        #expect(finalPerson != nil)
+
+        let finalName = await finalResource.eGet(objectId: finalPerson!.id, feature: "name") as? String
+        let finalAge = await finalResource.eGet(objectId: finalPerson!.id, feature: "age") as? Int
+
+        #expect(finalName == originalName, "Name should match after full JSON → XMI → JSON round-trip")
+        #expect(finalAge == originalAge, "Age should match after full JSON → XMI → JSON round-trip")
+    }
 }

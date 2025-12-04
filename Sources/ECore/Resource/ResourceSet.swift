@@ -142,7 +142,40 @@ public actor ResourceSet {
 
         return resource
     }
-    
+
+    /// Load a JSON resource from a file URL
+    ///
+    /// This method is a convenience for loading JSON files without requiring
+    /// resource factories to be set up. It creates a JSONParser and loads
+    /// the resource directly.
+    ///
+    /// This method is automatically called when resolving cross-resource references
+    /// to JSON files.
+    ///
+    /// - Parameter uri: The URI of the JSON file to load
+    /// - Returns: The loaded Resource, either newly loaded or cached from previous load
+    /// - Throws: JSONError if parsing fails
+    public func loadJSONResource(uri: String) async throws -> Resource {
+        // Check if already loaded
+        if let existing = resources[uri] {
+            return existing
+        }
+
+        // Create URL from URI
+        guard let url = URL(string: uri) else {
+            throw JSONError.invalidFormat("Invalid URI: \(uri)")
+        }
+
+        // Parse with JSONParser
+        let parser = JSONParser(resourceSet: self)
+        let resource = try await parser.parse(url)
+
+        // Register in the resource set
+        resources[uri] = resource
+
+        return resource
+    }
+
     /// Removes a resource from this resource set.
     ///
     /// - Parameter resource: The resource to remove.
