@@ -283,9 +283,11 @@ public actor XMIParser {
             xmiIdMap[xmiId] = instance.id
         }
 
-        // Parse all attributes dynamically
-        // SwiftXML provides element.attributeNames for iteration
-        for attributeName in element.attributeNames {
+        // Parse all attributes dynamically in document order
+        // Use document order to preserve EMF compliance (insertion order)
+        let attributeNames = getAttributeNamesInDocumentOrder(for: element)
+
+        for attributeName in attributeNames {
             // Skip XML namespace and XMI control attributes
             if attributeName.hasPrefix("xmlns:") ||
                attributeName.hasPrefix("xmi:") ||
@@ -748,6 +750,57 @@ public actor XMIParser {
     }
 
     // MARK: - Helper Methods
+
+    /// Get attribute names in document order to preserve EMF compliance
+    ///
+    /// SwiftXML's element.attributeNames returns attributes in alphabetical order,
+    /// but EMF requires preserving insertion/document order. This method extracts
+    /// the attribute names from the element's string representation to maintain
+    /// the original XML document order.
+    ///
+    /// - Parameter element: The XElement to extract attribute names from
+    /// - Returns: Array of attribute names in document order
+    private func getAttributeNamesInDocumentOrder(for element: XElement) -> [String] {
+        // Try to extract from element's description/serialization
+        let elementDescription = String(describing: element)
+
+        // Debug output
+        print("=== PARSER DEBUG ===")
+        print("Element description: \(elementDescription)")
+        print("SwiftXML attributeNames: \(element.attributeNames)")
+
+        // Regex pattern to match attribute="value" or attribute='value'
+        let pattern = #"(\w+)=(?:"[^"]*"|'[^']*')"#
+
+        do {
+            let regex = try NSRegularExpression(pattern: pattern, options: [])
+            let range = NSRange(elementDescription.startIndex..<elementDescription.endIndex, in: elementDescription)
+            let matches = regex.matches(in: elementDescription, options: [], range: range)
+
+            var orderedNames: [String] = []
+            for match in matches {
+                if let nameRange = Range(match.range(at: 1), in: elementDescription) {
+                    let attributeName = String(elementDescription[nameRange])
+                    orderedNames.append(attributeName)
+                }
+            }
+
+            print("Regex extracted order: \(orderedNames)")
+
+            // Fallback: if regex didn't work, use SwiftXML's method (alphabetical order)
+            if orderedNames.isEmpty {
+                print("Using SwiftXML fallback order")
+                return element.attributeNames
+            }
+
+            print("Using regex extracted order")
+            return orderedNames
+        } catch {
+            // If regex fails, fall back to SwiftXML's alphabetical order
+            print("Regex failed, using SwiftXML fallback: \(error)")
+            return element.attributeNames
+        }
+    }
 
     /// Get or create an EClass for a metamodel type
     ///

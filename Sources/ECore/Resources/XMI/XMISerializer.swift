@@ -174,8 +174,9 @@ public struct XMISerializer: Sendable {
     private func serializeContainedChild(_ object: any EObject, featureName: String, in resource: Resource, indentLevel: Int) async throws -> String {
         let indent = String(repeating: "    ", count: indentLevel)
 
-        // Get attributes of child
-        let attributes = try await getObjectAttributes(object, in: resource)
+        guard let dynamicObject = object as? DynamicEObject else {
+            return "\(indent)<\(featureName)/>\n"
+        }
 
         // Get contained children of this child
         let children = try await getContainedChildren(object, in: resource)
@@ -185,9 +186,27 @@ public struct XMISerializer: Sendable {
 
         var xml = "\(indent)<\(featureName)"
 
-        // Add attributes
-        for (key, value) in attributes.sorted(by: { $0.key < $1.key }) {
-            xml += " \(key)=\"\(escapeXML(value))\""
+        // Add attributes in insertion order (preserving EMF semantic ordering)
+        let featureNames = await resource.getFeatureNames(objectId: dynamicObject.id)
+        
+        for attributeName in featureNames {
+            // Skip internal features
+            if attributeName.hasPrefix("_") || attributeName == "eClass" {
+                continue
+            }
+
+            guard let value = await resource.eGet(objectId: dynamicObject.id, feature: attributeName) else {
+                continue
+            }
+
+            // Only serialise primitive types as attributes
+            if value is EUUID || value is [EUUID] {
+                // Skip references - they're handled separately
+                continue
+            }
+
+            // Convert value to string and add to attributes in insertion order
+            xml += " \(attributeName)=\"\(escapeXML(convertToString(value)))\""
         }
 
         if children.isEmpty && references.isEmpty {
@@ -408,29 +427,11 @@ public struct XMISerializer: Sendable {
     private func addAttributes(_ object: any EObject, in resource: Resource) async throws -> String {
         var attributes = ""
 
-        let objectAttributes = try await getObjectAttributes(object, in: resource)
-
-        // Sort attributes for consistent output
-        for (key, value) in objectAttributes.sorted(by: { $0.key < $1.key }) {
-            attributes += " \(key)=\"\(escapeXML(value))\""
-        }
-
-        return attributes
-    }
-
-    /// Get attributes of an object (non-reference features)
-    ///
-    /// - Parameters:
-    ///   - object: The object
-    ///   - resource: The Resource
-    /// - Returns: Dictionary of attribute names to string values
-    private func getObjectAttributes(_ object: any EObject, in resource: Resource) async throws -> [String: String] {
-        var attributes: [String: String] = [:]
-
         guard let dynamicObject = object as? DynamicEObject else {
             return attributes
         }
 
+        // Get feature names in insertion order (preserving EMF semantic ordering)
         let featureNames = await resource.getFeatureNames(objectId: dynamicObject.id)
 
         for featureName in featureNames {
@@ -449,12 +450,15 @@ public struct XMISerializer: Sendable {
                 continue
             }
 
-            // Convert value to string
-            attributes[featureName] = convertToString(value)
+            // Convert value to string and add to attributes in insertion order
+            attributes += " \(featureName)=\"\(escapeXML(convertToString(value)))\""
         }
 
         return attributes
     }
+
+    /// Get attributes of an object (non-reference features)
+
 
     /// Get contained children of an object
     ///
