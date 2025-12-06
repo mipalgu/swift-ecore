@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "swift-modelling",
+    name: "swift-ecore",
     platforms: [
         .macOS(.v15)
     ],
@@ -10,18 +10,6 @@ let package = Package(
         .library(
             name: "ECore",
             targets: ["ECore"]
-        ),
-        .library(
-            name: "ATL",
-            targets: ["ATL"]
-        ),
-        .executable(
-            name: "swift-ecore",
-            targets: ["swift-ecore"]
-        ),
-        .executable(
-            name: "swift-atl",
-            targets: ["swift-atl"]
         ),
     ],
     dependencies: [
@@ -42,50 +30,9 @@ let package = Package(
                 .enableUpcomingFeature("StrictConcurrency")
             ]
         ),
-        .target(
-            name: "ATL",
-            dependencies: [
-                "ECore",
-                .product(name: "OrderedCollections", package: "swift-collections"),
-            ],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
-        ),
-        .executableTarget(
-            name: "swift-ecore",
-            dependencies: [
-                "ECore",
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
-        ),
-        .executableTarget(
-            name: "swift-atl",
-            dependencies: [
-                "ATL",
-                "ECore",
-                .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
-        ),
         .testTarget(
             name: "ECoreTests",
             dependencies: ["ECore"],
-            resources: [
-                .copy("Resources")
-            ],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
-        ),
-        .testTarget(
-            name: "ATLTests",
-            dependencies: ["ATL", "ECore"],
             resources: [
                 .copy("Resources")
             ],
