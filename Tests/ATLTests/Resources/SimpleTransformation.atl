@@ -1,0 +1,94 @@
+-- ATL transformation rules for testing rule definition and execution
+-- This file tests matched rules and called rules with simple transformations
+module SimpleTransformation;
+create OUT : Target from IN : Source;
+
+-- Simple matched rule for basic transformation
+rule PersonToEmployee {
+    from
+        p : Source!Person
+    to
+        e : Target!Employee (
+            name <- p.fullName,
+            id <- p.personId,
+            active <- true
+        )
+}
+
+-- Matched rule with guard condition
+rule AdultPersonToManager {
+    from
+        p : Source!Person (p.age >= 18)
+    to
+        m : Target!Manager (
+            name <- p.fullName,
+            id <- p.personId,
+            department <- 'General',
+            level <- if p.age >= 30 then 'Senior' else 'Junior' endif
+        )
+}
+
+-- Called rule with parameters
+rule CreateDepartment(deptName : String, headCount : Integer) {
+    to
+        d : Target!Department (
+            name <- deptName,
+            employeeCount <- headCount,
+            budget <- headCount * 50000
+        )
+}
+
+-- Matched rule using helper functions
+rule CompanyToOrganization {
+    from
+        c : Source!Company
+    to
+        o : Target!Organization (
+            name <- c.companyName,
+            size <- c.calculateSize(),
+            established <- c.foundingDate
+        )
+}
+
+-- Helper for company size calculation
+helper context Source!Company def : calculateSize() : String =
+    if self.employeeCount < 10 then
+        'Small'
+    else if self.employeeCount < 100 then
+        'Medium'
+    else
+        'Large'
+    endif endif;
+
+-- Called rule for creating standardized addresses
+rule StandardizeAddress(street : String, city : String, country : String) {
+    to
+        addr : Target!Address (
+            streetAddress <- street,
+            cityName <- city,
+            countryCode <- country.toUpperCase(),
+            formatted <- street + ', ' + city + ', ' + country
+        )
+}
+
+-- Matched rule with multiple target patterns
+rule PersonWithAddress {
+    from
+        p : Source!Person
+    to
+        e : Target!Employee (
+            name <- p.fullName,
+            id <- p.personId
+        ),
+        a : Target!Address (
+            streetAddress <- p.address,
+            cityName <- p.city,
+            countryCode <- 'US'
+        )
+    do {
+        e.homeAddress <- a;
+    }
+}
+
+-- Test query to validate transformation logic
+query TestTransformation = Source!Person.allInstances()->size();

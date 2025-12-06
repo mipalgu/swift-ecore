@@ -1,0 +1,147 @@
+-- ATL collection operations for testing complex collection manipulation
+-- This file tests OCL-style collection operations, iterators, and aggregation
+module CollectionOperations;
+
+-- Helper functions for collection operations
+helper def : createNumberSequence(start : Integer, count : Integer) : Sequence(Integer) =
+    if count <= 0 then
+        Sequence{}
+    else
+        Sequence{start}->union(createNumberSequence(start + 1, count - 1))
+    endif;
+
+helper def : sumSequence(numbers : Sequence(Integer)) : Integer =
+    if numbers->isEmpty() then
+        0
+    else
+        numbers->first() + sumSequence(numbers->subSequence(2, numbers->size()))
+    endif;
+
+-- Context helpers for collection manipulation
+helper context Sequence(Integer) def : filterEven() : Sequence(Integer) =
+    self->select(n | n.mod(2) = 0);
+
+helper context Sequence(Integer) def : filterOdd() : Sequence(Integer) =
+    self->select(n | n.mod(2) = 1);
+
+helper context Sequence(Integer) def : doubleValues() : Sequence(Integer) =
+    self->collect(n | n * 2);
+
+helper context Sequence(String) def : concatenateAll() : String =
+    self->iterate(s; acc : String = '' | acc + s + ' ');
+
+helper context Sequence(Integer) def : findMax() : Integer =
+    self->iterate(n; max : Integer = self->first() |
+        if n > max then n else max endif);
+
+helper context Sequence(Integer) def : findMin() : Integer =
+    self->iterate(n; min : Integer = self->first() |
+        if n < min then n else min endif);
+
+-- Set operations helpers
+helper context Set(Integer) def : intersectWith(other : Set(Integer)) : Set(Integer) =
+    self->select(n | other->includes(n));
+
+helper context Set(Integer) def : unionWith(other : Set(Integer)) : Set(Integer) =
+    self->union(other);
+
+helper context Set(Integer) def : differenceWith(other : Set(Integer)) : Set(Integer) =
+    self->select(n | not other->includes(n));
+
+-- Bag operations helpers
+helper context Bag(String) def : countOccurrences(item : String) : Integer =
+    self->select(s | s = item)->size();
+
+helper context Bag(Integer) def : removeDuplicates() : Set(Integer) =
+    self->asSet();
+
+-- Test queries for basic collection operations
+query TestEmptySequence = Sequence{}->isEmpty();
+
+query TestSequenceSize = Sequence{1, 2, 3, 4, 5}->size();
+
+query TestSequenceFirst = Sequence{10, 20, 30}->first();
+
+query TestSequenceLast = Sequence{10, 20, 30}->last();
+
+query TestSequenceIncludes = Sequence{1, 2, 3, 4, 5}->includes(3);
+
+query TestSequenceExcludes = Sequence{1, 2, 3, 4, 5}->excludes(7);
+
+-- Test queries for collection filtering
+query TestSelectEven = Sequence{1, 2, 3, 4, 5, 6, 7, 8}->select(n | n.mod(2) = 0);
+
+query TestRejectOdd = Sequence{1, 2, 3, 4, 5, 6, 7, 8}->reject(n | n.mod(2) = 1);
+
+query TestCollectSquare = Sequence{1, 2, 3, 4, 5}->collect(n | n * n);
+
+-- Test queries for collection aggregation
+query TestForAllPositive = Sequence{1, 2, 3, 4, 5}->forAll(n | n > 0);
+
+query TestExistsEven = Sequence{1, 3, 5, 7, 8}->exists(n | n.mod(2) = 0);
+
+query TestOneEven = Sequence{1, 3, 4, 5, 7}->one(n | n.mod(2) = 0);
+
+-- Test queries for collection conversion
+query TestSequenceToSet = Sequence{1, 2, 2, 3, 3, 3}->asSet();
+
+query TestSequenceToBag = Sequence{1, 2, 3}->asBag();
+
+query TestSetToSequence = Set{3, 1, 2}->asSequence();
+
+-- Test queries using helper functions
+query TestFilterEvenHelper = Sequence{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}.filterEven();
+
+query TestFilterOddHelper = Sequence{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}.filterOdd();
+
+query TestDoubleValuesHelper = Sequence{1, 2, 3, 4, 5}.doubleValues();
+
+query TestFindMaxHelper = Sequence{3, 7, 1, 9, 2, 8}.findMax();
+
+query TestFindMinHelper = Sequence{3, 7, 1, 9, 2, 8}.findMin();
+
+-- Test queries for string collections
+query TestStringConcatenation = Sequence{'Hello', 'World', 'ATL'}.concatenateAll();
+
+query TestStringSelect = Sequence{'apple', 'banana', 'cherry', 'date'}->select(s | s.size() > 5);
+
+-- Test queries for set operations
+query TestSetIntersection = Set{1, 2, 3, 4}.intersectWith(Set{3, 4, 5, 6});
+
+query TestSetUnion = Set{1, 2, 3}.unionWith(Set{3, 4, 5});
+
+query TestSetDifference = Set{1, 2, 3, 4, 5}.differenceWith(Set{2, 4});
+
+-- Test queries for bag operations
+query TestBagCount = Bag{'apple', 'banana', 'apple', 'cherry', 'apple'}.countOccurrences('apple');
+
+query TestBagRemoveDuplicates = Bag{1, 2, 2, 3, 3, 3, 4}.removeDuplicates();
+
+-- Test queries for nested collections
+query TestNestedCollectionFlattening = Sequence{Sequence{1, 2}, Sequence{3, 4}, Sequence{5, 6}}->flatten();
+
+-- Test queries for complex collection operations
+query TestComplexFilter = Sequence{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
+    ->select(n | n > 3)
+    ->reject(n | n.mod(3) = 0)
+    ->collect(n | n * n);
+
+query TestIterateSum = Sequence{1, 2, 3, 4, 5}->iterate(n; sum : Integer = 0 | sum + n);
+
+query TestIterateProduct = Sequence{1, 2, 3, 4, 5}->iterate(n; product : Integer = 1 | product * n);
+
+-- Test queries for collection sorting (if supported)
+query TestSortedBy = Sequence{5, 2, 8, 1, 9, 3}->sortedBy(n | n);
+
+-- Test queries for collection comparison
+query TestCollectionEquality = Sequence{1, 2, 3} = Sequence{1, 2, 3};
+
+query TestCollectionInequality = Sequence{1, 2, 3} <> Sequence{3, 2, 1};
+
+-- Test queries combining multiple operations
+query TestComplexSequenceOperation = createNumberSequence(1, 10)
+    .filterEven()
+    .doubleValues()
+    .findMax();
+
+query TestComplexAggregation = sumSequence(Sequence{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}.filterEven());
