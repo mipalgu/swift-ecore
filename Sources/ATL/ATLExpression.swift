@@ -43,6 +43,50 @@ import Foundation
 ///
 /// let result = try await navigationExpr.evaluate(in: executionContext)
 /// ```
+/// A phantom type representing an ATL expression that can never be instantiated.
+///
+/// This type is used for generic contexts where an optional expression type
+/// is needed but no actual expression will be present (e.g., matched rules
+/// without guard expressions).
+public enum ATLExpressionNever: ATLExpression {
+    // This enum has no cases and can never be instantiated
+
+    public func evaluate(in context: ATLExecutionContext) async throws -> (any EcoreValue)? {
+        // This can never be called since no instances can exist
+        fatalError("ATLExpressionNever cannot be evaluated")
+    }
+}
+
+/// Binary operators supported in ATL expressions.
+public enum ATLBinaryOperator: String, Sendable, CaseIterable, Equatable {
+    // Arithmetic operators
+    case plus = "+"
+    case minus = "-"
+    case multiply = "*"
+    case divide = "/"
+    case modulo = "mod"
+
+    // Comparison operators
+    case equals = "="
+    case notEquals = "<>"
+    case lessThan = "<"
+    case lessThanOrEqual = "<="
+    case greaterThan = ">"
+    case greaterThanOrEqual = ">="
+
+    // Logical operators
+    case and = "and"
+    case or = "or"
+    case implies = "implies"
+
+    // Collection operators
+    case union = "union"
+    case intersection = "intersection"
+    case difference = "--"
+    case includes = "includes"
+    case excludes = "excludes"
+}
+
 public protocol ATLExpression: Sendable, Equatable, Hashable {
 
     /// Evaluates the expression within the specified execution context.
@@ -382,48 +426,22 @@ public struct ATLLiteralExpression: ATLExpression, Equatable, Hashable {
 ///     right: ATLLiteralExpression(value: 18)
 /// )
 /// ```
-public struct ATLBinaryOperationExpression: ATLExpression, Equatable, Hashable {
-
-    /// Binary operators supported in ATL expressions.
-    public enum Operator: String, Sendable, CaseIterable, Equatable {
-        // Arithmetic operators
-        case plus = "+"
-        case minus = "-"
-        case multiply = "*"
-        case divide = "/"
-        case modulo = "mod"
-
-        // Comparison operators
-        case equals = "="
-        case notEquals = "<>"
-        case lessThan = "<"
-        case lessThanOrEqual = "<="
-        case greaterThan = ">"
-        case greaterThanOrEqual = ">="
-
-        // Logical operators
-        case and = "and"
-        case or = "or"
-        case implies = "implies"
-
-        // Collection operators
-        case union = "union"
-        case intersection = "intersection"
-        case difference = "--"
-        case includes = "includes"
-        case excludes = "excludes"
-    }
+public struct ATLBinaryOperationExpression<
+    LeftExpression: ATLExpression, RightExpression: ATLExpression
+>:
+    ATLExpression, Equatable, Hashable
+{
 
     // MARK: - Properties
 
     /// The left operand expression.
-    public let left: any ATLExpression
+    public let left: LeftExpression
 
     /// The binary operator to apply.
-    public let `operator`: Operator
+    public let `operator`: ATLBinaryOperator
 
     /// The right operand expression.
-    public let right: any ATLExpression
+    public let right: RightExpression
 
     // MARK: - Initialisation
 
@@ -433,7 +451,7 @@ public struct ATLBinaryOperationExpression: ATLExpression, Equatable, Hashable {
     ///   - left: The left operand expression
     ///   - operator: The binary operator to apply
     ///   - right: The right operand expression
-    public init(left: any ATLExpression, `operator`: Operator, right: any ATLExpression) {
+    public init(left: LeftExpression, `operator`: ATLBinaryOperator, right: RightExpression) {
         self.left = left
         self.`operator` = `operator`
         self.right = right
@@ -457,7 +475,8 @@ public struct ATLBinaryOperationExpression: ATLExpression, Equatable, Hashable {
     /// - Returns: The result of the operation
     /// - Throws: ATL execution errors for invalid operations
     private func evaluateOperation(
-        _ leftValue: (any EcoreValue)?, _ operator: Operator, _ rightValue: (any EcoreValue)?
+        _ leftValue: (any EcoreValue)?, _ operator: ATLBinaryOperator,
+        _ rightValue: (any EcoreValue)?
     )
         async throws -> (any EcoreValue)?
     {
@@ -620,18 +639,21 @@ public struct ATLBinaryOperationExpression: ATLExpression, Equatable, Hashable {
 
     // MARK: - Equatable
 
-    public static func == (lhs: ATLBinaryOperationExpression, rhs: ATLBinaryOperationExpression)
+    public static func == (
+        lhs: ATLBinaryOperationExpression<LeftExpression, RightExpression>,
+        rhs: ATLBinaryOperationExpression<LeftExpression, RightExpression>
+    )
         -> Bool
     {
         return lhs.`operator` == rhs.`operator`
-            && AnyHashable(lhs.left) == AnyHashable(rhs.left)
-            && AnyHashable(lhs.right) == AnyHashable(rhs.right)
+            && lhs.left == rhs.left
+            && lhs.right == rhs.right
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(`operator`)
-        hasher.combine(AnyHashable(left))
-        hasher.combine(AnyHashable(right))
+        hasher.combine(left)
+        hasher.combine(right)
     }
 }
 

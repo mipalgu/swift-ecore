@@ -68,7 +68,7 @@ public struct ATLModule: Sendable, Equatable, Hashable {
     /// Helpers extend the OCL standard library with custom operations that can be
     /// invoked from transformation rules and other helpers. They support both
     /// context-dependent and context-independent implementations.
-    public let helpers: OrderedDictionary<String, ATLHelper>
+    public let helpers: OrderedDictionary<String, any ATLHelperType>
 
     /// Matched rules for automatic transformation execution.
     ///
@@ -103,7 +103,7 @@ public struct ATLModule: Sendable, Equatable, Hashable {
         name: String,
         sourceMetamodels: OrderedDictionary<String, EPackage>,
         targetMetamodels: OrderedDictionary<String, EPackage>,
-        helpers: OrderedDictionary<String, ATLHelper> = [:],
+        helpers: OrderedDictionary<String, any ATLHelperType> = [:],
         matchedRules: [ATLMatchedRule] = [],
         calledRules: OrderedDictionary<String, ATLCalledRule> = [:]
     ) {
@@ -121,14 +121,63 @@ public struct ATLModule: Sendable, Equatable, Hashable {
 
     // MARK: - Hashable
 
+    // MARK: - Equatable
+
+    public static func == (lhs: ATLModule, rhs: ATLModule) -> Bool {
+        return lhs.name == rhs.name
+            && lhs.sourceMetamodels == rhs.sourceMetamodels
+            && lhs.targetMetamodels == rhs.targetMetamodels
+            && lhs.helpers.keys == rhs.helpers.keys
+            && lhs.helpers.allSatisfy { key, lhsHelper in
+                if let rhsHelper = rhs.helpers[key] {
+                    return lhsHelper.isEqual(to: rhsHelper)
+                }
+                return false
+            }
+            && lhs.matchedRules == rhs.matchedRules
+            && lhs.calledRules == rhs.calledRules
+    }
+
+    // MARK: - Hashable
+
     public func hash(into hasher: inout Hasher) {
         hasher.combine(name)
         hasher.combine(sourceMetamodels.keys.sorted())
         hasher.combine(targetMetamodels.keys.sorted())
-        hasher.combine(helpers.keys.sorted())
-        hasher.combine(matchedRules.count)
+        for (key, helper) in helpers.sorted(by: { $0.key < $1.key }) {
+            hasher.combine(key)
+            hasher.combine(helper.hashValue())
+        }
+        hasher.combine(matchedRules)
         hasher.combine(calledRules.keys.sorted())
     }
+}
+
+// MARK: - ATL Helper Type Protocol
+
+/// Protocol for type-erased ATL helper storage.
+///
+/// This protocol allows ATL helpers with different body expression types
+/// to be stored together in collections while maintaining type safety
+/// at the individual helper level.
+public protocol ATLHelperType: Sendable {
+    /// The name of the helper function.
+    var name: String { get }
+
+    /// The context type for contextual helpers, or `nil` for context-free helpers.
+    var contextType: String? { get }
+
+    /// The return type of the helper function.
+    var returnType: String { get }
+
+    /// The parameters accepted by the helper function.
+    var parameters: [ATLParameter] { get }
+
+    /// Check if two helpers are equal for their identifying properties
+    func isEqual(to other: any ATLHelperType) -> Bool
+
+    /// Get hash value for the helper's identifying properties
+    func hashValue() -> Int
 }
 
 // MARK: - ATL Helper
@@ -168,7 +217,8 @@ public struct ATLModule: Sendable, Equatable, Hashable {
 ///     body: concatenationExpression
 /// )
 /// ```
-public struct ATLHelper: Sendable, Equatable, Hashable {
+public struct ATLHelper<BodyExpression: ATLExpression>: ATLHelperType, Sendable, Equatable, Hashable
+{
 
     // MARK: - Properties
 
@@ -202,7 +252,7 @@ public struct ATLHelper: Sendable, Equatable, Hashable {
     /// The body expression is evaluated to compute the helper's return value.
     /// It has access to the contextual `self` variable (for contextual helpers)
     /// and all declared parameters.
-    public let body: any ATLExpression
+    public let body: BodyExpression
 
     // MARK: - Initialisation
 
@@ -222,7 +272,7 @@ public struct ATLHelper: Sendable, Equatable, Hashable {
         contextType: String? = nil,
         returnType: String,
         parameters: [ATLParameter] = [],
-        body: any ATLExpression
+        body: BodyExpression
     ) {
         precondition(!name.isEmpty, "Helper name must not be empty")
         precondition(!returnType.isEmpty, "Return type must not be empty")
@@ -236,9 +286,10 @@ public struct ATLHelper: Sendable, Equatable, Hashable {
 
     // MARK: - Equatable
 
-    public static func == (lhs: ATLHelper, rhs: ATLHelper) -> Bool {
+    public static func == (lhs: ATLHelper<BodyExpression>, rhs: ATLHelper<BodyExpression>) -> Bool {
         return lhs.name == rhs.name && lhs.contextType == rhs.contextType
             && lhs.returnType == rhs.returnType && lhs.parameters == rhs.parameters
+            && lhs.body == rhs.body
     }
 
     // MARK: - Hashable
@@ -248,6 +299,22 @@ public struct ATLHelper: Sendable, Equatable, Hashable {
         hasher.combine(contextType)
         hasher.combine(returnType)
         hasher.combine(parameters)
+        hasher.combine(body)
+    }
+
+    // MARK: - ATLHelperType
+
+    public func isEqual(to other: any ATLHelperType) -> Bool {
+        guard let other = other as? ATLHelper<BodyExpression> else {
+            return false
+        }
+        return self == other
+    }
+
+    public func hashValue() -> Int {
+        var hasher = Hasher()
+        hash(into: &hasher)
+        return hasher.finalize()
     }
 }
 

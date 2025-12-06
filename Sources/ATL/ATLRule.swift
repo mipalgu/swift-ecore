@@ -107,9 +107,24 @@ public struct ATLMatchedRule: Sendable, Equatable, Hashable {
     // MARK: - Equatable
 
     public static func == (lhs: ATLMatchedRule, rhs: ATLMatchedRule) -> Bool {
-        return lhs.name == rhs.name && lhs.sourcePattern == rhs.sourcePattern
-            && lhs.targetPatterns.count == rhs.targetPatterns.count
-            && lhs.`guard` == nil && rhs.`guard` == nil
+        // Compare basic properties
+        guard
+            lhs.name == rhs.name && lhs.sourcePattern == rhs.sourcePattern
+                && lhs.targetPatterns == rhs.targetPatterns
+        else {
+            return false
+        }
+
+        // Compare guard expressions
+        switch (lhs.`guard`, rhs.`guard`) {
+        case (nil, nil):
+            return true
+        case (let lhsGuard?, let rhsGuard?):
+            // Both have guards - compare their string representations as a fallback
+            return String(describing: lhsGuard) == String(describing: rhsGuard)
+        default:
+            return false  // One has guard, other doesn't
+        }
     }
 
     // MARK: - Hashable
@@ -117,9 +132,12 @@ public struct ATLMatchedRule: Sendable, Equatable, Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(name)
         hasher.combine(sourcePattern)
-        hasher.combine(targetPatterns.count)
-        hasher.combine(`guard` == nil)
+        hasher.combine(targetPatterns)
+        if let guardExpression = `guard` {
+            hasher.combine(String(describing: guardExpression))
+        }
     }
+
 }
 
 // MARK: - ATL Called Rule

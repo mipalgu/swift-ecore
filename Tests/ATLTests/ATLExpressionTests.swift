@@ -84,7 +84,7 @@ struct ATLExpressionTests {
         // Given
         let leftExpr = ATLLiteralExpression(value: 10)
         let rightExpr = ATLLiteralExpression(value: 5)
-        let operation = ATLBinaryOperationExpression.Operator.plus
+        let operation = ATLBinaryOperator.plus
 
         // When
         let expression = ATLBinaryOperationExpression(
@@ -208,13 +208,13 @@ struct ATLExpressionTests {
     @Test("Binary operation types")
     func testBinaryOperationTypes() async throws {
         // Given & When
-        let arithmetic: [ATLBinaryOperationExpression.Operator] = [
+        let arithmetic: [ATLBinaryOperator] = [
             .plus, .minus, .multiply, .divide, .modulo,
         ]
-        let comparison: [ATLBinaryOperationExpression.Operator] = [
+        let comparison: [ATLBinaryOperator] = [
             .equals, .notEquals, .lessThan, .lessThanOrEqual, .greaterThan, .greaterThanOrEqual,
         ]
-        let logical: [ATLBinaryOperationExpression.Operator] = [.and, .or]
+        let logical: [ATLBinaryOperator] = [.and, .or]
 
         // Then
         #expect(arithmetic.count == 5)

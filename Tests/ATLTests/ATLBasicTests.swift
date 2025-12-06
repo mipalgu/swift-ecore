@@ -58,7 +58,7 @@ struct ATLBasicTests {
         // Given
         let leftExpr = ATLLiteralExpression(value: 10)
         let rightExpr = ATLLiteralExpression(value: 5)
-        let operation = ATLBinaryOperationExpression.Operator.plus
+        let operation = ATLBinaryOperator.plus
 
         // When
         let expression = ATLBinaryOperationExpression(
@@ -196,7 +196,7 @@ struct ATLBasicTests {
     @Test("Binary operators availability")
     func testBinaryOperators() {
         // Given & When
-        let allOperators = ATLBinaryOperationExpression.Operator.allCases
+        let allOperators = ATLBinaryOperator.allCases
 
         // Then
         #expect(allOperators.contains(.plus))
@@ -212,13 +212,13 @@ struct ATLBasicTests {
     @Test("Operator string values")
     func testOperatorStringValues() {
         // Then
-        #expect(ATLBinaryOperationExpression.Operator.plus.rawValue == "+")
-        #expect(ATLBinaryOperationExpression.Operator.minus.rawValue == "-")
-        #expect(ATLBinaryOperationExpression.Operator.multiply.rawValue == "*")
-        #expect(ATLBinaryOperationExpression.Operator.divide.rawValue == "/")
-        #expect(ATLBinaryOperationExpression.Operator.equals.rawValue == "=")
-        #expect(ATLBinaryOperationExpression.Operator.notEquals.rawValue == "<>")
-        #expect(ATLBinaryOperationExpression.Operator.and.rawValue == "and")
-        #expect(ATLBinaryOperationExpression.Operator.or.rawValue == "or")
+        #expect(ATLBinaryOperator.plus.rawValue == "+")
+        #expect(ATLBinaryOperator.minus.rawValue == "-")
+        #expect(ATLBinaryOperator.multiply.rawValue == "*")
+        #expect(ATLBinaryOperator.divide.rawValue == "/")
+        #expect(ATLBinaryOperator.equals.rawValue == "=")
+        #expect(ATLBinaryOperator.notEquals.rawValue == "<>")
+        #expect(ATLBinaryOperator.and.rawValue == "and")
+        #expect(ATLBinaryOperator.or.rawValue == "or")
     }
 }
