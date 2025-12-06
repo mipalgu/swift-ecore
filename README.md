@@ -16,7 +16,7 @@ A pure Swift implementation of the Eclipse Modeling Framework (EMF) Ecore metamo
 - **Dynamic Attribute Parsing**: Arbitrary XML attributes with automatic type inference (Int, Double, Bool, String)
 - **XPath Reference Resolution**: Same-resource references with XPath-style navigation (//@feature.index)
 - **XMI Serialization**: Write models to XMI format with full round-trip support
-- 🚧 **ATL Transformations**: Model-to-model transformations (coming soon)
+- 🚧 **ATL Transformations**: Atlas Transformation Language with parser and end-to-end testing (basic functionality)
 - 🚧 **Code Generation**: Generate Swift, C++, C, LLVM IR via ATL (coming soon)
 
 ## Requirements
@@ -274,17 +274,24 @@ done
 
 ### Phase 7: ATL 🚧
 
-- [ ] ATL lexer and parser
-- [ ] ATL interpreter
+- [x] ATL parser infrastructure with lexer and syntax analyzer
+- [x] End-to-end testing with comprehensive ATL resource files
+- [x] Resource loading and Bundle.module integration
+- [x] Basic ATL module construction and validation
+- [ ] ATL execution engine and virtual machine
+- [ ] OCL expression evaluation
+- [ ] Model-to-model transformation execution
 - [ ] Code generation templates
 
 ## Architecture
 
 **Swift Modelling** consists of:
 - **ECore module**: Core library implementing the Ecore metamodel
+- **ATL module**: Atlas Transformation Language parser and infrastructure
 - **swift-ecore executable**: Command-line tool for validation, conversion, and code generation
+- **swift-atl executable**: ATL transformation tool (coming soon)
 
-All types are value types (structs) for thread safety, with ID-based reference resolution for bidirectional relationships. Resources provide EMF-compliant object ownership and cross-reference resolution using actor-based concurrency.
+All types are value types (structs) for thread safety, with ID-based reference resolution for bidirectional relationships. Resources provide EMF-compliant object ownership and cross-reference resolution using actor-based concurrency. ATL transformations use generics over existentials for type safety while maintaining flexibility for heterogeneous collections.
 
 ## Licence
 
@@ -295,5 +302,6 @@ See the details in the LICENCE file.
 Swift Modelling aims for 100% round-trip compatibility with:
 - [emf4cpp](https://github.com/catedrasaes-umu/emf4cpp) - C++ EMF implementation
 - [pyecore](https://github.com/pyecore/pyecore) - Python EMF implementation
+- [Eclipse ATL](https://eclipse.dev/atl/) - Reference ATL implementation (syntax compatibility)
 
-Test data is validated against both implementations to ensure interoperability.
+Test data is validated against these implementations to ensure interoperability. ATL transformations follow the Eclipse ATL specification while leveraging Swift's modern type system.
