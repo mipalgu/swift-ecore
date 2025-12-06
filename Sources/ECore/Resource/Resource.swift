@@ -119,7 +119,8 @@ public actor Resource {
             // Check if any object contains this one through containment references
             if let eClass = container.eClass as? EClass {
                 return eClass.allReferences.contains { reference in
-                    reference.containment && doesObjectContain(container, objectId: object.id, through: reference)
+                    reference.containment
+                        && doesObjectContain(container, objectId: object.id, through: reference)
                 }
             }
             return false
@@ -252,7 +253,8 @@ public actor Resource {
     ///   - reference: The reference to resolve.
     ///   - from: The object containing the reference.
     /// - Returns: An array of resolved target objects.
-    public func resolveReference(_ reference: EReference, from object: any EObject) -> [any EObject] {
+    public func resolveReference(_ reference: EReference, from object: any EObject) -> [any EObject]
+    {
         guard let value = object.eGet(reference) else { return [] }
 
         if reference.isMany {
@@ -378,7 +380,9 @@ public actor Resource {
     ///   - value: The new value for the feature.
     /// - Returns: `true` if the modification was successful, `false` otherwise.
     @discardableResult
-    public func eSet(objectId: EUUID, feature featureName: String, value: (any EcoreValue)?) async -> Bool {
+    public func eSet(objectId: EUUID, feature featureName: String, value: (any EcoreValue)?) async
+        -> Bool
+    {
         guard var object = objects[objectId] as? DynamicEObject else { return false }
         let eClass = object.eClass
 
@@ -400,7 +404,9 @@ public actor Resource {
                         if var oldTarget = objects[oldValueId] as? DynamicEObject {
                             // Target is in same resource - update directly
                             let targetClass = oldTarget.eClass
-                            if let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
+                            if let oppositeRef = targetClass.allReferences.first(where: {
+                                $0.id == oppositeId
+                            }) {
                                 if oppositeRef.isMany {
                                     // Remove from array
                                     if var oppositeArray = oldTarget.eGet(oppositeRef) as? [EUUID] {
@@ -435,10 +441,13 @@ public actor Resource {
                         if var newTarget = objects[newValueId] as? DynamicEObject {
                             // Target is in same resource - update directly
                             let targetClass = newTarget.eClass
-                            if let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
+                            if let oppositeRef = targetClass.allReferences.first(where: {
+                                $0.id == oppositeId
+                            }) {
                                 if oppositeRef.isMany {
                                     // Add to array
-                                    var oppositeArray = (newTarget.eGet(oppositeRef) as? [EUUID]) ?? []
+                                    var oppositeArray =
+                                        (newTarget.eGet(oppositeRef) as? [EUUID]) ?? []
                                     if !oppositeArray.contains(objectId) {
                                         oppositeArray.append(objectId)
                                     }
@@ -467,7 +476,9 @@ public actor Resource {
                     if var oldTarget = objects[oldValueId] as? DynamicEObject {
                         // Target is in same resource - update directly
                         let targetClass = oldTarget.eClass
-                        if let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
+                        if let oppositeRef = targetClass.allReferences.first(where: {
+                            $0.id == oppositeId
+                        }) {
                             if oppositeRef.isMany {
                                 // Remove from array
                                 if var oppositeArray = oldTarget.eGet(oppositeRef) as? [EUUID] {
@@ -500,7 +511,9 @@ public actor Resource {
                     if var newTarget = objects[newValueId] as? DynamicEObject {
                         // Target is in same resource - update directly
                         let targetClass = newTarget.eClass
-                        if let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeId }) {
+                        if let oppositeRef = targetClass.allReferences.first(where: {
+                            $0.id == oppositeId
+                        }) {
                             if oppositeRef.isMany {
                                 // Add to array
                                 var oppositeArray = (newTarget.eGet(oppositeRef) as? [EUUID]) ?? []
@@ -583,7 +596,9 @@ public actor Resource {
     ///   - objectId: The ID of the object to check for containment.
     ///   - reference: The containment reference to check.
     /// - Returns: `true` if the container contains the target object.
-    private func doesObjectContain(_ container: any EObject, objectId: EUUID, through reference: EReference) -> Bool {
+    private func doesObjectContain(
+        _ container: any EObject, objectId: EUUID, through reference: EReference
+    ) -> Bool {
         guard reference.containment else { return false }
 
         if let value = container.eGet(reference) {
@@ -601,6 +616,53 @@ public actor Resource {
             }
         }
 
+        return false
+    }
+
+    // MARK: - ATL Integration Methods
+
+    /// Gets all instances of a specific EClass in this resource.
+    ///
+    /// This method is used by ATL virtual machine to find all elements
+    /// that match a specific type for transformation rules.
+    ///
+    /// - Parameter eClass: The EClass to find instances of
+    /// - Returns: Array of objects that are instances of the specified EClass
+    public func getAllInstancesOf(_ eClass: EClass) -> [any EObject] {
+        return objects.values.filter { object in
+            if let objectClass = object.eClass as? EClass {
+                return objectClass.name == eClass.name
+                    || isSubclassOf(objectClass, superclass: eClass)
+            }
+            return false
+        }
+    }
+
+    /// Gets an object by its ID, used for ATL lazy binding resolution.
+    ///
+    /// - Parameter id: The unique identifier of the object
+    /// - Returns: The object if found, nil otherwise
+    public func getObject(_ id: EUUID) -> (any EObject)? {
+        return objects[id]
+    }
+
+    /// Checks if one EClass is a subclass of another.
+    ///
+    /// - Parameters:
+    ///   - subclass: The potential subclass
+    ///   - superclass: The potential superclass
+    /// - Returns: True if subclass extends superclass
+    private func isSubclassOf(_ subclass: EClass, superclass: EClass) -> Bool {
+        // Check direct superclasses
+        for superType in subclass.eSuperTypes {
+            if superType.name == superclass.name {
+                return true
+            }
+            // Recursive check for inheritance hierarchy
+            if isSubclassOf(superType, superclass: superclass) {
+                return true
+            }
+        }
         return false
     }
 }

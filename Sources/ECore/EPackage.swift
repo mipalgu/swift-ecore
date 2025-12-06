@@ -102,6 +102,14 @@ public struct EPackage: ENamedElement {
     /// "company" package might have "hr" and "finance" subpackages.
     public var eSubpackages: [EPackage]
 
+    /// The factory instance for creating objects of this package's classes.
+    ///
+    /// Returns a factory that can create instances of any classifier defined in this package.
+    /// The factory is created lazily when first accessed.
+    public var eFactoryInstance: EFactory {
+        return EFactory(ePackage: self)
+    }
+
     /// Internal storage for feature values.
     private var storage: EObjectStorage
 
