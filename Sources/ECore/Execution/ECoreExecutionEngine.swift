@@ -6,6 +6,7 @@
 // Copyright © 2025 Rene Hexel. All rights reserved.
 //
 import Foundation
+import OrderedCollections
 
 /// Core execution engine providing model navigation and query capabilities.
 ///
@@ -162,10 +163,10 @@ public actor ECoreExecutionEngine: Sendable {
             return results
         }
 
-        var instances: [EUUID] = []
+        var instances = OrderedSet<EUUID>()
         for model in models.values {
             let modelInstances = await model.getElementsByType(type)
-            instances.append(contentsOf: modelInstances)
+            instances.formUnion(modelInstances)
         }
 
         typeCache[cacheKey] = Set(instances)

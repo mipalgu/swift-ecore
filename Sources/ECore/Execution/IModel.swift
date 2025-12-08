@@ -6,6 +6,7 @@
 // Copyright © 2025 Rene Hexel. All rights reserved.
 //
 import Foundation
+import OrderedCollections
 
 /// Protocol abstracting model access for transformation engines.
 ///
@@ -46,8 +47,8 @@ public protocol IModel: Sendable {
     /// returning both direct instances and instances of subtypes.
     ///
     /// - Parameter metaElement: The EClass to match against
-    /// - Returns: A set of all matching element IDs
-    func getElementsByType(_ metaElement: EClass) async -> Set<EUUID>
+    /// - Returns: An ordered set of all matching element IDs
+    func getElementsByType(_ metaElement: EClass) async -> OrderedSet<EUUID>
 
     /// Indicates if this model allows modifications.
     ///
@@ -115,9 +116,9 @@ public struct EcoreModel: IModel, Sendable, Equatable, Hashable {
         return DynamicEObject(eClass: metaElement)
     }
 
-    public func getElementsByType(_ metaElement: EClass) async -> Set<EUUID> {
+    public func getElementsByType(_ metaElement: EClass) async -> OrderedSet<EUUID> {
         let allObjects = await resource.getAllObjects()
-        return Set(allObjects.compactMap { obj in
+        return OrderedSet(allObjects.compactMap { obj in
             guard let objClass = obj.eClass as? EClass else { return nil }
             return objClass == metaElement || objClass.allSuperTypes.contains(metaElement) ? obj.id : nil
         })
@@ -154,7 +155,7 @@ public struct EcoreReferenceModel: IReferenceModel, Sendable, Equatable, Hashabl
         throw ECoreExecutionError.readOnlyModel
     }
 
-    public func getElementsByType(_ metaElement: EClass) async -> Set<EUUID> {
+    public func getElementsByType(_ metaElement: EClass) async -> OrderedSet<EUUID> {
         return []  // Metamodels don't contain instance data
     }
 

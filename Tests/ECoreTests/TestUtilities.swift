@@ -6,6 +6,7 @@
 // Copyright © 2025 Rene Hexel. All rights reserved.
 //
 import Foundation
+import OrderedCollections
 @testable import ECore
 
 // MARK: - Shared Test Reference Model
@@ -27,8 +28,8 @@ public struct SharedTestReferenceModel: IReferenceModel {
         throw ECoreExecutionError.readOnlyModel
     }
 
-    public func getElementsByType(_ metaElement: EClass) async -> Set<EUUID> {
-        return []  // Metamodels don't contain instance data
+    public func getElementsByType(_ metaElement: EClass) async -> OrderedSet<EUUID> {
+        return OrderedSet()  // Metamodels don't contain instance data
     }
 
     public func isModelOf(_ object: any EObject) async -> Bool {
