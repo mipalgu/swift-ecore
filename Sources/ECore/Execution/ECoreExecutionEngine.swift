@@ -49,7 +49,7 @@ public actor ECoreExecutionEngine: Sendable {
     private var navigationCache: [String: any EcoreValue] = [:]
 
     /// Type instance cache for frequent queries.
-    private var typeCache: [String: Set<EUUID>] = [:]
+    private var typeCache: [String: OrderedSet<EUUID>] = [:]
 
     /// Cross-reference resolution cache.
     private var resolutionCache: [EUUID: any EObject] = [:]
@@ -169,7 +169,7 @@ public actor ECoreExecutionEngine: Sendable {
             instances.formUnion(modelInstances)
         }
 
-        typeCache[cacheKey] = Set(instances)
+        typeCache[cacheKey] = instances
         var results: [any EObject] = []
         for id in instances {
             for model in models.values {
