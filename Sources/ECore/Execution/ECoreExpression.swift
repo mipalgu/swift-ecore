@@ -95,19 +95,19 @@ public enum ECoreExecutionError: Error, Sendable, Equatable, CustomStringConvert
 
     public var description: String {
         switch self {
-        case let .unknownProperty(property, className):
+        case .unknownProperty(let property, let className):
             return "Unknown property '\(property)' on class '\(className)'"
-        case let .invalidNavigation(message):
+        case .invalidNavigation(let message):
             return "Invalid navigation: \(message)"
-        case let .typeError(message):
+        case .typeError(let message):
             return "Type error: \(message)"
         case .readOnlyModel:
             return "Cannot modify read-only model"
-        case let .readOnlyObject(id):
+        case .readOnlyObject(let id):
             return "Cannot modify object in read-only model: \(id)"
-        case let .unsupportedOperation(operation):
+        case .unsupportedOperation(let operation):
             return "Unsupported operation: \(operation)"
-        case let .evaluationError(message):
+        case .evaluationError(let message):
             return "Evaluation error: \(message)"
         }
     }
