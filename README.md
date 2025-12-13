@@ -1,6 +1,6 @@
 # Swift Modelling
 
-A pure Swift implementation of the Eclipse Modeling Framework (EMF) Ecore metamodel for macOS and Linux.
+A pure Swift implementation of the Eclipse Modelling Framework (EMF) Ecore metamodel for macOS and Linux.
 
 ## Features
 
@@ -38,7 +38,7 @@ The library implements the core of the Eclipse Modelling Framework and
 can be included in other libraries, tools, and utilities (see the documentation).
 For practical use, the `swift-ecore` command-line tool from the
 [swift-modelling](https://github.com/mipalgu/swift-modelling) repository
-provides comprehensive Eclipse Modeling Framework functionality for Swift.
+provides comprehensive Eclipse Modelling Framework functionality for Swift.
 
 ## Implementation Status
 
