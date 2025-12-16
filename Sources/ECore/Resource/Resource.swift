@@ -864,8 +864,22 @@ public actor Resource {
             throw XMIError.missingRequiredAttribute("name")
         }
 
-        let isAbstract: Bool = dynamicObj.eGet("abstract") as? Bool ?? false
-        let isInterface: Bool = dynamicObj.eGet("interface") as? Bool ?? false
+        let isAbstract: Bool = {
+            if let boolValue = dynamicObj.eGet("abstract") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("abstract") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return false
+        }()
+        let isInterface: Bool = {
+            if let boolValue = dynamicObj.eGet("interface") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("interface") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return false
+        }()
 
         // Extract structural features
         var eStructuralFeatures: [any EStructuralFeature] = []
@@ -948,12 +962,58 @@ public actor Resource {
             throw XMIError.missingRequiredAttribute("name")
         }
 
-        let lowerBound: Int = dynamicObj.eGet("lowerBound") as? Int ?? 0
-        let upperBound: Int = dynamicObj.eGet("upperBound") as? Int ?? 1
-        let changeable: Bool = dynamicObj.eGet("changeable") as? Bool ?? true
-        let volatile: Bool = dynamicObj.eGet("volatile") as? Bool ?? false
-        let transient: Bool = dynamicObj.eGet("transient") as? Bool ?? false
-        let isID: Bool = dynamicObj.eGet("iD") as? Bool ?? false
+        let lowerBound: Int = {
+            if let intValue = dynamicObj.eGet("lowerBound") as? Int {
+                return intValue
+            } else if let stringValue = dynamicObj.eGet("lowerBound") as? String,
+                let intValue = Int(stringValue)
+            {
+                return intValue
+            }
+            return 0
+        }()
+        let upperBound: Int = {
+            if let intValue = dynamicObj.eGet("upperBound") as? Int {
+                return intValue
+            } else if let stringValue = dynamicObj.eGet("upperBound") as? String,
+                let intValue = Int(stringValue)
+            {
+                return intValue
+            }
+            return 1
+        }()
+        let changeable: Bool = {
+            if let boolValue = dynamicObj.eGet("changeable") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("changeable") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return true
+        }()
+        let volatile: Bool = {
+            if let boolValue = dynamicObj.eGet("volatile") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("volatile") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return false
+        }()
+        let transient: Bool = {
+            if let boolValue = dynamicObj.eGet("transient") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("transient") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return false
+        }()
+        let isID: Bool = {
+            if let boolValue = dynamicObj.eGet("iD") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("iD") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return false
+        }()
         let defaultValueLiteral: String? = dynamicObj.eGet("defaultValueLiteral") as? String
 
         // Resolve eType
@@ -999,13 +1059,66 @@ public actor Resource {
             throw XMIError.missingRequiredAttribute("name")
         }
 
-        let lowerBound: Int = dynamicObj.eGet("lowerBound") as? Int ?? 0
-        let upperBound: Int = dynamicObj.eGet("upperBound") as? Int ?? 1
-        let containment: Bool = dynamicObj.eGet("containment") as? Bool ?? false
-        let changeable: Bool = dynamicObj.eGet("changeable") as? Bool ?? true
-        let volatile: Bool = dynamicObj.eGet("volatile") as? Bool ?? false
-        let transient: Bool = dynamicObj.eGet("transient") as? Bool ?? false
-        let resolveProxies: Bool = dynamicObj.eGet("resolveProxies") as? Bool ?? true
+        let lowerBound: Int = {
+            if let intValue = dynamicObj.eGet("lowerBound") as? Int {
+                return intValue
+            } else if let stringValue = dynamicObj.eGet("lowerBound") as? String,
+                let intValue = Int(stringValue)
+            {
+                return intValue
+            }
+            return 0
+        }()
+        let upperBound: Int = {
+            if let intValue = dynamicObj.eGet("upperBound") as? Int {
+                return intValue
+            } else if let stringValue = dynamicObj.eGet("upperBound") as? String,
+                let intValue = Int(stringValue)
+            {
+                return intValue
+            }
+            return 1
+        }()
+        let containment: Bool = {
+            if let boolValue = dynamicObj.eGet("containment") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("containment") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return false
+        }()
+        let changeable: Bool = {
+            if let boolValue = dynamicObj.eGet("changeable") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("changeable") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return true
+        }()
+        let volatile: Bool = {
+            if let boolValue = dynamicObj.eGet("volatile") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("volatile") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return false
+        }()
+        let transient: Bool = {
+            if let boolValue = dynamicObj.eGet("transient") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("transient") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return false
+        }()
+        let resolveProxies: Bool = {
+            if let boolValue = dynamicObj.eGet("resolveProxies") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("resolveProxies") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return true
+        }()
 
         // Resolve eType
         let eType: any EClassifier

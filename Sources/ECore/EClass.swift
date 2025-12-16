@@ -160,8 +160,22 @@ public struct EClass: EClassifier, ENamedElement {
             return nil
         }
 
-        let isAbstract: Bool = dynamicObj.eGet("abstract") as? Bool ?? false
-        let isInterface: Bool = dynamicObj.eGet("interface") as? Bool ?? false
+        let isAbstract: Bool = {
+            if let boolValue = dynamicObj.eGet("abstract") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("abstract") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return false
+        }()
+        let isInterface: Bool = {
+            if let boolValue = dynamicObj.eGet("interface") as? Bool {
+                return boolValue
+            } else if let stringValue = dynamicObj.eGet("interface") as? String {
+                return stringValue.lowercased() == "true"
+            }
+            return false
+        }()
 
         // Extract structural features
         var eStructuralFeatures: [any EStructuralFeature] = []

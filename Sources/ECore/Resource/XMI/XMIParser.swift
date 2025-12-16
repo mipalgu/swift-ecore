@@ -70,6 +70,7 @@ public actor XMIParser {
     private var fragmentMap: [String: EUUID] = [:]
     private var referenceMap: [EUUID: [String: String]] = [:]  // object ID → (feature name → href)
     private var eClassCache: [String: EClass] = [:]  // className → EClass for caching dynamically created classes
+    private var builtinTypeCache: [String: DynamicEObject] = [:]  // typeName → EDataType for built-in Ecore types
 
     /// Raw XML content for attribute order extraction
     private var rawXMLContent: String = ""
@@ -443,6 +444,20 @@ public actor XMIParser {
         // Set basic attributes BEFORE registering
         eClass.eSet("name", value: name)
 
+        // Parse abstract attribute
+        if let abstractValue = element["abstract"] {
+            if let boolValue = Bool(abstractValue) {
+                eClass.eSet("abstract", value: boolValue)
+            }
+        }
+
+        // Parse interface attribute
+        if let interfaceValue = element["interface"] {
+            if let boolValue = Bool(interfaceValue) {
+                eClass.eSet("interface", value: boolValue)
+            }
+        }
+
         // Parse structural features
         var featureIds: [EUUID] = []
         for child in element.children("eStructuralFeatures") {
@@ -569,6 +584,18 @@ public actor XMIParser {
         // Set features before registering
         dataType.eSet("name", value: name)
 
+        // Parse instanceClassName attribute
+        if let instanceClassName = element["instanceClassName"] {
+            dataType.eSet("instanceClassName", value: instanceClassName)
+        }
+
+        // Parse serializable attribute
+        if let serializableValue = element["serializable"] {
+            if let boolValue = Bool(serializableValue) {
+                dataType.eSet("serialisable", value: boolValue)
+            }
+        }
+
         // Register after features are set
         await resource.register(dataType)
 
@@ -610,6 +637,31 @@ public actor XMIParser {
 
         if let upperBound = element["upperBound"], let ub = Int(upperBound) {
             attribute.eSet("upperBound", value: ub)
+        }
+
+        // Parse boolean attributes
+        if let idValue = element["iD"] {
+            if let boolValue = Bool(idValue) {
+                attribute.eSet("iD", value: boolValue)
+            }
+        }
+
+        if let changeableValue = element["changeable"] {
+            if let boolValue = Bool(changeableValue) {
+                attribute.eSet("changeable", value: boolValue)
+            }
+        }
+
+        if let volatileValue = element["volatile"] {
+            if let boolValue = Bool(volatileValue) {
+                attribute.eSet("volatile", value: boolValue)
+            }
+        }
+
+        if let transientValue = element["transient"] {
+            if let boolValue = Bool(transientValue) {
+                attribute.eSet("transient", value: boolValue)
+            }
         }
 
         // Default value
@@ -729,6 +781,11 @@ public actor XMIParser {
     private func resolveReference(
         _ reference: String, using xpathResolver: XPathResolver? = nil, in resource: Resource
     ) async -> (any EcoreValue)? {
+        // Handle Ecore built-in types
+        if reference.contains("http://www.eclipse.org/emf/2002/Ecore#//") {
+            return resolveEcoreBuiltinType(reference, in: resource)
+        }
+
         if reference.hasPrefix("#") {
             let fragment = String(reference.dropFirst())
 
@@ -758,6 +815,38 @@ public actor XMIParser {
             let resolvedURI = resolveRelativeURI(reference, relativeTo: resource.uri)
             return ResourceProxy(uri: resolvedURI, fragment: "/")
         }
+    }
+
+    /// Resolve Ecore built-in types from URIs like "ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"
+    ///
+    /// - Parameters:
+    ///   - reference: The Ecore type URI reference
+    ///   - resource: The current Resource for object storage
+    /// - Returns: A DynamicEObject representing the built-in type, or nil if not recognized
+    private func resolveEcoreBuiltinType(_ reference: String, in resource: Resource) -> (any EcoreValue)? {
+        // Extract the type name from the URI fragment
+        guard let fragmentStart = reference.range(of: "#//") else { return nil }
+        let typeName = String(reference[fragmentStart.upperBound...])
+
+        // Return cached type if available
+        if let cachedType = builtinTypeCache[typeName] {
+            return cachedType
+        }
+
+        // Create appropriate built-in type
+        let eDataTypeClass = getOrCreateEClass("EDataType", in: resource)
+        var dataType = DynamicEObject(eClass: eDataTypeClass)
+
+        // Set the name based on the fragment
+        dataType.eSet("name", value: typeName)
+
+        // Register with resource and cache
+        Task {
+            await resource.register(dataType)
+        }
+        builtinTypeCache[typeName] = dataType
+
+        return dataType
     }
 
     /// Resolve a relative URI against a base URI
