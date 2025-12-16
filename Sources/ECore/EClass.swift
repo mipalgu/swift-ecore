@@ -11,16 +11,21 @@ import Foundation
 
 /// A class in the Ecore metamodel.
 ///
-/// `EClass` represents a class definition in the metamodel, similar to a class declaration
+/// Represents a class definition in the metamodel, similar to a class declaration
 /// in object-oriented programming languages. It defines the structure and behaviour of
-/// model objects through:
+/// model objects through structural features, operations, and inheritance relationships.
 ///
+/// ## Overview
+///
+/// `EClass` serves as the primary metaclass type in Ecore, defining:
 /// - **Structural Features**: Attributes and references that define the class's properties
 /// - **Operations**: Methods that can be invoked on instances
-/// - **Inheritance**: Supertypes that this class extends
+/// - **Inheritance**: Supertypes that this class extends (supporting multiple inheritance)
 /// - **Metadata**: Whether the class is abstract or represents an interface
 ///
-/// ## Example
+/// ## Creating Classes
+///
+/// Create an EClass using the designated initialiser:
 ///
 /// ```swift
 /// let person = EClass(
@@ -32,7 +37,7 @@ import Foundation
 /// )
 /// ```
 ///
-/// ## Inheritance
+/// ## Inheritance Hierarchy
 ///
 /// Classes can extend multiple supertypes through the ``eSuperTypes`` property.
 /// The ``allSuperTypes`` computed property provides the complete inheritance hierarchy
@@ -45,7 +50,8 @@ import Foundation
 public struct EClass: EClassifier, ENamedElement {
     /// The type of classifier for this class.
     ///
-    /// All instances of `EClass` use ``EClassClassifier`` as their metaclass.
+    /// All instances of `EClass` use ``EClassClassifier`` as their metaclass, establishing
+    /// the metaclass relationship in the Ecore type system.
     public typealias Classifier = EClassClassifier
 
     /// Unique identifier for this class.
@@ -58,13 +64,14 @@ public struct EClass: EClassifier, ENamedElement {
 
     /// The name of this class.
     ///
-    /// Should be unique within the containing package. By convention, class names
-    /// use UpperCamelCase.
+    /// Must be unique within the containing package. By convention, class names
+    /// use UpperCamelCase notation.
     public var name: String
 
     /// Annotations attached to this class.
     ///
-    /// Commonly used for code generation hints, documentation, or constraints.
+    /// Annotations provide extensible metadata commonly used for code generation hints,
+    /// documentation, or custom constraints.
     public var eAnnotations: [EAnnotation]
 
     /// Whether this class is abstract.
@@ -86,31 +93,34 @@ public struct EClass: EClassifier, ENamedElement {
     /// use ``allSuperTypes``.
     public var eSuperTypes: [EClass]
 
-    /// The structural features (attributes and references) of this class.
+    /// The structural features (attributes and references) defined on this class.
     ///
-    /// Features defined directly on this class, not including inherited features.
+    /// Contains features defined directly on this class, excluding inherited features.
     /// For all features including inherited ones, use ``allStructuralFeatures``.
     public var eStructuralFeatures: [any EStructuralFeature]
 
-    /// The operations (methods) of this class.
+    /// The operations (methods) defined on this class.
     ///
-    /// Operations defined directly on this class, not including inherited operations.
+    /// Contains operations defined directly on this class, excluding inherited operations.
     public var eOperations: [any EOperation]
 
     /// Internal storage for feature values.
     private var storage: EObjectStorage
 
-    /// Creates a new class.
+    /// Initialise a new class with the specified attributes.
+    ///
+    /// Creates a new EClass instance with the given configuration. All parameters except
+    /// `name` have sensible defaults for common use cases.
     ///
     /// - Parameters:
-    ///   - id: Unique identifier (generates a new UUID if not provided).
+    ///   - id: Unique identifier; generates a new UUID if not provided.
     ///   - name: The name of the class.
-    ///   - isAbstract: Whether the class is abstract (default: false).
-    ///   - isInterface: Whether the class represents an interface (default: false).
-    ///   - eSuperTypes: The direct supertypes (empty by default).
-    ///   - eStructuralFeatures: The structural features (empty by default).
-    ///   - eOperations: The operations (empty by default).
-    ///   - eAnnotations: Annotations (empty by default).
+    ///   - isAbstract: Whether the class is abstract; defaults to `false`.
+    ///   - isInterface: Whether the class represents an interface; defaults to `false`.
+    ///   - eSuperTypes: The direct supertypes; defaults to an empty array.
+    ///   - eStructuralFeatures: The structural features; defaults to an empty array.
+    ///   - eOperations: The operations; defaults to an empty array.
+    ///   - eAnnotations: Annotations; defaults to an empty array.
     public init(
         id: EUUID = EUUID(),
         name: String,
@@ -133,12 +143,57 @@ public struct EClass: EClassifier, ENamedElement {
         self.storage = EObjectStorage()
     }
 
+    /// Initialise an EClass from a DynamicEObject.
+    ///
+    /// Extracts class metadata and structural features from a dynamic object.
+    /// When structural features cannot be resolved, behaviour depends on the
+    /// `shouldIgnoreUnresolvedFeatures` parameter.
+    ///
+    /// - Parameters:
+    ///   - object: The DynamicEObject representing an EClass.
+    ///   - shouldIgnoreUnresolvedFeatures: If `true`, continues processing when feature resolution fails; if `false`, returns `nil` on resolution failure (default: `false`).
+    /// - Returns: A new EClass instance, or `nil` if the object is invalid or missing required attributes.
+    public init?(object: any EObject, shouldIgnoreUnresolvedFeatures: Bool = false) {
+        guard let dynamicObj = object as? DynamicEObject,
+            let name: String = dynamicObj.eGet("name") as? String
+        else {
+            return nil
+        }
+
+        let isAbstract: Bool = dynamicObj.eGet("abstract") as? Bool ?? false
+        let isInterface: Bool = dynamicObj.eGet("interface") as? Bool ?? false
+
+        // Extract structural features
+        var eStructuralFeatures: [any EStructuralFeature] = []
+        if let featuresList: [any EObject] = dynamicObj.eGet("eStructuralFeatures")
+            as? [any EObject]
+        {
+            for featureObj in featuresList {
+                if let feature = try? EStructuralFeatureResolver.resolvingFeature(featureObj) {
+                    eStructuralFeatures.append(feature)
+                } else if !shouldIgnoreUnresolvedFeatures {
+                    return nil
+                }
+            }
+        }
+
+        // Call existing designated initializer
+        // Note: eSuperTypes left empty (TODO: two-pass conversion for type resolution)
+        self.init(
+            name: name,
+            isAbstract: isAbstract,
+            isInterface: isInterface,
+            eSuperTypes: [],
+            eStructuralFeatures: eStructuralFeatures
+        )
+    }
+
     // MARK: - Computed Properties
 
-    /// All structural features including inherited ones.
+    /// Retrieve all structural features including inherited ones.
     ///
-    /// Combines features from this class and all supertypes, with this class's
-    /// features taking precedence in case of name conflicts.
+    /// Combines features from this class and all supertypes. This class's features
+    /// take precedence in case of name conflicts.
     public var allStructuralFeatures: [any EStructuralFeature] {
         var features = eStructuralFeatures
         for superType in eSuperTypes {
@@ -147,33 +202,33 @@ public struct EClass: EClassifier, ENamedElement {
         return features
     }
 
-    /// All attributes including inherited ones.
+    /// Retrieve all attributes including inherited ones.
     ///
-    /// Filters ``allStructuralFeatures`` to return only attributes.
+    /// Filters ``allStructuralFeatures`` to return only attribute features.
     public var allAttributes: [EAttribute] {
         return allStructuralFeatures.compactMap { $0 as? EAttribute }
     }
 
-    /// All references including inherited ones.
+    /// Retrieve all references including inherited ones.
     ///
-    /// Filters ``allStructuralFeatures`` to return only references.
+    /// Filters ``allStructuralFeatures`` to return only reference features.
     public var allReferences: [EReference] {
         return allStructuralFeatures.compactMap { $0 as? EReference }
     }
 
-    /// All containment references including inherited ones.
+    /// Retrieve all containment references including inherited ones.
     ///
-    /// Filters ``allReferences`` to return only containment references.
-    /// Containment references define parent-child relationships in the model.
+    /// Filters ``allReferences`` to return only containment references, which
+    /// define parent-child relationships in the model.
     public var allContainments: [EReference] {
         return allReferences.filter { $0.containment }
     }
 
-    /// All supertypes including transitive ones.
+    /// Retrieve all supertypes including transitive ones.
     ///
-    /// Returns the complete inheritance hierarchy by recursively collecting
+    /// Provides the complete inheritance hierarchy by recursively collecting
     /// all direct and indirect supertypes. The result includes:
-    /// - Direct supertypes (``eSuperTypes``)
+    /// - Direct supertypes from ``eSuperTypes``
     /// - Supertypes of supertypes (transitively)
     ///
     /// Duplicates are included if a class appears multiple times in the hierarchy.
@@ -187,9 +242,10 @@ public struct EClass: EClassifier, ENamedElement {
 
     // MARK: - Methods
 
-    /// Retrieves a structural feature by name.
+    /// Retrieve a structural feature by name.
     ///
-    /// Searches this class's features first, then inherited features.
+    /// Searches this class's features first, then searches inherited features
+    /// from supertypes.
     ///
     /// - Parameter name: The name of the feature to find.
     /// - Returns: The matching feature, or `nil` if not found.
@@ -197,9 +253,10 @@ public struct EClass: EClassifier, ENamedElement {
         return allStructuralFeatures.first { $0.name == name }
     }
 
-    /// Retrieves an attribute by name.
+    /// Retrieve an attribute by name.
     ///
-    /// Convenience method that searches only attributes.
+    /// Provides a convenient method that searches only attribute features,
+    /// including inherited attributes.
     ///
     /// - Parameter name: The name of the attribute to find.
     /// - Returns: The matching attribute, or `nil` if not found.
@@ -207,9 +264,10 @@ public struct EClass: EClassifier, ENamedElement {
         return allAttributes.first { $0.name == name }
     }
 
-    /// Retrieves a reference by name.
+    /// Retrieve a reference by name.
     ///
-    /// Convenience method that searches only references.
+    /// Provides a convenient method that searches only reference features,
+    /// including inherited references.
     ///
     /// - Parameter name: The name of the reference to find.
     /// - Returns: The matching reference, or `nil` if not found.
@@ -217,12 +275,13 @@ public struct EClass: EClassifier, ENamedElement {
         return allReferences.first { $0.name == name }
     }
 
-    /// Checks if this class is a supertype of another class.
+    /// Check if this class is a supertype of another class.
     ///
-    /// Returns `true` if `other` directly or indirectly extends this class.
+    /// Determines whether the specified class directly or indirectly extends this class
+    /// through the inheritance hierarchy.
     ///
     /// - Parameter other: The class to check.
-    /// - Returns: `true` if this class is a supertype of `other`, `false` otherwise.
+    /// - Returns: `true` if this class is a supertype of `other`; otherwise, `false`.
     public func isSuperTypeOf(_ other: EClass) -> Bool {
         // Check if other directly extends this class
         if other.eSuperTypes.contains(where: { $0.id == self.id }) {
@@ -239,10 +298,10 @@ public struct EClass: EClassifier, ENamedElement {
 
     // MARK: - EObject Protocol Implementation
 
-    /// Reflectively retrieves the value of a feature.
+    /// Reflectively retrieve the value of a feature.
     ///
-    /// This implementation uses internal storage to dynamically access feature values
-    /// without compile-time knowledge of the feature.
+    /// Provides dynamic access to feature values using internal storage, allowing
+    /// feature access without compile-time knowledge of the feature.
     ///
     /// - Parameter feature: The structural feature whose value to retrieve.
     /// - Returns: The feature's current value, or `nil` if not set.
@@ -250,9 +309,9 @@ public struct EClass: EClassifier, ENamedElement {
         return storage.get(feature: feature.id)
     }
 
-    /// Reflectively sets the value of a feature.
+    /// Reflectively set the value of a feature.
     ///
-    /// This implementation uses internal storage to dynamically modify feature values.
+    /// Provides dynamic modification of feature values using internal storage.
     /// Setting a value to `nil` has the same effect as calling ``eUnset(_:)``.
     ///
     /// - Parameters:
@@ -262,21 +321,22 @@ public struct EClass: EClassifier, ENamedElement {
         storage.set(feature: feature.id, value: value)
     }
 
-    /// Checks whether a feature has been explicitly set.
+    /// Check whether a feature has been explicitly set.
     ///
-    /// A feature is considered "set" if it has been assigned a value, even if that
-    /// value equals the feature's default.
+    /// Determines if a feature has been assigned a value, even if that value
+    /// equals the feature's default.
     ///
     /// - Parameter feature: The structural feature to check.
-    /// - Returns: `true` if the feature has been set, `false` otherwise.
+    /// - Returns: `true` if the feature has been set; otherwise, `false`.
     public func eIsSet(_ feature: some EStructuralFeature) -> Bool {
         return storage.isSet(feature: feature.id)
     }
 
-    /// Unsets a feature, returning it to its default value.
+    /// Unset a feature, returning it to its default value.
     ///
-    /// After unsetting, ``eIsSet(_:)`` will return `false` for this feature,
-    /// and ``eGet(_:)`` will return `nil`.
+    /// Removes the explicit value for the specified feature. After unsetting,
+    /// ``eIsSet(_:)`` will return `false` for this feature, and ``eGet(_:)``
+    /// will return `nil`.
     ///
     /// - Parameter feature: The structural feature to unset.
     public mutating func eUnset(_ feature: some EStructuralFeature) {
@@ -285,21 +345,21 @@ public struct EClass: EClassifier, ENamedElement {
 
     // MARK: - Equatable & Hashable
 
-    /// Compares two classes for equality.
+    /// Compare two classes for equality.
     ///
-    /// Classes are equal if they have the same identifier.
+    /// Classes are considered equal if they have the same unique identifier.
     ///
     /// - Parameters:
     ///   - lhs: The first class to compare.
     ///   - rhs: The second class to compare.
-    /// - Returns: `true` if the classes are equal, `false` otherwise.
+    /// - Returns: `true` if the classes are equal; otherwise, `false`.
     public static func == (lhs: EClass, rhs: EClass) -> Bool {
         return lhs.id == rhs.id
     }
 
-    /// Hashes the essential components of this class.
+    /// Hash the essential components of this class.
     ///
-    /// Only the identifier is used for hashing to maintain consistency with equality.
+    /// Uses only the unique identifier for hashing to maintain consistency with equality.
     ///
     /// - Parameter hasher: The hasher to use for combining components.
     public func hash(into hasher: inout Hasher) {
@@ -309,10 +369,11 @@ public struct EClass: EClassifier, ENamedElement {
 
 // MARK: - Classifier Type
 
-/// Metaclass for `EClass`.
+/// The metaclass for `EClass`.
 ///
-/// Describes the structure of `EClass` itself within the metamodel hierarchy.
-/// This is the classifier that describes all `EClass` instances.
+/// Describes the structure of `EClass` itself within the metamodel hierarchy,
+/// establishing the metaclass relationship. This classifier describes all
+/// `EClass` instances.
 public struct EClassClassifier: EClassifier {
     /// Unique identifier for this metaclass.
     ///
@@ -321,6 +382,6 @@ public struct EClassClassifier: EClassifier {
 
     /// The name of this classifier.
     ///
-    /// Always returns `"EClass"` to identify this as the metaclass for classes.
+    /// Always returns `"EClass"`, identifying this as the metaclass for class definitions.
     public var name: String { "EClass" }
 }

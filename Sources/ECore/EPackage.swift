@@ -143,6 +143,102 @@ public struct EPackage: ENamedElement {
         self.storage = EObjectStorage()
     }
 
+    /// Loads an EPackage from a .ecore file.
+    ///
+    /// Parses the .ecore file and constructs a fully-formed EPackage with all classifiers
+    /// and subpackages.
+    ///
+    /// - Parameter url: URL to the .ecore file.
+    /// - Throws: XMIError if the file cannot be read or parsed.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let url = URL(fileURLWithPath: "/path/to/Model.ecore")
+    /// let package = try await EPackage(url: url)
+    /// print("Loaded package: \(package.name)")
+    /// ```
+    public init(url: URL) async throws {
+        let parser = XMIParser()
+        let resource = try await parser.parse(url)
+
+        let rootObjects = await resource.getRootObjects()
+        guard let dynamicPackage = rootObjects.first else {
+            throw XMIError.noRootObject
+        }
+
+        self = try await resource.createEPackage(from: dynamicPackage)
+    }
+
+    /// Initialise an EPackage from a DynamicEObject (without resource context).
+    ///
+    /// This initialiser handles cases where cross-references are already resolved
+    /// or when the object contains direct references instead of UUIDs. When classifiers
+    /// cannot be resolved, behaviour depends on the `shouldIgnoreUnresolvedClassifiers` parameter.
+    ///
+    /// - Parameters:
+    ///   - object: The DynamicEObject representing an EPackage.
+    ///   - shouldIgnoreUnresolvedClassifiers: If `true`, continues processing when classifier resolution fails; if `false`, throws on resolution failure (default: `false`).
+    /// - Returns: A new EPackage instance.
+    /// - Throws: XMIError if the object is invalid, missing required attributes, or classifier resolution fails when not ignored.
+    ///
+    /// ## Example
+    /// ```swift
+    /// let dynamicPackage: DynamicEObject = // ... from XMI parsing
+    /// let package = try EPackage(object: dynamicPackage)
+    /// ```
+    public init(object: any EObject, shouldIgnoreUnresolvedClassifiers: Bool = false) throws {
+        guard let dynamicObj = object as? DynamicEObject else {
+            throw XMIError.invalidObjectType("Expected DynamicEObject, got \(type(of: object))")
+        }
+        guard let name: String = dynamicObj.eGet("name") as? String else {
+            throw XMIError.missingRequiredAttribute("name")
+        }
+
+        let nsURI: String = dynamicObj.eGet("nsURI") as? String ?? "http://\(name.lowercased())"
+        let nsPrefix: String = dynamicObj.eGet("nsPrefix") as? String ?? name.lowercased()
+
+        // Extract classifiers using type resolver
+        var eClassifiers: [any EClassifier] = []
+        if let classifiersList: [any EObject] = dynamicObj.eGet("eClassifiers") as? [any EObject] {
+            for classifierObj in classifiersList {
+                do {
+                    let classifier = try EClassifierResolver.resolvingType(classifierObj)
+                    eClassifiers.append(classifier)
+                } catch {
+                    if shouldIgnoreUnresolvedClassifiers {
+                        // Continue processing other classifiers
+                        continue
+                    } else {
+                        throw error
+                    }
+                }
+            }
+        }
+
+        // Extract subpackages recursively
+        var eSubpackages: [EPackage] = []
+        if let subpackagesList: [any EObject] = dynamicObj.eGet("eSubpackages") as? [any EObject] {
+            for subpackageObj in subpackagesList {
+                if let subpackage = try? EPackage(
+                    object: subpackageObj,
+                    shouldIgnoreUnresolvedClassifiers: shouldIgnoreUnresolvedClassifiers
+                ) {
+                    eSubpackages.append(subpackage)
+                }
+            }
+        }
+
+        // Call existing designated initializer
+        self.init(
+            name: name,
+            nsURI: nsURI,
+            nsPrefix: nsPrefix,
+            eClassifiers: eClassifiers,
+            eSubpackages: eSubpackages
+        )
+    }
+
     // MARK: - Classifier Lookup
 
     /// Retrieves a classifier by its name.

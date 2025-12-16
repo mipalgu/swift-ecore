@@ -665,14 +665,386 @@ public actor Resource {
         }
         return false
     }
+
+    // MARK: - EObject Type Resolution
+
+    /// Resolves the concrete EClassifier type from a DynamicEObject.
+    ///
+    /// Dispatches to the appropriate concrete type initializer based on eClass.name.
+    ///
+    /// - Parameter object: The DynamicEObject to convert.
+    /// - Returns: EClass, EEnum, or EDataType instance.
+    /// - Throws: XMIError if the object type is unsupported or initialization fails.
+    /// Resolve the concrete EClassifier type from a DynamicEObject.
+    ///
+    /// Dispatches to the appropriate factory method based on the object's metaclass name.
+    /// This method handles UUID-based cross-reference resolution for complex types like
+    /// EClass and EEnum, while using simple initialisation for basic types like EDataType.
+    ///
+    /// - Parameter object: The DynamicEObject to convert.
+    /// - Returns: A concrete EClassifier instance (EClass, EEnum, or EDataType).
+    /// - Throws: XMIError if the object type is unsupported or initialisation fails.
+    public func resolvingType(_ object: any EObject) async throws -> any EClassifier {
+        guard let dynamicObj = object as? DynamicEObject else {
+            throw XMIError.invalidObjectType("\(type(of: object))")
+        }
+
+        let eClass = dynamicObj.eClass
+        let typeName = eClass.name
+
+        switch typeName {
+        case "EClass":
+            return try await createEClass(from: object, shouldIgnoreUnresolvedFeatures: true)
+        case "EEnum":
+            return try await createEEnum(from: object, shouldIgnoreUnresolvedLiterals: true)
+        case "EDataType":
+            guard let result = EDataType(object: object) else {
+                throw XMIError.missingRequiredAttribute(
+                    "Failed to initialise EDataType from object")
+            }
+            return result
+        default:
+            throw XMIError.unsupportedFeature("Unsupported classifier type: \(typeName)")
+        }
+    }
+
+    /// Resolve the concrete EStructuralFeature type from a DynamicEObject.
+    ///
+    /// Dispatches to the appropriate factory method based on the object's metaclass name.
+    /// This method handles UUID-based cross-reference resolution for type references.
+    ///
+    /// - Parameter object: The DynamicEObject to convert.
+    /// - Returns: A concrete EStructuralFeature instance (EAttribute or EReference).
+    /// - Throws: XMIError if the object type is unsupported or initialisation fails.
+    public func resolvingFeature(_ object: any EObject) async throws -> any EStructuralFeature {
+        guard let dynamicObj = object as? DynamicEObject else {
+            throw XMIError.invalidObjectType("\(type(of: object))")
+        }
+
+        let eClass = dynamicObj.eClass
+        let typeName = eClass.name
+
+        switch typeName {
+        case "EAttribute":
+            return try await createEAttribute(from: object)
+        case "EReference":
+            return try await createEReference(from: object)
+        default:
+            throw XMIError.unsupportedFeature("Unsupported feature type: \(typeName)")
+        }
+    }
+
+    /// Resolve a data type reference for an EAttribute.
+    ///
+    /// Creates a simple EDataType based on the name attribute. Falls back to EString
+    /// if the type cannot be determined from the object.
+    ///
+    /// - Parameter object: The DynamicEObject containing eType reference.
+    /// - Returns: The resolved EDataType.
+    public func resolvingDataType(_ object: any EObject) -> any EClassifier {
+        guard let dynamicObj = object as? DynamicEObject,
+            let typeName: String = dynamicObj.eGet("name") as? String
+        else {
+            return EDataType(name: "EString")
+        }
+
+        return EDataType(name: typeName)
+    }
+
+    /// Resolve a reference type for an EReference.
+    ///
+    /// Creates a placeholder EClass with just the name from the type object.
+    ///
+    /// - Note: In a full implementation, this would use two-pass conversion to
+    ///         resolve to the actual EClass from the package.
+    ///
+    /// - Parameter object: The DynamicEObject containing eType reference.
+    /// - Returns: The resolved EClass.
+    public func resolvingReferenceType(_ object: any EObject) -> any EClassifier {
+        guard let dynamicObj = object as? DynamicEObject,
+            let className: String = dynamicObj.eGet("name") as? String
+        else {
+            return EClass(name: "EObject")
+        }
+
+        return EClass(name: className)
+    }
+
+    // MARK: - Factory Methods
+
+    /// Create an EPackage from a DynamicEObject with full cross-reference resolution.
+    ///
+    /// This method constructs a complete EPackage hierarchy by resolving all classifiers
+    /// and subpackages through UUID-based cross-references. It serves as the primary
+    /// factory method for loading Ecore metamodels from parsed XMI resources.
+    ///
+    /// - Parameters:
+    ///   - object: The DynamicEObject representing an EPackage.
+    ///   - shouldIgnoreUnresolvedClassifiers: If `true`, continues processing when classifier resolution fails; if `false`, throws on resolution failure (default: `false`).
+    /// - Returns: A fully constructed EPackage with all classifiers and subpackages resolved.
+    /// - Throws: XMIError if the object is invalid, missing required attributes, or classifier resolution fails when not ignored.
+    public func createEPackage(
+        from object: any EObject,
+        shouldIgnoreUnresolvedClassifiers: Bool = false
+    ) async throws -> EPackage {
+        guard let dynamicObj = object as? DynamicEObject else {
+            throw XMIError.invalidObjectType("Expected DynamicEObject, got \(type(of: object))")
+        }
+        guard let name: String = dynamicObj.eGet("name") as? String else {
+            throw XMIError.missingRequiredAttribute("name")
+        }
+
+        let nsURI: String = dynamicObj.eGet("nsURI") as? String ?? "http://\(name.lowercased())"
+        let nsPrefix: String = dynamicObj.eGet("nsPrefix") as? String ?? name.lowercased()
+
+        // Extract classifiers using type resolver
+        var eClassifiers: [any EClassifier] = []
+        if let classifierIds: [EUUID] = dynamicObj.eGet("eClassifiers") as? [EUUID] {
+            for classifierId in classifierIds {
+                if let classifierObj = await resolve(classifierId) {
+                    do {
+                        let classifier = try await resolvingType(classifierObj)
+                        eClassifiers.append(classifier)
+                    } catch {
+                        if shouldIgnoreUnresolvedClassifiers {
+                            // Continue processing other classifiers
+                            continue
+                        } else {
+                            throw error
+                        }
+                    }
+                }
+            }
+        }
+
+        // Extract subpackages recursively
+        var eSubpackages: [EPackage] = []
+        if let subpackageIds: [EUUID] = dynamicObj.eGet("eSubpackages") as? [EUUID] {
+            for subpackageId in subpackageIds {
+                if let subpackageObj = await resolve(subpackageId) {
+                    if let subpackage = try? await createEPackage(
+                        from: subpackageObj,
+                        shouldIgnoreUnresolvedClassifiers: shouldIgnoreUnresolvedClassifiers
+                    ) {
+                        eSubpackages.append(subpackage)
+                    }
+                }
+            }
+        }
+
+        // Create the package
+        return EPackage(
+            name: name,
+            nsURI: nsURI,
+            nsPrefix: nsPrefix,
+            eClassifiers: eClassifiers,
+            eSubpackages: eSubpackages
+        )
+    }
+
+    /// Create an EClass from a DynamicEObject with full cross-reference resolution.
+    ///
+    /// This method constructs an EClass by resolving structural features through UUID-based
+    /// cross-references. It provides a clean factory interface for creating metamodel classes
+    /// without polluting the EClass type with resource dependencies.
+    ///
+    /// - Parameters:
+    ///   - object: The DynamicEObject representing an EClass.
+    ///   - shouldIgnoreUnresolvedFeatures: If `true`, continues processing when feature resolution fails; if `false`, throws on resolution failure (default: `false`).
+    /// - Returns: A fully constructed EClass with all structural features resolved.
+    /// - Throws: XMIError if the object is invalid, missing required attributes, or feature resolution fails when not ignored.
+    public func createEClass(
+        from object: any EObject,
+        shouldIgnoreUnresolvedFeatures: Bool = false
+    ) async throws -> EClass {
+        guard let dynamicObj = object as? DynamicEObject else {
+            throw XMIError.invalidObjectType("Expected DynamicEObject, got \(type(of: object))")
+        }
+        guard let name: String = dynamicObj.eGet("name") as? String else {
+            throw XMIError.missingRequiredAttribute("name")
+        }
+
+        let isAbstract: Bool = dynamicObj.eGet("abstract") as? Bool ?? false
+        let isInterface: Bool = dynamicObj.eGet("interface") as? Bool ?? false
+
+        // Extract structural features
+        var eStructuralFeatures: [any EStructuralFeature] = []
+        if let featureIds: [EUUID] = dynamicObj.eGet("eStructuralFeatures") as? [EUUID] {
+            for featureId in featureIds {
+                if let featureObj = await resolve(featureId) {
+                    do {
+                        let feature = try await resolvingFeature(featureObj)
+                        eStructuralFeatures.append(feature)
+                    } catch {
+                        if !shouldIgnoreUnresolvedFeatures {
+                            throw error
+                        }
+                    }
+                }
+            }
+        }
+
+        // Note: eSuperTypes left empty (TODO: two-pass conversion for type resolution)
+        return EClass(
+            name: name,
+            isAbstract: isAbstract,
+            isInterface: isInterface,
+            eSuperTypes: [],
+            eStructuralFeatures: eStructuralFeatures
+        )
+    }
+
+    /// Create an EEnum from a DynamicEObject with full cross-reference resolution.
+    ///
+    /// This method constructs an EEnum by resolving enum literals through UUID-based
+    /// cross-references when necessary.
+    ///
+    /// - Parameters:
+    ///   - object: The DynamicEObject representing an EEnum.
+    ///   - shouldIgnoreUnresolvedLiterals: If `true`, continues processing when literal resolution fails; if `false`, throws on resolution failure (default: `false`).
+    /// - Returns: A fully constructed EEnum with all literals resolved.
+    /// - Throws: XMIError if the object is invalid or missing required attributes.
+    public func createEEnum(
+        from object: any EObject,
+        shouldIgnoreUnresolvedLiterals: Bool = false
+    ) async throws -> EEnum {
+        guard let dynamicObj = object as? DynamicEObject else {
+            throw XMIError.invalidObjectType("Expected DynamicEObject, got \(type(of: object))")
+        }
+        guard let name: String = dynamicObj.eGet("name") as? String else {
+            throw XMIError.missingRequiredAttribute("name")
+        }
+
+        // Extract enum literals
+        var literals: [EEnumLiteral] = []
+        if let literalIds: [EUUID] = dynamicObj.eGet("eLiterals") as? [EUUID] {
+            for literalId in literalIds {
+                if let literalObj = await resolve(literalId) {
+                    if let literal = EEnumLiteral(object: literalObj) {
+                        literals.append(literal)
+                    } else if !shouldIgnoreUnresolvedLiterals {
+                        throw XMIError.missingRequiredAttribute("Failed to initialise EEnumLiteral")
+                    }
+                }
+            }
+        }
+
+        return EEnum(name: name, literals: literals)
+    }
+
+    /// Create an EAttribute from a DynamicEObject with full cross-reference resolution.
+    ///
+    /// This method constructs an EAttribute by resolving type references through UUID-based
+    /// cross-references when necessary.
+    ///
+    /// - Parameter object: The DynamicEObject representing an EAttribute.
+    /// - Returns: A fully constructed EAttribute with type resolved.
+    /// - Throws: XMIError if the object is invalid or missing required attributes.
+    public func createEAttribute(from object: any EObject) async throws -> EAttribute {
+        guard let dynamicObj = object as? DynamicEObject else {
+            throw XMIError.invalidObjectType("Expected DynamicEObject, got \(type(of: object))")
+        }
+        guard let name: String = dynamicObj.eGet("name") as? String else {
+            throw XMIError.missingRequiredAttribute("name")
+        }
+
+        let lowerBound: Int = dynamicObj.eGet("lowerBound") as? Int ?? 0
+        let upperBound: Int = dynamicObj.eGet("upperBound") as? Int ?? 1
+        let changeable: Bool = dynamicObj.eGet("changeable") as? Bool ?? true
+        let volatile: Bool = dynamicObj.eGet("volatile") as? Bool ?? false
+        let transient: Bool = dynamicObj.eGet("transient") as? Bool ?? false
+        let isID: Bool = dynamicObj.eGet("iD") as? Bool ?? false
+        let defaultValueLiteral: String? = dynamicObj.eGet("defaultValueLiteral") as? String
+
+        // Resolve eType
+        let eType: any EClassifier
+        if let eTypeId: EUUID = dynamicObj.eGet("eType") as? EUUID {
+            if let eTypeObj = await resolve(eTypeId) {
+                eType = EClassifierResolver.resolvingDataType(eTypeObj)
+            } else {
+                eType = EDataType(name: "EString")
+            }
+        } else if let eTypeObj: any EObject = dynamicObj.eGet("eType") as? any EObject {
+            eType = EClassifierResolver.resolvingDataType(eTypeObj)
+        } else {
+            eType = EDataType(name: "EString")
+        }
+
+        return EAttribute(
+            name: name,
+            eType: eType,
+            lowerBound: lowerBound,
+            upperBound: upperBound,
+            changeable: changeable,
+            volatile: volatile,
+            transient: transient,
+            defaultValueLiteral: defaultValueLiteral,
+            isID: isID
+        )
+    }
+
+    /// Create an EReference from a DynamicEObject with full cross-reference resolution.
+    ///
+    /// This method constructs an EReference by resolving type references through UUID-based
+    /// cross-references when necessary.
+    ///
+    /// - Parameter object: The DynamicEObject representing an EReference.
+    /// - Returns: A fully constructed EReference with type resolved.
+    /// - Throws: XMIError if the object is invalid or missing required attributes.
+    public func createEReference(from object: any EObject) async throws -> EReference {
+        guard let dynamicObj = object as? DynamicEObject else {
+            throw XMIError.invalidObjectType("Expected DynamicEObject, got \(type(of: object))")
+        }
+        guard let name: String = dynamicObj.eGet("name") as? String else {
+            throw XMIError.missingRequiredAttribute("name")
+        }
+
+        let lowerBound: Int = dynamicObj.eGet("lowerBound") as? Int ?? 0
+        let upperBound: Int = dynamicObj.eGet("upperBound") as? Int ?? 1
+        let containment: Bool = dynamicObj.eGet("containment") as? Bool ?? false
+        let changeable: Bool = dynamicObj.eGet("changeable") as? Bool ?? true
+        let volatile: Bool = dynamicObj.eGet("volatile") as? Bool ?? false
+        let transient: Bool = dynamicObj.eGet("transient") as? Bool ?? false
+        let resolveProxies: Bool = dynamicObj.eGet("resolveProxies") as? Bool ?? true
+
+        // Resolve eType
+        let eType: any EClassifier
+        if let eTypeId: EUUID = dynamicObj.eGet("eType") as? EUUID {
+            if let eTypeObj = await resolve(eTypeId) {
+                eType = EClassifierResolver.resolvingReferenceType(eTypeObj)
+            } else {
+                eType = EClass(name: "EObject")
+            }
+        } else if let eTypeObj: any EObject = dynamicObj.eGet("eType") as? any EObject {
+            eType = EClassifierResolver.resolvingReferenceType(eTypeObj)
+        } else {
+            eType = EClass(name: "EObject")
+        }
+
+        // eOpposite resolution deferred (TODO: two-pass conversion)
+        let opposite: EUUID? = nil
+
+        return EReference(
+            name: name,
+            eType: eType,
+            lowerBound: lowerBound,
+            upperBound: upperBound,
+            changeable: changeable,
+            volatile: volatile,
+            transient: transient,
+            containment: containment,
+            opposite: opposite,
+            resolveProxies: resolveProxies
+        )
+    }
 }
 
 // MARK: - CustomStringConvertible
 
 extension Resource: CustomStringConvertible {
-    /// A textual representation of this resource.
+    /// Returns a string representation of this resource.
     nonisolated public var description: String {
-        return "Resource(uri: \"\(uri)\")"
+        return "Resource(uri: \(uri))"
     }
 }
 

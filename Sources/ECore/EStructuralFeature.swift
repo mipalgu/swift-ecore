@@ -507,3 +507,144 @@ public struct EReferenceClassifier: EClassifier {
     /// Always returns `"EReference"` to identify this as the metaclass for references.
     public var name: String { "EReference" }
 }
+
+// MARK: - EStructuralFeature Type Resolution
+
+/// Helper type for resolving EStructuralFeature types from DynamicEObject instances.
+///
+/// This type provides static methods for dispatching to the appropriate concrete
+/// type initializer based on runtime type information.
+public enum EStructuralFeatureResolver {
+    /// Resolves the concrete EStructuralFeature type from a DynamicEObject.
+    ///
+    /// Dispatches to the appropriate concrete type initializer based on eClass.name.
+    ///
+    /// - Parameter object: The DynamicEObject to convert.
+    /// - Returns: EAttribute or EReference instance.
+    /// - Throws: XMIError if the object type is unsupported or initialization fails.
+    public static func resolvingFeature(_ object: any EObject) throws -> any EStructuralFeature {
+        guard let dynamicObj = object as? DynamicEObject else {
+            throw XMIError.invalidObjectType("\(type(of: object))")
+        }
+
+        let eClass = dynamicObj.eClass
+        let typeName = eClass.name
+
+        switch typeName {
+        case "EAttribute":
+            guard let result = EAttribute(object: object) else {
+                throw XMIError.missingRequiredAttribute(
+                    "Failed to initialize EAttribute from object")
+            }
+            return result
+        case "EReference":
+            guard let result = EReference(object: object) else {
+                throw XMIError.missingRequiredAttribute(
+                    "Failed to initialize EReference from object")
+            }
+            return result
+        default:
+            throw XMIError.unsupportedFeature("Unsupported feature type: \(typeName)")
+        }
+    }
+}
+
+// MARK: - EAttribute Initializer
+
+extension EAttribute {
+    /// Initialise an EAttribute from a DynamicEObject.
+    ///
+    /// Extracts attribute metadata including type, multiplicity, and flags from a dynamic object.
+    /// Uses a fallback EDataType when type information cannot be resolved.
+    ///
+    /// - Parameter object: The DynamicEObject representing an EAttribute.
+    /// - Returns: A new EAttribute instance, or `nil` if the object is invalid or missing required attributes.
+    public init?(object: any EObject) {
+        guard let dynamicObj = object as? DynamicEObject,
+            let name: String = dynamicObj.eGet("name") as? String
+        else {
+            return nil
+        }
+
+        let lowerBound: Int = dynamicObj.eGet("lowerBound") as? Int ?? 0
+        let upperBound: Int = dynamicObj.eGet("upperBound") as? Int ?? 1
+        let changeable: Bool = dynamicObj.eGet("changeable") as? Bool ?? true
+        let volatile: Bool = dynamicObj.eGet("volatile") as? Bool ?? false
+        let transient: Bool = dynamicObj.eGet("transient") as? Bool ?? false
+        let isID: Bool = dynamicObj.eGet("iD") as? Bool ?? false
+        let defaultValueLiteral: String? = dynamicObj.eGet("defaultValueLiteral") as? String
+
+        // Resolve eType
+        let eType: any EClassifier
+        if dynamicObj.eGet("eType") as? any EObject != nil {
+            eType = EDataType(name: "EString")  // Fallback for non-resource context
+        } else {
+            eType = EDataType(name: "EString")
+        }
+
+        // Call existing designated initializer
+        self.init(
+            name: name,
+            eType: eType,
+            lowerBound: lowerBound,
+            upperBound: upperBound,
+            changeable: changeable,
+            volatile: volatile,
+            transient: transient,
+            defaultValueLiteral: defaultValueLiteral,
+            isID: isID
+        )
+    }
+}
+
+// MARK: - EReference Initializer
+
+extension EReference {
+    /// Initialise an EReference from a DynamicEObject.
+    ///
+    /// Extracts reference metadata including type, multiplicity, containment, and flags from a dynamic object.
+    /// Uses a fallback EClass when type information cannot be resolved.
+    ///
+    /// - Parameter object: The DynamicEObject representing an EReference.
+    /// - Returns: A new EReference instance, or `nil` if the object is invalid or missing required attributes.
+    public init?(object: any EObject) {
+        guard let dynamicObj = object as? DynamicEObject,
+            let name: String = dynamicObj.eGet("name") as? String
+        else {
+            return nil
+        }
+
+        let lowerBound: Int = dynamicObj.eGet("lowerBound") as? Int ?? 0
+        let upperBound: Int = dynamicObj.eGet("upperBound") as? Int ?? 1
+        let containment: Bool = dynamicObj.eGet("containment") as? Bool ?? false
+        let changeable: Bool = dynamicObj.eGet("changeable") as? Bool ?? true
+        let volatile: Bool = dynamicObj.eGet("volatile") as? Bool ?? false
+        let transient: Bool = dynamicObj.eGet("transient") as? Bool ?? false
+        let resolveProxies: Bool = dynamicObj.eGet("resolveProxies") as? Bool ?? true
+
+        // Resolve eType
+        let eType: any EClassifier
+        if dynamicObj.eGet("eType") as? any EObject != nil {
+            eType = EClass(name: "EObject")  // Fallback for non-resource context
+        } else {
+            eType = EClass(name: "EObject")
+        }
+
+        // eOpposite resolution deferred (TODO: two-pass conversion)
+        let opposite: EUUID? = nil
+
+        // Call existing designated initializer
+        self.init(
+            name: name,
+            eType: eType,
+            lowerBound: lowerBound,
+            upperBound: upperBound,
+            changeable: changeable,
+            volatile: volatile,
+            transient: transient,
+            containment: containment,
+            opposite: opposite,
+            resolveProxies: resolveProxies
+        )
+    }
+}

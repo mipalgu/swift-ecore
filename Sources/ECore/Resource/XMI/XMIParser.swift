@@ -17,6 +17,9 @@ public enum XMIError: Error, Sendable {
     case invalidReference(String)
     case parseError(String)
     case unknownElement(String)
+    case noRootObject
+    case invalidObjectType(String)
+    case unsupportedFeature(String)
 }
 
 /// Parser for XMI (XML Metadata Interchange) files

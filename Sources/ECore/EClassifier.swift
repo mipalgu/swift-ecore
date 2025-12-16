@@ -90,7 +90,27 @@ public struct EDataType: EClassifier, ENamedElement {
         self.eClass = EDataTypeClassifier()
         self.name = name
         self.serialisable = serialisable
-        self.instanceClassName = instanceClassName
+
+        // Auto-set instanceClassName for built-in Ecore types
+        if instanceClassName == nil {
+            self.instanceClassName =
+                switch name {
+                case "EString": "Swift.String"
+                case "EInt": "Swift.Int"
+                case "EBoolean": "Swift.Bool"
+                case "EFloat": "Swift.Float"
+                case "EDouble": "Swift.Double"
+                case "EDate": "Foundation.Date"
+                case "EChar": "Swift.Character"
+                case "EByte": "Swift.Int8"
+                case "EShort": "Swift.Int16"
+                case "ELong": "Swift.Int64"
+                default: nil
+                }
+        } else {
+            self.instanceClassName = instanceClassName
+        }
+
         self.defaultValueLiteral = defaultValueLiteral
         self.eAnnotations = eAnnotations
         self.storage = EObjectStorage()
@@ -441,7 +461,7 @@ public struct EDataTypeClassifier: EClassifier {
     ///
     /// Each instance creates its own unique identifier.
     public let id: EUUID = EUUID()
-    
+
     /// The name of this classifier.
     ///
     /// Always returns `"EDataType"` to identify this as the metaclass for data types.
@@ -457,7 +477,7 @@ public struct EEnumLiteralClassifier: EClassifier {
     ///
     /// Each instance creates its own unique identifier.
     public let id: EUUID = EUUID()
-    
+
     /// The name of this classifier.
     ///
     /// Always returns `"EEnumLiteral"` to identify this as the metaclass for enum literals.
@@ -473,9 +493,185 @@ public struct EEnumClassifier: EClassifier {
     ///
     /// Each instance creates its own unique identifier.
     public let id: EUUID = EUUID()
-    
+
     /// The name of this classifier.
     ///
     /// Always returns `"EEnum"` to identify this as the metaclass for enumerations.
     public var name: String { "EEnum" }
+}
+
+// MARK: - EClassifier Type Resolution
+
+/// Helper type for resolving EClassifier types from DynamicEObject instances.
+///
+/// This type provides static methods for dispatching to the appropriate concrete
+/// type initializer based on runtime type information.
+public enum EClassifierResolver {
+    /// Resolves the concrete EClassifier type from a DynamicEObject.
+    ///
+    /// Dispatches to the appropriate concrete type initializer based on eClass.name.
+    ///
+    /// - Parameter object: The DynamicEObject to convert.
+    /// - Returns: EClass, EEnum, or EDataType instance.
+    /// - Throws: XMIError if the object type is unsupported or initialization fails.
+    public static func resolvingType(_ object: any EObject) throws -> any EClassifier {
+        guard let dynamicObj = object as? DynamicEObject else {
+            throw XMIError.invalidObjectType("\(type(of: object))")
+        }
+
+        let eClass = dynamicObj.eClass
+        let typeName = eClass.name
+
+        switch typeName {
+        case "EClass":
+            guard let result = EClass(object: object) else {
+                throw XMIError.missingRequiredAttribute("Failed to initialize EClass from object")
+            }
+            return result
+        case "EEnum":
+            guard let result = EEnum(object: object) else {
+                throw XMIError.missingRequiredAttribute("Failed to initialize EEnum from object")
+            }
+            return result
+        case "EDataType":
+            guard let result = EDataType(object: object) else {
+                throw XMIError.missingRequiredAttribute(
+                    "Failed to initialize EDataType from object")
+            }
+            return result
+        default:
+            throw XMIError.unsupportedFeature("Unsupported classifier type: \(typeName)")
+        }
+    }
+
+    /// Resolves a data type reference for an EAttribute.
+    ///
+    /// Falls back to EString if type cannot be determined.
+    ///
+    /// - Parameter object: The DynamicEObject containing eType reference.
+    /// - Returns: The resolved EDataType.
+    public static func resolvingDataType(_ object: any EObject) -> any EClassifier {
+        guard let dynamicObj = object as? DynamicEObject,
+            let typeName: String = dynamicObj.eGet("name") as? String
+        else {
+            return EDataType(name: "EString")
+        }
+
+        return EDataType(name: typeName)
+    }
+
+    /// Resolves a reference type for an EReference.
+    ///
+    /// Creates a placeholder EClass with just the name.
+    ///
+    /// - Note: In a full implementation, this would use two-pass conversion to
+    ///         resolve to the actual EClass from the package.
+    ///
+    /// - Parameter object: The DynamicEObject containing eType reference.
+    /// - Returns: The resolved EClass.
+    public static func resolvingReferenceType(_ object: any EObject) -> any EClassifier {
+        guard let dynamicObj = object as? DynamicEObject,
+            let className: String = dynamicObj.eGet("name") as? String
+        else {
+            return EClass(name: "EObject")
+        }
+
+        return EClass(name: className)
+    }
+}
+
+// MARK: - EEnum Initializer
+
+extension EEnum {
+    /// Initialise an EEnum from a DynamicEObject.
+    ///
+    /// Extracts enum metadata and literals from a dynamic object.
+    /// When enum literals cannot be resolved, behaviour depends on the
+    /// `shouldIgnoreUnresolvedLiterals` parameter.
+    ///
+    /// - Parameters:
+    ///   - object: The DynamicEObject representing an EEnum.
+    ///   - shouldIgnoreUnresolvedLiterals: If `true`, continues processing when literal resolution fails; if `false`, returns `nil` on resolution failure (default: `false`).
+    /// - Returns: A new EEnum instance, or `nil` if the object is invalid or missing required attributes.
+    public init?(object: any EObject, shouldIgnoreUnresolvedLiterals: Bool = false) {
+        guard let dynamicObj = object as? DynamicEObject,
+            let name: String = dynamicObj.eGet("name") as? String
+        else {
+            return nil
+        }
+
+        // Extract enum literals
+        var literals: [EEnumLiteral] = []
+        if let literalsList: [any EObject] = dynamicObj.eGet("eLiterals") as? [any EObject] {
+            for literalObj in literalsList {
+                if let literal = EEnumLiteral(object: literalObj) {
+                    literals.append(literal)
+                } else if !shouldIgnoreUnresolvedLiterals {
+                    return nil
+                }
+            }
+        }
+
+        // Call existing designated initializer
+        self.init(
+            name: name,
+            literals: literals
+        )
+    }
+}
+
+// MARK: - EEnumLiteral Initializer
+
+extension EEnumLiteral {
+    /// Initialise an EEnumLiteral from a DynamicEObject.
+    ///
+    /// Extracts literal name, value, and string representation from a dynamic object.
+    ///
+    /// - Parameter object: The DynamicEObject representing an EEnumLiteral.
+    /// - Returns: A new EEnumLiteral instance, or `nil` if the object is invalid or missing required attributes.
+    public init?(object: any EObject) {
+        guard let dynamicObj = object as? DynamicEObject,
+            let name: String = dynamicObj.eGet("name") as? String
+        else {
+            return nil
+        }
+
+        let value: Int = dynamicObj.eGet("value") as? Int ?? 0
+        let literal: String = dynamicObj.eGet("literal") as? String ?? name
+
+        // Call existing designated initializer
+        self.init(
+            name: name,
+            value: value,
+            literal: literal
+        )
+    }
+}
+
+// MARK: - EDataType Initializer
+
+extension EDataType {
+    /// Converts a DynamicEObject to an EDataType.
+    ///
+    /// Extracts data type metadata. Built-in types are automatically recognized.
+    ///
+    /// - Parameter object: The DynamicEObject representing an EDataType.
+    /// - Returns: nil if the object is invalid or missing required attributes.
+    public init?(object: any EObject) {
+        guard let dynamicObj = object as? DynamicEObject,
+            let name: String = dynamicObj.eGet("name") as? String
+        else {
+            return nil
+        }
+
+        let instanceClassName: String? = dynamicObj.eGet("instanceClassName") as? String
+        let serialisable: Bool = dynamicObj.eGet("serializable") as? Bool ?? true
+
+        // Call existing designated initializer (auto-sets instanceClassName for built-ins)
+        self.init(
+            name: name,
+            serialisable: serialisable,
+            instanceClassName: instanceClassName
+        )
+    }
 }
