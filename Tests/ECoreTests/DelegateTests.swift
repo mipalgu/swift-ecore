@@ -8,7 +8,7 @@
 import Testing
 @testable import ECore
 
-@Suite("Delegate Framework Tests")
+@Suite("Delegate Framework Tests", .serialized)
 struct DelegateTests {
 
     // MARK: - Helper Methods
