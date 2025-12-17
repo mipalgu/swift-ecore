@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 3/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 import BigInt
 
@@ -96,7 +97,8 @@ public struct EFactory: ENamedElement {
     ) {
         self.id = id
         self.eClass = EFactoryClassifier()
-        self.name = name ?? "\(ePackage.name.prefix(1).uppercased())\(ePackage.name.dropFirst())Factory"
+        self.name =
+            name ?? "\(ePackage.name.prefix(1).uppercased())\(ePackage.name.dropFirst())Factory"
         self.ePackage = ePackage
         self.eAnnotations = eAnnotations
         self.storage = EObjectStorage()

@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 3/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 // MARK: - EMF URI Utilities
@@ -22,7 +23,7 @@ private enum EMFURIUtils {
     /// - Returns: An EMF-compliant URI string for the classifier.
     static func generateURI(for classifier: any EClassifier, in package: EPackage?) -> String {
         guard let package = package, !package.nsURI.isEmpty else {
-            return classifier.name // Fall back to simple name
+            return classifier.name  // Fall back to simple name
         }
         return "\(package.nsURI)#//\(classifier.name)"
     }
@@ -221,7 +222,8 @@ public struct DynamicEObject: EObject {
         let allMetamodelFeatures = eClass.allStructuralFeatures
 
         // Create a mapping from feature ID to feature name for quick lookup
-        let featureIdToName = Dictionary(uniqueKeysWithValues: allMetamodelFeatures.map { ($0.id, $0.name) })
+        let featureIdToName = Dictionary(
+            uniqueKeysWithValues: allMetamodelFeatures.map { ($0.id, $0.name) })
 
         // Add metamodel feature names in the order they were set (from storage)
         for featureId in storage.getSetFeatureIds() {
@@ -350,7 +352,8 @@ extension DynamicEObject: Codable {
         let container = try decoder.container(keyedBy: DynamicCodingKey.self)
 
         // Decode the eClass identifier (can be EMF URI or simple name)
-        let eClassIdentifier = try container.decode(String.self, forKey: DynamicCodingKey(stringValue: "eClass")!)
+        let eClassIdentifier = try container.decode(
+            String.self, forKey: DynamicCodingKey(stringValue: "eClass")!)
 
         // Get EClass from userInfo
         guard let eClass = decoder.userInfo[.eClassKey] as? EClass else {
@@ -368,7 +371,8 @@ extension DynamicEObject: Codable {
             throw DecodingError.dataCorrupted(
                 DecodingError.Context(
                     codingPath: decoder.codingPath,
-                    debugDescription: "EClass name mismatch: expected \(eClass.name), got \(extractedClassName) (from \(eClassIdentifier))"
+                    debugDescription:
+                        "EClass name mismatch: expected \(eClass.name), got \(extractedClassName) (from \(eClassIdentifier))"
                 )
             )
         }
@@ -383,7 +387,8 @@ extension DynamicEObject: Codable {
             let key = DynamicCodingKey(stringValue: attribute.name)!
             // Only skip if the key is not present, but throw errors for type mismatches
             if container.contains(key) {
-                let value = try decodeValue(for: attribute, from: container, key: key, decoder: decoder)
+                let value = try decodeValue(
+                    for: attribute, from: container, key: key, decoder: decoder)
                 if let value = value {
                     storage.set(feature: attribute.id, value: value)
                 }
@@ -393,7 +398,9 @@ extension DynamicEObject: Codable {
         // Decode all references
         for reference in eClass.allReferences {
             let key = DynamicCodingKey(stringValue: reference.name)!
-            if let value = try? decodeReference(for: reference, from: container, key: key, decoder: decoder) {
+            if let value = try? decodeReference(
+                for: reference, from: container, key: key, decoder: decoder)
+            {
                 storage.set(feature: reference.id, value: value)
             }
         }
@@ -453,23 +460,28 @@ extension DynamicEObject: Codable {
             } else if let boolValue = try? container.decode(EBoolean.self, forKey: key) {
                 return String(boolValue)
             } else {
-                throw DecodingError.typeMismatch(EString.self, DecodingError.Context(
-                    codingPath: decoder.codingPath + [key],
-                    debugDescription: "Cannot convert value to EString"
-                ))
+                throw DecodingError.typeMismatch(
+                    EString.self,
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath + [key],
+                        debugDescription: "Cannot convert value to EString"
+                    ))
             }
         case EcoreDataType.eInt.rawValue, EcoreDataType.eIntegerObject.rawValue:
             // Try to decode as int, reject invalid strings
             if let intValue = try? container.decode(EInt.self, forKey: key) {
                 return intValue
             } else if let stringValue = try? container.decode(EString.self, forKey: key),
-                      let convertedInt = EInt(stringValue) {
+                let convertedInt = EInt(stringValue)
+            {
                 return convertedInt
             } else {
-                throw DecodingError.typeMismatch(EInt.self, DecodingError.Context(
-                    codingPath: decoder.codingPath + [key],
-                    debugDescription: "Cannot convert value to EInt"
-                ))
+                throw DecodingError.typeMismatch(
+                    EInt.self,
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath + [key],
+                        debugDescription: "Cannot convert value to EInt"
+                    ))
             }
         case EcoreDataType.eBoolean.rawValue, EcoreDataType.eBooleanObject.rawValue:
             // Try to decode as boolean, reject invalid strings
@@ -479,40 +491,50 @@ extension DynamicEObject: Codable {
                 if let boolValue = BooleanString.fromString(stringValue) {
                     return boolValue
                 } else {
-                    throw DecodingError.typeMismatch(EBoolean.self, DecodingError.Context(
-                        codingPath: decoder.codingPath + [key],
-                        debugDescription: "Cannot convert '\(stringValue)' to EBoolean"
-                    ))
+                    throw DecodingError.typeMismatch(
+                        EBoolean.self,
+                        DecodingError.Context(
+                            codingPath: decoder.codingPath + [key],
+                            debugDescription: "Cannot convert '\(stringValue)' to EBoolean"
+                        ))
                 }
             } else {
-                throw DecodingError.typeMismatch(EBoolean.self, DecodingError.Context(
-                    codingPath: decoder.codingPath + [key],
-                    debugDescription: "Cannot convert value to EBoolean"
-                ))
+                throw DecodingError.typeMismatch(
+                    EBoolean.self,
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath + [key],
+                        debugDescription: "Cannot convert value to EBoolean"
+                    ))
             }
         case EcoreDataType.eDouble.rawValue, EcoreDataType.eDoubleObject.rawValue:
             if let doubleValue = try? container.decode(EDouble.self, forKey: key) {
                 return doubleValue
             } else if let stringValue = try? container.decode(EString.self, forKey: key),
-                      let convertedDouble = EDouble(stringValue) {
+                let convertedDouble = EDouble(stringValue)
+            {
                 return convertedDouble
             } else {
-                throw DecodingError.typeMismatch(EDouble.self, DecodingError.Context(
-                    codingPath: decoder.codingPath + [key],
-                    debugDescription: "Cannot convert value to EDouble"
-                ))
+                throw DecodingError.typeMismatch(
+                    EDouble.self,
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath + [key],
+                        debugDescription: "Cannot convert value to EDouble"
+                    ))
             }
         case EcoreDataType.eFloat.rawValue, EcoreDataType.eFloatObject.rawValue:
             if let floatValue = try? container.decode(EFloat.self, forKey: key) {
                 return floatValue
             } else if let stringValue = try? container.decode(EString.self, forKey: key),
-                      let convertedFloat = EFloat(stringValue) {
+                let convertedFloat = EFloat(stringValue)
+            {
                 return convertedFloat
             } else {
-                throw DecodingError.typeMismatch(EFloat.self, DecodingError.Context(
-                    codingPath: decoder.codingPath + [key],
-                    debugDescription: "Cannot convert value to EFloat"
-                ))
+                throw DecodingError.typeMismatch(
+                    EFloat.self,
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath + [key],
+                        debugDescription: "Cannot convert value to EFloat"
+                    ))
             }
         case EcoreDataType.eDate.rawValue:
             // Be forgiving with date formats - try multiple approaches
@@ -521,10 +543,12 @@ extension DynamicEObject: Codable {
             } else if let stringValue = try? container.decode(EString.self, forKey: key) {
                 return try parseDate(from: stringValue)
             } else {
-                throw DecodingError.typeMismatch(EDate.self, DecodingError.Context(
-                    codingPath: decoder.codingPath + [key],
-                    debugDescription: "Cannot convert value to EDate"
-                ))
+                throw DecodingError.typeMismatch(
+                    EDate.self,
+                    DecodingError.Context(
+                        codingPath: decoder.codingPath + [key],
+                        debugDescription: "Cannot convert value to EDate"
+                    ))
             }
         default:
             // For unsupported types, throw an error for type safety
@@ -622,7 +646,8 @@ extension DynamicEObject: Codable {
             }
             // Try to decode as ID reference
             if let idString = try? container.decode(String.self, forKey: key),
-               let uuid = EUUID(uuidString: idString) {
+                let uuid = EUUID(uuidString: idString)
+            {
                 return uuid
             }
             return nil
@@ -666,7 +691,8 @@ extension DynamicEObject: Codable {
                 var targetClassName = "EObject"
 
                 if let firstElement = arrayValue.first as? [String: Any],
-                   let firstEClass = firstElement["eClass"] as? String {
+                    let firstEClass = firstElement["eClass"] as? String
+                {
                     // Contains objects with eClass - this is containment
                     isContainment = true
                     // Extract class name from the eClass URI
@@ -677,11 +703,12 @@ extension DynamicEObject: Codable {
                 }
 
                 let targetType = EClass(name: targetClassName)
-                let reference = EReference(name: key, eType: targetType, upperBound: -1, containment: isContainment)
+                let reference = EReference(
+                    name: key, eType: targetType, upperBound: -1, containment: isContainment)
                 features.append(reference)
             } else if value is [String: Any] {
                 // Nested object - containment reference
-                let targetType = EClass(name: "EObject") // Default target type
+                let targetType = EClass(name: "EObject")  // Default target type
                 let reference = EReference(name: key, eType: targetType, containment: true)
                 features.append(reference)
             } else {
@@ -907,8 +934,6 @@ extension CodingUserInfoKey {
     /// let employee = try decoder.decode(DynamicEObject.self, from: jsonData)
     /// ```
     public static let eClassKey = CodingUserInfoKey(rawValue: "eClass")!
-
-
 
     /// Key for providing EPackage context during JSON encoding.
     ///

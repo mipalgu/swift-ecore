@@ -11,6 +11,14 @@ let package = Package(
             name: "ECore",
             targets: ["ECore"]
         ),
+        .library(
+            name: "EMFBase",
+            targets: ["EMFBase"]
+        ),
+        .library(
+            name: "OCL",
+            targets: ["OCL"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.6.2"),
@@ -20,12 +28,36 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "EMFBase",
+            dependencies: [
+                .product(name: "BigInt", package: "BigInt")
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .target(
             name: "ECore",
             dependencies: [
+                "EMFBase",
+                "OCL",
                 .product(name: "OrderedCollections", package: "swift-collections"),
-                .product(name: "BigInt", package: "BigInt"),
                 .product(name: "SwiftXML", package: "SwiftXML"),
             ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .target(
+            name: "OCL",
+            dependencies: ["EMFBase"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "EMFBaseTests",
+            dependencies: ["EMFBase"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]
@@ -36,6 +68,13 @@ let package = Package(
             resources: [
                 .copy("Resources")
             ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "OCLTests",
+            dependencies: ["OCL"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]

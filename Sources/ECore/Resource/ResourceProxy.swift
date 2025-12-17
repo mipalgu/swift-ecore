@@ -2,9 +2,10 @@
 // ResourceProxy.swift
 // ECore
 //
-//  Created by Rene Hexel on 4/12/2025.
+//  Created by Rene Hexel on 3/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 /// A proxy representing an unresolved cross-resource reference

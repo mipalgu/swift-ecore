@@ -5,6 +5,7 @@
 // Created by Rene Hexel on 8/12/2025.
 // Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 /// Protocol defining a command that can be executed, undone, and redone.
@@ -200,12 +201,12 @@ public enum EMFCommandResult: Sendable, Equatable, Hashable {
             hasher.combine(0)
         case .value(let value):
             hasher.combine(1)
-            ECore.hash(value, into: &hasher)
+            EMFBase.hash(value, into: &hasher)
         case .values(let values):
             hasher.combine(2)
             hasher.combine(values.count)
             for value in values {
-                ECore.hash(value, into: &hasher)
+                EMFBase.hash(value, into: &hasher)
             }
         case .created(let id):
             hasher.combine(3)
@@ -216,7 +217,7 @@ public enum EMFCommandResult: Sendable, Equatable, Hashable {
         case .modified(let previous):
             hasher.combine(5)
             if let prev = previous {
-                ECore.hash(prev, into: &hasher)
+                EMFBase.hash(prev, into: &hasher)
             }
         }
     }

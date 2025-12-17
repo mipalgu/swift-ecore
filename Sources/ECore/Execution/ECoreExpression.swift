@@ -2,9 +2,10 @@
 // ECoreExpression.swift
 // ECore
 //
-// Created by Rene Hexel on 7/12/2025.
-// Copyright © 2025 Rene Hexel. All rights reserved.
+//  Created by Rene Hexel on 7/12/2025.
+//  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 /// Expression types supported by the execution engine.

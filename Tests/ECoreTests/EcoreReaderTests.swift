@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 16/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+import EMFBase
 import Testing
 @testable import ECore
 import Foundation

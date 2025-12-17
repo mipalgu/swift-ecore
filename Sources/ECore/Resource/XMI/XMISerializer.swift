@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 4/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+import EMFBase
 import Foundation
 import SwiftXML
 
@@ -108,7 +109,9 @@ public struct XMISerializer: Sendable {
     ///   - indentLevel: Current indentation level for formatting
     /// - Returns: XML string representation
     /// - Throws: `XMIError` if serialisation fails
-    private func serializeObject(_ object: any EObject, in resource: Resource, indentLevel: Int) async throws -> String {
+    private func serializeObject(_ object: any EObject, in resource: Resource, indentLevel: Int)
+        async throws -> String
+    {
         let indent = String(repeating: "    ", count: indentLevel)
 
         // Get object's class name
@@ -145,14 +148,18 @@ public struct XMISerializer: Sendable {
                 for childObject in childObjects {
                     if childObject is DynamicEObject {
                         // Contained child as nested element
-                        xml += try await serializeContainedChild(childObject, featureName: featureName, in: resource, indentLevel: indentLevel + 1)
+                        xml += try await serializeContainedChild(
+                            childObject, featureName: featureName, in: resource,
+                            indentLevel: indentLevel + 1)
                     }
                 }
             }
 
             // Serialise cross-references
             for (featureName, target) in references {
-                xml += try await serializeCrossReference(featureName: featureName, target: target, in: resource, indentLevel: indentLevel + 1)
+                xml += try await serializeCrossReference(
+                    featureName: featureName, target: target, in: resource,
+                    indentLevel: indentLevel + 1)
             }
 
             // Close element
@@ -188,14 +195,16 @@ public struct XMISerializer: Sendable {
 
         // Add attributes in insertion order (preserving EMF semantic ordering)
         let featureNames = await resource.getFeatureNames(objectId: dynamicObject.id)
-        
+
         for attributeName in featureNames {
             // Skip internal features
             if attributeName.hasPrefix("_") || attributeName == "eClass" {
                 continue
             }
 
-            guard let value = await resource.eGet(objectId: dynamicObject.id, feature: attributeName) else {
+            guard
+                let value = await resource.eGet(objectId: dynamicObject.id, feature: attributeName)
+            else {
                 continue
             }
 
@@ -217,13 +226,17 @@ public struct XMISerializer: Sendable {
             // Serialise nested children
             for (childFeatureName, childObjects) in children {
                 for childObject in childObjects {
-                    xml += try await serializeContainedChild(childObject, featureName: childFeatureName, in: resource, indentLevel: indentLevel + 1)
+                    xml += try await serializeContainedChild(
+                        childObject, featureName: childFeatureName, in: resource,
+                        indentLevel: indentLevel + 1)
                 }
             }
 
             // Serialise cross-references
             for (refFeatureName, target) in references {
-                xml += try await serializeCrossReference(featureName: refFeatureName, target: target, in: resource, indentLevel: indentLevel + 1)
+                xml += try await serializeCrossReference(
+                    featureName: refFeatureName, target: target, in: resource,
+                    indentLevel: indentLevel + 1)
             }
 
             xml += "\(indent)</\(featureName)>\n"
@@ -329,14 +342,18 @@ public struct XMISerializer: Sendable {
             // Only consider containment relationships for XPath generation
             // Use metamodel information to determine if this is a containment feature
             if let feature = dynamicObject.eClass.getStructuralFeature(name: featureName),
-               let reference = feature as? EReference {
+                let reference = feature as? EReference
+            {
                 // Skip non-containment references - only traverse containment relationships
                 guard reference.containment else { continue }
 
                 // Skip features that are opposites of containment relationships
                 if let oppositeId = reference.opposite,
-                   let oppositeRef = dynamicObject.eClass.allReferences.first(where: { $0.id == oppositeId }),
-                   oppositeRef.containment {
+                    let oppositeRef = dynamicObject.eClass.allReferences.first(where: {
+                        $0.id == oppositeId
+                    }),
+                    oppositeRef.containment
+                {
                     continue
                 }
             } else {
@@ -345,7 +362,8 @@ public struct XMISerializer: Sendable {
                 continue
             }
 
-            guard let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName) else {
+            guard let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName)
+            else {
                 continue
             }
 
@@ -358,7 +376,10 @@ public struct XMISerializer: Sendable {
 
                 // Recurse
                 if let childObject = await resource.resolve(childId) {
-                    if let path = await findPath(to: target, from: childObject, currentPath: "\(currentPath)@\(featureName)/", in: resource) {
+                    if let path = await findPath(
+                        to: target, from: childObject,
+                        currentPath: "\(currentPath)@\(featureName)/", in: resource)
+                    {
                         return path
                     }
                 }
@@ -371,7 +392,10 @@ public struct XMISerializer: Sendable {
 
                     // Recurse
                     if let childObject = await resource.resolve(childId) {
-                        if let path = await findPath(to: target, from: childObject, currentPath: "\(currentPath)@\(featureName).\(index)/", in: resource) {
+                        if let path = await findPath(
+                            to: target, from: childObject,
+                            currentPath: "\(currentPath)@\(featureName).\(index)/", in: resource)
+                        {
                             return path
                         }
                     }
@@ -404,8 +428,11 @@ public struct XMISerializer: Sendable {
             // Instance object - extract namespace from eClass
             if object is DynamicEObject {
                 // Try to determine namespace from available attributes
-                if let nsURI = await resource.eGet(objectId: object.id, feature: "nsURI") as? String {
-                    let prefix = await resource.eGet(objectId: object.id, feature: "nsPrefix") as? String ?? "ns"
+                if let nsURI = await resource.eGet(objectId: object.id, feature: "nsURI") as? String
+                {
+                    let prefix =
+                        await resource.eGet(objectId: object.id, feature: "nsPrefix") as? String
+                        ?? "ns"
                     declarations += " xmlns:\(prefix)=\"\(nsURI)\""
                 } else {
                     // Use a generic namespace based on class name
@@ -424,7 +451,8 @@ public struct XMISerializer: Sendable {
     ///   - object: The object
     ///   - resource: The Resource
     /// - Returns: Attributes string
-    private func addAttributes(_ object: any EObject, in resource: Resource) async throws -> String {
+    private func addAttributes(_ object: any EObject, in resource: Resource) async throws -> String
+    {
         var attributes = ""
 
         guard let dynamicObject = object as? DynamicEObject else {
@@ -440,7 +468,8 @@ public struct XMISerializer: Sendable {
                 continue
             }
 
-            guard let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName) else {
+            guard let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName)
+            else {
                 continue
             }
 
@@ -459,14 +488,15 @@ public struct XMISerializer: Sendable {
 
     /// Get attributes of an object (non-reference features)
 
-
     /// Get contained children of an object
     ///
     /// - Parameters:
     ///   - object: The parent object
     ///   - resource: The Resource
     /// - Returns: Dictionary of feature name to child objects
-    private func getContainedChildren(_ object: any EObject, in resource: Resource) async throws -> [String: [any EObject]] {
+    private func getContainedChildren(_ object: any EObject, in resource: Resource) async throws
+        -> [String: [any EObject]]
+    {
         var children: [String: [any EObject]] = [:]
 
         guard let dynamicObject = object as? DynamicEObject else {
@@ -478,18 +508,23 @@ public struct XMISerializer: Sendable {
         for featureName in featureNames {
             // Use metamodel to determine if this is a containment feature
             if let feature = dynamicObject.eClass.getStructuralFeature(name: featureName),
-               let reference = feature as? EReference {
+                let reference = feature as? EReference
+            {
                 // Only include containment references
                 guard reference.containment else { continue }
 
                 // Skip features that are opposites of containment relationships
                 if let oppositeId = reference.opposite,
-                   let oppositeRef = dynamicObject.eClass.allReferences.first(where: { $0.id == oppositeId }),
-                   oppositeRef.containment {
+                    let oppositeRef = dynamicObject.eClass.allReferences.first(where: {
+                        $0.id == oppositeId
+                    }),
+                    oppositeRef.containment
+                {
                     continue
                 }
             } else if let feature = dynamicObject.eClass.getStructuralFeature(name: featureName),
-                      feature is EAttribute {
+                feature is EAttribute
+            {
                 // Skip attributes - they're not containment
                 continue
             } else {
@@ -497,19 +532,23 @@ public struct XMISerializer: Sendable {
                 continue
             }
 
-            guard let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName) else {
+            guard let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName)
+            else {
                 continue
             }
 
             if let childId = value as? EUUID {
-                if let childObject = await resource.resolve(childId), childObject is DynamicEObject {
+                if let childObject = await resource.resolve(childId), childObject is DynamicEObject
+                {
                     // This is containment - serialize as child elements
                     children[featureName] = [childObject]
                 }
             } else if let childIds = value as? [EUUID] {
                 var childObjects: [any EObject] = []
                 for childId in childIds {
-                    if let childObject = await resource.resolve(childId), childObject is DynamicEObject {
+                    if let childObject = await resource.resolve(childId),
+                        childObject is DynamicEObject
+                    {
                         childObjects.append(childObject)
                     }
                 }
@@ -530,7 +569,9 @@ public struct XMISerializer: Sendable {
     ///   - object: The object
     ///   - resource: The Resource
     /// - Returns: Dictionary of feature name to target (EUUID or ResourceProxy)
-    private func getCrossReferences(_ object: any EObject, in resource: Resource) async throws -> [String: any EcoreValue] {
+    private func getCrossReferences(_ object: any EObject, in resource: Resource) async throws
+        -> [String: any EcoreValue]
+    {
         var references: [String: any EcoreValue] = [:]
 
         guard let dynamicObject = object as? DynamicEObject else {
@@ -542,18 +583,23 @@ public struct XMISerializer: Sendable {
         for featureName in featureNames {
             // Use metamodel to determine if this is a cross-reference (non-containment reference)
             if let feature = dynamicObject.eClass.getStructuralFeature(name: featureName),
-               let reference = feature as? EReference {
+                let reference = feature as? EReference
+            {
                 // Only include non-containment references
                 guard !reference.containment else { continue }
 
                 // Skip features that are opposites of containment relationships
                 if let oppositeId = reference.opposite,
-                   let oppositeRef = dynamicObject.eClass.allReferences.first(where: { $0.id == oppositeId }),
-                   oppositeRef.containment {
+                    let oppositeRef = dynamicObject.eClass.allReferences.first(where: {
+                        $0.id == oppositeId
+                    }),
+                    oppositeRef.containment
+                {
                     continue
                 }
 
-                if let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName) {
+                if let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName)
+                {
                     // Can be EUUID (same-resource) or ResourceProxy (cross-resource)
                     if value is EUUID || value is ResourceProxy {
                         references[featureName] = value
@@ -572,7 +618,9 @@ public struct XMISerializer: Sendable {
     ///   - object: The object to analyze
     ///   - resource: The Resource for context
     /// - Returns: Set of namespace declaration strings
-    private func collectNamespaces(_ object: any EObject, in resource: Resource) async -> Set<String> {
+    private func collectNamespaces(_ object: any EObject, in resource: Resource) async -> Set<
+        String
+    > {
         var namespaces: Set<String> = []
 
         // Get object's class name
@@ -652,7 +700,8 @@ public struct XMISerializer: Sendable {
     /// - Parameter string: The string to escape
     /// - Returns: Escaped string
     private func escapeXML(_ string: String) -> String {
-        return string
+        return
+            string
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")

@@ -2,9 +2,10 @@
 // ECoreQuery.swift
 // ECore
 //
-// Created by Rene Hexel on 7/12/2025.
-// Copyright © 2025 Rene Hexel. All rights reserved.
+//  Created by Rene Hexel on 7/12/2025.
+//  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 /// Query framework for ECore models inspired by OCL.
@@ -50,8 +51,10 @@ public actor ECoreQueryEvaluator: Sendable {
     ///   - object: The object to evaluate the query against (becomes 'self')
     /// - Returns: The query result
     /// - Throws: `ECoreExecutionError` if evaluation fails
-    public func evaluate(_ query: ECoreQuery,
-                        on object: any EObject) async throws -> (any EcoreValue)? {
+    public func evaluate(
+        _ query: ECoreQuery,
+        on object: any EObject
+    ) async throws -> (any EcoreValue)? {
         let ast = try parser.parse(query.expression)
         let context: [String: any EcoreValue] = ["self": object]
         return try await executionEngine.evaluate(ast, context: context)
@@ -64,8 +67,10 @@ public actor ECoreQueryEvaluator: Sendable {
     ///   - context: Variable bindings for evaluation
     /// - Returns: The query result
     /// - Throws: `ECoreQueryError` if evaluation fails
-    public func evaluate(_ query: ECoreQuery, 
-                        context: [String: any EcoreValue]) async throws -> (any EcoreValue)? {
+    public func evaluate(
+        _ query: ECoreQuery,
+        context: [String: any EcoreValue]
+    ) async throws -> (any EcoreValue)? {
         let ast = try parser.parse(query.expression)
         return try await executionEngine.evaluate(ast, context: context)
     }
@@ -88,7 +93,7 @@ public struct ECoreQueryParser: Sendable {
         if let methodRange = trimmed.range(of: #"\.\w+\(\)$"#, options: .regularExpression) {
             let baseExpression = String(trimmed[..<methodRange.lowerBound])
             let methodCall = String(trimmed[methodRange])
-            let methodName = String(methodCall.dropFirst().dropLast(2)) // Remove . and ()
+            let methodName = String(methodCall.dropFirst().dropLast(2))  // Remove . and ()
 
             let baseExpr = try parse(baseExpression)
             return .methodCall(receiver: baseExpr, methodName: methodName, arguments: [])
@@ -164,9 +169,9 @@ public enum ECoreQueryError: Error, Sendable, Equatable, CustomStringConvertible
 
     public var description: String {
         switch self {
-        case let .parseError(message):
+        case .parseError(let message):
             return "Parse error: \(message)"
-        case let .unsupportedConstruct(construct):
+        case .unsupportedConstruct(let construct):
             return "Unsupported construct: \(construct)"
         }
     }

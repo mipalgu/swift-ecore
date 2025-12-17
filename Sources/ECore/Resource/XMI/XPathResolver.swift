@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 4/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 /// Resolves XPath-style fragment identifiers to object IDs
@@ -126,20 +127,27 @@ public struct XPathResolver: Sendable {
             // Check if it's a feature name or an index
             if component.hasPrefix("@") {
                 // It's a feature name - navigate through it
-                let featureName = String(component.dropFirst()) // Remove @
+                let featureName = String(component.dropFirst())  // Remove @
 
                 // Get the next component to check if it's an index
                 if index + 1 < components.count,
-                   let arrayIndex = Int(components[index + 1]) {
+                    let arrayIndex = Int(components[index + 1])
+                {
                     // Multi-valued feature with index
-                    guard let nextId = await navigateFeature(from: currentId, feature: featureName, index: arrayIndex) else {
+                    guard
+                        let nextId = await navigateFeature(
+                            from: currentId, feature: featureName, index: arrayIndex)
+                    else {
                         return nil
                     }
                     currentId = nextId
-                    index += 2 // Skip both feature name and index
+                    index += 2  // Skip both feature name and index
                 } else {
                     // Single-valued feature
-                    guard let nextId = await navigateFeature(from: currentId, feature: featureName, index: nil) else {
+                    guard
+                        let nextId = await navigateFeature(
+                            from: currentId, feature: featureName, index: nil)
+                    else {
                         return nil
                     }
                     currentId = nextId

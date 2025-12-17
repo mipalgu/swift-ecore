@@ -2,9 +2,10 @@
 // EcoreExtensions.swift
 // ECore
 //
-//  Created by Rene Hexel on 17/12/2025.
+//  Created by Rene Hexel on 3/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+import EMFBase
 import Foundation
 import SwiftXML
 
@@ -147,7 +148,8 @@ extension XElement {
     /// - Returns: True if element represents the specified classifier
     func isEcoreType(_ classifier: EcoreClassifier) -> Bool {
         let expectedType = "ecore:\(classifier.rawValue)"
-        return self.name == expectedType || self[.xmiType] == expectedType || self[.xsiType] == expectedType
+        return self.name == expectedType || self[.xmiType] == expectedType
+            || self[.xsiType] == expectedType
     }
 
     /// Extracts Ecore built-in type name from a type reference.

@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 4/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+import EMFBase
 import Foundation
 import SwiftXML
 
@@ -308,8 +309,7 @@ public actor XMIParser {
         in resource: Resource,
         parentEClass: EClass? = nil,
         referenceName: String? = nil
-    ) async throws -> DynamicEObject
-    {
+    ) async throws -> DynamicEObject {
         // First pass: collect all structural information for this class
         let structureInfo = collectStructuralInfo(from: element)
         let className = structureInfo.className
@@ -368,7 +368,7 @@ public actor XMIParser {
                 let childObject = try await parseInstanceElement(
                     child,
                     in: resource,
-                    parentEClass: eClass as? EClass,
+                    parentEClass: eClass,
                     referenceName: childName
                 )
                 await resource.register(childObject)
@@ -1023,9 +1023,11 @@ public actor XMIParser {
     ) async -> EClass {
         // Step 1: If we have parent context, try to resolve from the reference type
         if let parentEClass = parentEClass,
-           let referenceName = referenceName {
+            let referenceName = referenceName
+        {
             // Look for a reference feature with this name
-            if let reference = parentEClass.allReferences.first(where: { $0.name == referenceName }) {
+            if let reference = parentEClass.allReferences.first(where: { $0.name == referenceName })
+            {
                 // Get the eType of the reference
                 if let referenceType = reference.eType as? EClass {
                     // Cache using the actual type name, not the element name

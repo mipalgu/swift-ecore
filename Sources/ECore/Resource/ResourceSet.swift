@@ -2,9 +2,10 @@
 // ResourceSet.swift
 // ECore
 //
-//  Created by Rene Hexel on 3/12/2025.
+//  Created by Rene Hexel on 4/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 /// A resource set manages multiple resources and enables cross-resource reference resolution.
@@ -22,45 +23,45 @@ import Foundation
 ///
 /// ```swift
 /// let resourceSet = ResourceSet()
-/// 
+///
 /// // Register a metamodel
 /// resourceSet.registerMetamodel(companyPackage, uri: "http://company/1.0")
-/// 
+///
 /// // Create resources
 /// let modelResource = resourceSet.createResource(uri: "models/company.xmi")
 /// let instanceResource = resourceSet.createResource(uri: "instances/acme.xmi")
-/// 
+///
 /// // Cross-resource references are automatically resolved
 /// ```
 @globalActor
 public actor ResourceSet {
     /// Global resource set actor for thread-safe operations.
     public static let shared = ResourceSet()
-    
+
     /// Resources managed by this resource set, indexed by URI.
     ///
     /// Each resource in the set has a unique URI that serves as its identifier
     /// within the resource set.
     private var resources: [String: Resource]
-    
+
     /// Metamodel registry mapping namespace URIs to their root packages.
     ///
     /// This registry provides namespace-based metamodel resolution without
     /// relying on global variables, as requested.
     private var metamodelRegistry: [String: EPackage]
-    
+
     /// URI converter for transforming logical URIs to physical URIs.
     ///
     /// Maps logical model URIs to their actual storage locations or
     /// provides URI normalisation services.
     private var uriConverter: [String: String]
-    
+
     /// Factory registry for creating resources based on file extensions or URI patterns.
     ///
     /// Different resource types (XMI, JSON, etc.) can register factories
     /// to handle their specific serialisation formats.
     private var resourceFactories: [String: ResourceFactory]
-    
+
     /// Initialises a new resource set with empty registries.
     public init() {
         self.resources = [:]
@@ -69,9 +70,9 @@ public actor ResourceSet {
         self.resourceFactories = [:]
         // registerDefaultFactories() - will be called later when needed
     }
-    
+
     // MARK: - Resource Management
-    
+
     /// Creates a new resource with the specified URI.
     ///
     /// If a resource with the same URI already exists, returns the existing resource.
@@ -90,7 +91,7 @@ public actor ResourceSet {
         resources[uri] = resource
         return resource
     }
-    
+
     /// Gets a resource by its URI, loading it if necessary.
     ///
     /// If the resource doesn't exist in the set, attempts to load it
@@ -186,7 +187,7 @@ public actor ResourceSet {
         // Note: ResourceSet reference cleared
         return true
     }
-    
+
     /// Removes a resource by its URI from this resource set.
     ///
     /// - Parameter uri: The URI of the resource to remove.
@@ -197,23 +198,23 @@ public actor ResourceSet {
         // Note: ResourceSet reference cleared
         return true
     }
-    
+
     /// Gets all resources in this resource set.
     ///
     /// - Returns: An array of all resources managed by this resource set.
     public func getResources() -> [Resource] {
         return Array(resources.values)
     }
-    
+
     /// Gets the number of resources in this resource set.
     ///
     /// - Returns: The count of resources managed by this resource set.
     public func count() -> Int {
         return resources.count
     }
-    
+
     // MARK: - Metamodel Registry
-    
+
     /// Registers a metamodel package with its namespace URI.
     ///
     /// This enables namespace-based metamodel resolution without global variables.
@@ -225,7 +226,7 @@ public actor ResourceSet {
     public func registerMetamodel(_ package: EPackage, uri: String) {
         metamodelRegistry[uri] = package
     }
-    
+
     /// Unregisters a metamodel by its namespace URI.
     ///
     /// - Parameter uri: The namespace URI of the metamodel to unregister.
@@ -234,7 +235,7 @@ public actor ResourceSet {
     public func unregisterMetamodel(uri: String) -> EPackage? {
         return metamodelRegistry.removeValue(forKey: uri)
     }
-    
+
     /// Gets a metamodel package by its namespace URI.
     ///
     /// - Parameter uri: The namespace URI of the metamodel to retrieve.
@@ -242,16 +243,16 @@ public actor ResourceSet {
     public func getMetamodel(uri: String) -> EPackage? {
         return metamodelRegistry[uri]
     }
-    
+
     /// Gets all registered metamodel URIs.
     ///
     /// - Returns: An array of namespace URIs for all registered metamodels.
     public func getMetamodelURIs() -> [String] {
         return Array(metamodelRegistry.keys)
     }
-    
+
     // MARK: - URI Management
-    
+
     /// Maps a logical URI to a physical URI.
     ///
     /// This enables URI redirection for resource loading, allowing logical
@@ -263,7 +264,7 @@ public actor ResourceSet {
     public func mapURI(from logicalURI: String, to physicalURI: String) {
         uriConverter[logicalURI] = physicalURI
     }
-    
+
     /// Converts a logical URI to its physical equivalent.
     ///
     /// Supports both exact matches and prefix matches. For prefix matches,
@@ -312,7 +313,7 @@ public actor ResourceSet {
 
         return currentURI
     }
-    
+
     /// Normalises a URI by applying registered conversions and cleanup.
     ///
     /// - Parameter uri: The URI to normalise.
@@ -326,11 +327,9 @@ public actor ResourceSet {
             return converted  // Return whitespace/empty URIs as-is
         }
 
-        if converted == "://" ||
-           converted.hasPrefix("://") ||
-           converted == "http://" ||
-           converted == "https://" ||
-           converted == "test:////" {
+        if converted == "://" || converted.hasPrefix("://") || converted == "http://"
+            || converted == "https://" || converted == "test:////"
+        {
             return converted  // Return invalid URIs as-is
         }
 
@@ -395,7 +394,8 @@ public actor ResourceSet {
             let standardized = url.standardized
 
             // For file:/// URLs, preserve the triple slash
-            if converted.hasPrefix("file:///") && !standardized.absoluteString.hasPrefix("file:///") {
+            if converted.hasPrefix("file:///") && !standardized.absoluteString.hasPrefix("file:///")
+            {
                 // Reconstruct with triple slash
                 if let path = standardized.path.isEmpty ? nil : standardized.path {
                     return "file:///" + path.dropFirst()
@@ -408,9 +408,9 @@ public actor ResourceSet {
         // Final fallback: return as-is
         return converted
     }
-    
+
     // MARK: - Cross-Resource Reference Resolution
-    
+
     /// Resolves an object by its identifier across all resources in the set.
     ///
     /// - Parameter id: The unique identifier of the object to resolve.
@@ -423,14 +423,14 @@ public actor ResourceSet {
         }
         return nil
     }
-    
+
     /// Resolves the opposite reference for a bidirectional reference across all resources.
     ///
     /// - Parameter reference: The reference whose opposite should be resolved.
     /// - Returns: The opposite reference, or `nil` if not found in any resource.
     public func resolveOpposite(_ reference: EReference) async -> EReference? {
         guard let oppositeId = reference.opposite else { return nil }
-        
+
         for resource in resources.values {
             for object in await resource.getAllObjects() {
                 if let eClass = object.eClass as? EClass {
@@ -442,17 +442,17 @@ public actor ResourceSet {
                 }
             }
         }
-        
+
         return nil
     }
-    
+
     /// Synchronous version for internal use within Resource
     public func resolveOppositeSync(_ reference: EReference) -> EReference? {
         guard reference.opposite != nil else { return nil }
         // Simplified synchronous resolution - would need proper implementation
         return nil
     }
-    
+
     /// Resolves an object by its URI across all resources in the set.
     ///
     /// The URI format is: "resourceURI#objectPath" where objectPath
@@ -483,14 +483,22 @@ public actor ResourceSet {
     ///   - oppositeRefId: The unique identifier of the opposite reference feature.
     ///   - sourceId: The unique identifier of the source object establishing the relationship.
     ///   - add: Whether to add (`true`) or remove (`false`) the bidirectional relationship.
-    public func updateOpposite(targetId: EUUID, oppositeRefId: EUUID, sourceId: EUUID, add: Bool) async {
+    public func updateOpposite(targetId: EUUID, oppositeRefId: EUUID, sourceId: EUUID, add: Bool)
+        async
+    {
         // Find the resource containing the target object
         for resource in resources.values {
             if await resource.contains(id: targetId) {
                 // Find the target object and update its opposite reference
-                guard var target = await resource.resolve(targetId) as? DynamicEObject else { continue }
+                guard var target = await resource.resolve(targetId) as? DynamicEObject else {
+                    continue
+                }
                 let targetClass = target.eClass
-                guard let oppositeRef = targetClass.allReferences.first(where: { $0.id == oppositeRefId }) else { continue }
+                guard
+                    let oppositeRef = targetClass.allReferences.first(where: {
+                        $0.id == oppositeRefId
+                    })
+                else { continue }
 
                 // Determine multiplicity from the opposite reference itself
                 if oppositeRef.isMany {
@@ -517,7 +525,7 @@ public actor ResourceSet {
     }
 
     // MARK: - Resource Factory Management
-    
+
     /// Registers a resource factory for handling specific file extensions or URI patterns.
     ///
     /// - Parameters:
@@ -526,7 +534,7 @@ public actor ResourceSet {
     public func registerResourceFactory(_ factory: ResourceFactory, for pattern: String) {
         resourceFactories[pattern] = factory
     }
-    
+
     /// Gets a resource factory for a given URI.
     ///
     /// - Parameter uri: The URI to find a factory for.
@@ -538,12 +546,12 @@ public actor ResourceSet {
                 return factory
             }
         }
-        
+
         return nil
     }
-    
+
     // MARK: - Private Implementation
-    
+
     /// Loads a resource using registered factories.
     ///
     /// Attempts to load a resource using registered resource factories.
@@ -557,11 +565,11 @@ public actor ResourceSet {
     /// - Returns: The loaded resource, or `nil` if no factory can handle the URI format.
     private func loadResource(uri: String) -> Resource? {
         let physicalURI = convertURI(uri)
-        
+
         guard let factory = getResourceFactory(for: physicalURI) else {
             return nil
         }
-        
+
         do {
             let resource = try factory.createResource(uri: physicalURI, in: self)
             resources[uri] = resource
@@ -572,7 +580,7 @@ public actor ResourceSet {
             return nil
         }
     }
-    
+
     /// Registers default resource factories for standard EMF serialisation formats.
     ///
     /// Sets up built-in factories for common resource types such as XMI and JSON.
@@ -602,7 +610,7 @@ public protocol ResourceFactory: Sendable {
     /// - Returns: The created resource.
     /// - Throws: An error if the resource cannot be created or loaded.
     func createResource(uri: String, in resourceSet: ResourceSet) throws -> Resource
-    
+
     /// Checks if this factory can handle the specified URI.
     ///
     /// - Parameter uri: The URI to check.

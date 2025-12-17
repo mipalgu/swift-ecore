@@ -2,9 +2,10 @@
 // BasicCommands.swift
 // ECore
 //
-// Created by Rene Hexel on 8/12/2025.
-// Copyright © 2025 Rene Hexel. All rights reserved.
+//  Created by Rene Hexel on 8/12/2025.
+//  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 // MARK: - Set Command
@@ -170,8 +171,9 @@ public final class AddCommand: EMFCommand {
     }
 
     public override func undo() async throws {
-        guard hasExecuted, let _ = addedIndex else {
-            throw EMFCommandError.invalidState("Command has not been executed or index not recorded")
+        guard hasExecuted, addedIndex != nil else {
+            throw EMFCommandError.invalidState(
+                "Command has not been executed or index not recorded")
         }
         // Simplified undo for testing infrastructure
     }
@@ -259,8 +261,9 @@ public final class RemoveCommand: EMFCommand {
     }
 
     public override func undo() async throws {
-        guard hasExecuted, let _ = removedIndex else {
-            throw EMFCommandError.invalidState("Command has not been executed or index not recorded")
+        guard hasExecuted, removedIndex != nil else {
+            throw EMFCommandError.invalidState(
+                "Command has not been executed or index not recorded")
         }
         // Simplified undo for testing infrastructure
     }

@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 3/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 // MARK: - EAnnotation
@@ -30,7 +31,7 @@ import Foundation
 ///     details: ["documentation": "This class represents a person"]
 /// )
 /// ```
-public struct EAnnotation: EcoreValue {
+public struct EAnnotation: EcoreValue, Sendable {
     /// Unique identifier for this annotation.
     ///
     /// Used for identity-based equality comparison.
@@ -79,9 +80,7 @@ public struct EAnnotation: EcoreValue {
     ///   - rhs: The second annotation to compare.
     /// - Returns: `true` if the annotations are equal, `false` otherwise.
     public static func == (lhs: EAnnotation, rhs: EAnnotation) -> Bool {
-        lhs.id == rhs.id &&
-        lhs.source == rhs.source &&
-        lhs.details == rhs.details
+        lhs.id == rhs.id && lhs.source == rhs.source && lhs.details == rhs.details
     }
 
     /// Hashes the essential components of this annotation.

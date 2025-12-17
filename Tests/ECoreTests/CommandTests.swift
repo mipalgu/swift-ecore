@@ -1,3 +1,4 @@
+import EMFBase
 import Foundation
 //
 // CommandTests.swift

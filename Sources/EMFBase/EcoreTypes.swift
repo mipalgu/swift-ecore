@@ -134,7 +134,7 @@ public struct EcoreValueArray: EcoreValue, Sendable, Equatable, Hashable {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(values.count)
         for value in values {
-            ECore.hash(value, into: &hasher)
+            EMFBase.hash(value, into: &hasher)
         }
     }
 }
@@ -179,14 +179,11 @@ public func areEqual(_ lhs: any EcoreValue, _ rhs: any EcoreValue) -> Bool {
         return lBigInt == rBigInt
     case (let lUUID as UUID, let rUUID as UUID):
         return lUUID == rUUID
-    case (let lObject as any EObject, let rObject as any EObject):
-        return lObject.id == rObject.id
+
     case (let lArray as [String], let rArray as [String]):
         return lArray == rArray
     case (let lArray as [Int], let rArray as [Int]):
         return lArray == rArray
-    case (let lArray as [any EObject], let rArray as [any EObject]):
-        return lArray.count == rArray.count && zip(lArray, rArray).allSatisfy { $0.id == $1.id }
 
     default:
         // Fall back to string comparison for unknown EcoreValue types
@@ -240,20 +237,13 @@ public func hash(_ value: any EcoreValue, into hasher: inout Hasher) {
     case let uuidValue as UUID:
         hasher.combine(12)
         hasher.combine(uuidValue)
-    case let objectValue as any EObject:
-        hasher.combine(13)
-        hasher.combine(objectValue.id)
+
     case let arrayValue as [String]:
         hasher.combine(14)
         hasher.combine(arrayValue)
     case let arrayValue as [Int]:
         hasher.combine(15)
         hasher.combine(arrayValue)
-    case let arrayValue as [any EObject]:
-        hasher.combine(16)
-        for obj in arrayValue {
-            hasher.combine(obj.id)
-        }
 
     default:
         // Fall back to string hash for unknown EcoreValue types

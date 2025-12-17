@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 3/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 import OrderedCollections
 
@@ -272,7 +273,7 @@ public struct EObjectStorage: Sendable {
     public func getFeatureNames() -> [String] {
         return Array(nameIsset)
     }
-    
+
     /// Get all feature IDs that have been set in insertion order.
     ///
     /// Returns metamodel feature IDs in the order they were set,
@@ -302,7 +303,8 @@ extension EObjectStorage: Equatable {
         // Compare each ID-based set value
         for key in lhs.isset {
             guard let lValue = lhs.values[key],
-                  let rValue = rhs.values[key] else {
+                let rValue = rhs.values[key]
+            else {
                 return false
             }
 
@@ -316,7 +318,8 @@ extension EObjectStorage: Equatable {
         // Compare each name-based set value
         for name in lhs.nameIsset {
             guard let lValue = lhs.nameValues[name],
-                  let rValue = rhs.nameValues[name] else {
+                let rValue = rhs.nameValues[name]
+            else {
                 return false
             }
 

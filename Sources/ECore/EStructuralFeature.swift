@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 3/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 // MARK: - EAttribute
@@ -576,7 +577,7 @@ extension EAttribute {
 
         // Resolve eType
         let eType: any EClassifier
-        if let _: any EObject = dynamicObj.eGet(.eType) {
+        if dynamicObj.eGet(.eType) != nil {
             eType = EDataType(name: EcoreDataType.eString.rawValue)  // Fallback for non-resource context
         } else {
             eType = EDataType(name: EcoreDataType.eString.rawValue)
@@ -624,7 +625,7 @@ extension EReference {
 
         // Resolve eType
         let eType: any EClassifier
-        if let _: any EObject = dynamicObj.eGet(.eType) {
+        if dynamicObj.eGet(.eType) != nil {
             eType = EClass(name: EcoreClassifier.eObject.rawValue)  // Fallback for non-resource context
         } else {
             eType = EClass(name: EcoreClassifier.eObject.rawValue)

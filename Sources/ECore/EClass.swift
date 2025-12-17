@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 3/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 // MARK: - EClass
@@ -165,8 +166,7 @@ public struct EClass: EClassifier, ENamedElement {
 
         // Extract structural features
         var eStructuralFeatures: [any EStructuralFeature] = []
-        if let featuresList: [any EObject] = dynamicObj.eGet(.eStructuralFeatures)
-        {
+        if let featuresList: [any EObject] = dynamicObj.eGet(.eStructuralFeatures) {
             for featureObj in featuresList {
                 if let feature = try? EStructuralFeatureResolver.resolvingFeature(featureObj) {
                     eStructuralFeatures.append(feature)

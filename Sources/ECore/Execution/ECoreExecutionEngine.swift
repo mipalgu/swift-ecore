@@ -2,10 +2,12 @@
 // ECoreExecutionEngine.swift
 // ECore
 //
-// Created by Rene Hexel on 7/12/2025.
-// Copyright © 2025 Rene Hexel. All rights reserved.
+//  Created by Rene Hexel on 7/12/2025.
+//  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
+import OCL
 import OrderedCollections
 
 /// Core execution engine providing model navigation and query capabilities.
@@ -340,31 +342,46 @@ public actor ECoreExecutionEngine: Sendable {
         return results
     }
 
-    private func invokeMethod(
-        on receiver: (any EcoreValue)?, method: String, arguments: [any EcoreValue]
-    ) async throws -> (any EcoreValue)? {
-        // Basic method invocation - can be extended for specific operations
-        switch method {
-        case "size":
-            if let collection = receiver as? [any EcoreValue] {
-                return collection.count
-            } else if let string = receiver as? String {
-                return string.count
+    private func invokeMethod(on receiver: (any EcoreValue)?, method: String, arguments: [any EcoreValue]) async throws -> (any EcoreValue)? {
+        // Try unary methods (no arguments)
+        if arguments.isEmpty, let receiver = receiver {
+            if let m = OCLUnaryMethod(rawValue: method) {
+                do {
+                    return try invokeUnaryMethod(m, on: receiver)
+                } catch {
+                    throw ECoreExecutionError.unsupportedOperation(
+                        "Error in \(method): \(error)")
+                }
             }
-            throw ECoreExecutionError.unsupportedOperation(
-                "Cannot get size of \(String(describing: receiver))")
-        case "isEmpty":
-            if let collection = receiver as? [any EcoreValue] {
-                return collection.isEmpty
-            } else if let string = receiver as? String {
-                return string.isEmpty
-            }
-            throw ECoreExecutionError.unsupportedOperation(
-                "Cannot check isEmpty of \(String(describing: receiver))")
-        default:
-            throw ECoreExecutionError.unsupportedOperation(
-                "Method invocation not yet implemented: \(method)")
         }
+
+        // Try binary methods (one argument)
+        if arguments.count == 1, let receiver = receiver {
+            if let m = OCLBinaryMethod(rawValue: method) {
+                do {
+                    return try invokeBinaryMethod(m, on: receiver, with: arguments[0])
+                } catch {
+                    throw ECoreExecutionError.unsupportedOperation(
+                        "Error in \(method): \(error)")
+                }
+            }
+        }
+
+        // Try ternary methods (two arguments)
+        if arguments.count == 2, let receiver = receiver {
+            if let m = OCLTernaryMethod(rawValue: method) {
+                do {
+                    return try invokeTernaryMethod(m, on: receiver, with: arguments[0], and: arguments[1])
+                } catch {
+                    throw ECoreExecutionError.unsupportedOperation(
+                        "Error in \(method): \(error)")
+                }
+            }
+        }
+
+        // Method not found in OCL enums
+        throw ECoreExecutionError.unsupportedOperation(
+            "Method not supported: \(method) with \(arguments.count) arguments")
     }
 
     private func filterCollection(

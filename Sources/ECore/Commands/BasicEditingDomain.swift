@@ -2,9 +2,10 @@
 // BasicEditingDomain.swift
 // ECore
 //
-// Created by Rene Hexel on 8/12/2025.
-// Copyright © 2025 Rene Hexel. All rights reserved.
+//  Created by Rene Hexel on 8/12/2025.
+//  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 /// Actor providing basic editing domain functionality for model modification coordination.

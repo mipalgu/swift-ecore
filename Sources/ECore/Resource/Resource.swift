@@ -5,6 +5,7 @@
 //  Created by Rene Hexel on 3/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 import OrderedCollections
 
@@ -783,7 +784,9 @@ public actor Resource {
     ///   - shouldIgnoreUnresolvedClassifiers: If `true`, continues processing when classifier resolution fails; if `false`, throws on resolution failure (default: `false`).
     /// - Returns: A fully constructed EPackage with all classifiers and subpackages resolved.
     /// - Throws: XMIError if the object is invalid, missing required attributes, or classifier resolution fails when not ignored.
-    public func createEPackage(from object: any EObject, shouldIgnoreUnresolvedClassifiers: Bool = false) async throws -> EPackage {
+    public func createEPackage(
+        from object: any EObject, shouldIgnoreUnresolvedClassifiers: Bool = false
+    ) async throws -> EPackage {
         guard let dynamicObj = object as? DynamicEObject else {
             throw XMIError.invalidObjectType("Expected DynamicEObject, got \(type(of: object))")
         }
