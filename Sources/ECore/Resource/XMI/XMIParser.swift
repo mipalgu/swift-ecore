@@ -82,6 +82,32 @@ public actor XMIParser {
         self.resourceSet = resourceSet
     }
 
+    /// Get or create an EClass for the specified classifier type.
+    ///
+    /// This method ensures that metamodel classes (EPackage, EClass, etc.) are created
+    /// consistently and cached for reuse within the same resource.
+    ///
+    /// - Parameters:
+    ///   - classifierName: The name of the Ecore classifier (e.g., "EClass", "EPackage")
+    ///   - resource: The resource to store the EClass in
+    /// - Returns: An EClass instance for the specified classifier type
+    private func getOrCreateEClass(_ classifierName: String, in resource: Resource) async -> EClass
+    {
+        // Check cache first
+        if let cachedClass = eClassCache[classifierName] {
+            return cachedClass
+        }
+
+        // Create new EClass for this classifier type
+        let eClass = EClass(name: classifierName)
+
+        // Cache and register the EClass
+        eClassCache[classifierName] = eClass
+        await resource.register(DynamicEObject(eClass: eClass))
+
+        return eClass
+    }
+
     /// Parse an XMI file and return a Resource containing the objects
     /// - Parameter url: The URL of the XMI file to parse
     /// - Returns: A Resource containing the parsed objects
@@ -284,14 +310,14 @@ public actor XMIParser {
         let structureInfo = collectStructuralInfo(from: element)
         let className = structureInfo.className
 
-        // Get or create the EClass first
-        let _ = getOrCreateEClass(className, in: resource)
+        // Try to find EClass from registered metamodel, fall back to dynamic creation
+        let eClass = await lookupEClass(className: className, element: element, resource: resource)
 
-        // Then enhance it with discovered features
+        // Then enhance it with discovered features (only for dynamically created classes)
         recordStructureInfo(for: className, with: structureInfo)
 
-        // Get the enhanced EClass from cache
-        let enhancedEClass = eClassCache[className]!
+        // Get the enhanced EClass from cache (may have been enhanced)
+        let enhancedEClass = eClassCache[className] ?? eClass
         var instance = DynamicEObject(eClass: enhancedEClass)
 
         // Register with xmi:id if present
@@ -380,7 +406,7 @@ public actor XMIParser {
         }
 
         // Create EPackage class if not already in resource
-        let ePackageClass = getOrCreateEClass(EcoreClassifier.ePackage.rawValue, in: resource)
+        let ePackageClass = await getOrCreateEClass(EcoreClassifier.ePackage.rawValue, in: resource)
         var pkg = DynamicEObject(eClass: ePackageClass)
 
         // Register with xmi:id if present
@@ -434,7 +460,7 @@ public actor XMIParser {
             throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eClassClass = getOrCreateEClass(EcoreClassifier.eClass.rawValue, in: resource)
+        let eClassClass = await getOrCreateEClass(EcoreClassifier.eClass.rawValue, in: resource)
         var eClass = DynamicEObject(eClass: eClassClass)
 
         if let xmiId = element[.xmiId] {
@@ -489,7 +515,7 @@ public actor XMIParser {
             throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eEnumClass = getOrCreateEClass(EcoreClassifier.eEnum.rawValue, in: resource)
+        let eEnumClass = await getOrCreateEClass(EcoreClassifier.eEnum.rawValue, in: resource)
         var eEnum = DynamicEObject(eClass: eEnumClass)
 
         if let xmiId = element[.xmiId] {
@@ -533,7 +559,8 @@ public actor XMIParser {
             throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eEnumLiteralClass = getOrCreateEClass(EcoreClassifier.eEnumLiteral.rawValue, in: resource)
+        let eEnumLiteralClass = await getOrCreateEClass(
+            EcoreClassifier.eEnumLiteral.rawValue, in: resource)
         var literal = DynamicEObject(eClass: eEnumLiteralClass)
 
         // Set features before registering
@@ -570,7 +597,8 @@ public actor XMIParser {
             throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eDataTypeClass = getOrCreateEClass(EcoreClassifier.eDataType.rawValue, in: resource)
+        let eDataTypeClass = await getOrCreateEClass(
+            EcoreClassifier.eDataType.rawValue, in: resource)
         var dataType = DynamicEObject(eClass: eDataTypeClass)
 
         if let xmiId = element[.xmiId] {
@@ -612,7 +640,8 @@ public actor XMIParser {
             throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eAttributeClass = getOrCreateEClass(EcoreClassifier.eAttribute.rawValue, in: resource)
+        let eAttributeClass = await getOrCreateEClass(
+            EcoreClassifier.eAttribute.rawValue, in: resource)
         var attribute = DynamicEObject(eClass: eAttributeClass)
 
         // Set features before registering
@@ -677,7 +706,8 @@ public actor XMIParser {
             throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eReferenceClass = getOrCreateEClass(EcoreClassifier.eReference.rawValue, in: resource)
+        let eReferenceClass = await getOrCreateEClass(
+            EcoreClassifier.eReference.rawValue, in: resource)
         var reference = DynamicEObject(eClass: eReferenceClass)
 
         // Set features before registering
@@ -769,7 +799,7 @@ public actor XMIParser {
     ) async -> (any EcoreValue)? {
         // Handle Ecore built-in types
         if reference.contains("http://www.eclipse.org/emf/2002/Ecore#//") {
-            return resolveEcoreBuiltinType(reference, in: resource)
+            return await resolveEcoreBuiltinType(reference, in: resource)
         }
 
         if reference.hasPrefix("#") {
@@ -809,7 +839,9 @@ public actor XMIParser {
     ///   - reference: The Ecore type URI reference
     ///   - resource: The current Resource for object storage
     /// - Returns: A DynamicEObject representing the built-in type, or nil if not recognized
-    private func resolveEcoreBuiltinType(_ reference: String, in resource: Resource) -> (any EcoreValue)? {
+    private func resolveEcoreBuiltinType(_ reference: String, in resource: Resource) async -> (
+        any EcoreValue
+    )? {
         // Extract the type name from the URI fragment
         guard let fragmentStart = reference.range(of: "#//") else { return nil }
         let typeName = String(reference[fragmentStart.upperBound...])
@@ -820,7 +852,8 @@ public actor XMIParser {
         }
 
         // Create appropriate built-in type
-        let eDataTypeClass = getOrCreateEClass(EcoreClassifier.eDataType.rawValue, in: resource)
+        let eDataTypeClass = await getOrCreateEClass(
+            EcoreClassifier.eDataType.rawValue, in: resource)
         var dataType = DynamicEObject(eClass: eDataTypeClass)
 
         // Set the name based on the fragment
@@ -952,24 +985,86 @@ public actor XMIParser {
         return element.attributeNames
     }
 
-    /// Get or create an EClass for a metamodel type
+    /// Looks up an EClass from registered metamodels, falling back to dynamic creation
     ///
-    /// This method ensures we have EClass objects for Ecore metamodel types.
+    /// This method attempts to resolve the EClass from a registered metamodel in the ResourceSet.
+    /// If no ResourceSet is available or the metamodel doesn't contain the class, it falls back
+    /// to creating a new dynamic EClass.
     ///
     /// - Parameters:
-    ///   - className: The name of the Ecore class (e.g., "EPackage", "EClass")
-    ///   - resource: The Resource for context
-    /// - Returns: An EClass instance
-    private func getOrCreateEClass(_ className: String, in resource: Resource) -> EClass {
-        // Check if we already have this EClass
-        if let existingClass = eClassCache[className] {
-            return existingClass
+    ///   - className: The name of the class to look up
+    ///   - element: The XML element being parsed (for namespace resolution)
+    ///   - resource: The resource being populated
+    /// - Returns: The EClass from metamodel if found, otherwise a new dynamic EClass
+    private func lookupEClass(
+        className: String,
+        element: XElement,
+        resource: Resource
+    ) async -> EClass {
+        // Step 1: Check cache first
+        if let cachedClass = eClassCache[className] {
+            return cachedClass
         }
 
-        // Create new EClass
+        // Step 2: Try to resolve from ResourceSet
+        if let resourceSet = self.resourceSet {
+            // Extract namespace URI from element
+            if let namespaceURI = extractNamespaceURI(from: element) {
+                // Query ResourceSet for metamodel
+                if let metamodel = await resourceSet.getMetamodel(uri: namespaceURI) {
+                    // Look up EClass by name
+                    if let eClass = metamodel.getClassifier(className) as? EClass {
+                        // Cache and return
+                        eClassCache[className] = eClass
+                        return eClass
+                    }
+                }
+            }
+        }
+
+        // Step 3: Fall back to dynamic EClass creation
         let eClass = EClass(name: className)
         eClassCache[className] = eClass
         return eClass
+    }
+
+    /// Extracts the namespace URI from an XML element
+    ///
+    /// Examines the element and its ancestors to find the namespace URI that should be used
+    /// for metamodel lookup. Handles both default namespaces (xmlns="...") and prefixed
+    /// namespaces (xmlns:prefix="...").
+    ///
+    /// - Parameter element: The XML element to extract namespace from
+    /// - Returns: The namespace URI if found, nil otherwise
+    private func extractNamespaceURI(from element: XElement) -> String? {
+        // Case 1: Default namespace (xmlns="...")
+        if let defaultNS = element[XMLNamespace.xmlns], !defaultNS.isEmpty {
+            return defaultNS
+        }
+
+        // Case 2: Prefixed namespace (e.g., <fam:Member> with xmlns:fam="...")
+        if element.name.contains(":") {
+            let parts = element.name.split(separator: ":", maxSplits: 1)
+            let prefix = String(parts[0])
+
+            // Look up xmlns:prefix in attributes
+            let nsKey = XMLNamespace.prefixed(prefix)
+            if let namespaceURI = element[nsKey] {
+                return namespaceURI
+            }
+        }
+
+        // Case 3: Check parent elements for namespace declarations
+        // (XMI namespace can be declared on root and inherited)
+        var current = element.parent
+        while let parent = current {
+            if let defaultNS = parent[XMLNamespace.xmlns], !defaultNS.isEmpty {
+                return defaultNS
+            }
+            current = parent.parent
+        }
+
+        return nil
     }
 
     /// Structure information collected during element analysis

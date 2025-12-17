@@ -783,10 +783,7 @@ public actor Resource {
     ///   - shouldIgnoreUnresolvedClassifiers: If `true`, continues processing when classifier resolution fails; if `false`, throws on resolution failure (default: `false`).
     /// - Returns: A fully constructed EPackage with all classifiers and subpackages resolved.
     /// - Throws: XMIError if the object is invalid, missing required attributes, or classifier resolution fails when not ignored.
-    public func createEPackage(
-        from object: any EObject,
-        shouldIgnoreUnresolvedClassifiers: Bool = false
-    ) async throws -> EPackage {
+    public func createEPackage(from object: any EObject, shouldIgnoreUnresolvedClassifiers: Bool = false) async throws -> EPackage {
         guard let dynamicObj = object as? DynamicEObject else {
             throw XMIError.invalidObjectType("Expected DynamicEObject, got \(type(of: object))")
         }
@@ -801,7 +798,7 @@ public actor Resource {
         var eClassifiers: [any EClassifier] = []
         if let classifierIds: [EUUID] = dynamicObj.eGet("eClassifiers") as? [EUUID] {
             for classifierId in classifierIds {
-                if let classifierObj = await resolve(classifierId) {
+                if let classifierObj = resolve(classifierId) {
                     do {
                         let classifier = try await resolvingType(classifierObj)
                         eClassifiers.append(classifier)
@@ -821,7 +818,7 @@ public actor Resource {
         var eSubpackages: [EPackage] = []
         if let subpackageIds: [EUUID] = dynamicObj.eGet("eSubpackages") as? [EUUID] {
             for subpackageId in subpackageIds {
-                if let subpackageObj = await resolve(subpackageId) {
+                if let subpackageObj = resolve(subpackageId) {
                     if let subpackage = try? await createEPackage(
                         from: subpackageObj,
                         shouldIgnoreUnresolvedClassifiers: shouldIgnoreUnresolvedClassifiers
@@ -885,7 +882,7 @@ public actor Resource {
         var eStructuralFeatures: [any EStructuralFeature] = []
         if let featureIds: [EUUID] = dynamicObj.eGet("eStructuralFeatures") as? [EUUID] {
             for featureId in featureIds {
-                if let featureObj = await resolve(featureId) {
+                if let featureObj = resolve(featureId) {
                     do {
                         let feature = try await resolvingFeature(featureObj)
                         eStructuralFeatures.append(feature)
@@ -933,7 +930,7 @@ public actor Resource {
         var literals: [EEnumLiteral] = []
         if let literalIds: [EUUID] = dynamicObj.eGet("eLiterals") as? [EUUID] {
             for literalId in literalIds {
-                if let literalObj = await resolve(literalId) {
+                if let literalObj = resolve(literalId) {
                     if let literal = EEnumLiteral(object: literalObj) {
                         literals.append(literal)
                     } else if !shouldIgnoreUnresolvedLiterals {
@@ -1019,7 +1016,7 @@ public actor Resource {
         // Resolve eType
         let eType: any EClassifier
         if let eTypeId: EUUID = dynamicObj.eGet("eType") as? EUUID {
-            if let eTypeObj = await resolve(eTypeId) {
+            if let eTypeObj = resolve(eTypeId) {
                 eType = EClassifierResolver.resolvingDataType(eTypeObj)
             } else {
                 eType = EDataType(name: "EString")
@@ -1123,7 +1120,7 @@ public actor Resource {
         // Resolve eType
         let eType: any EClassifier
         if let eTypeId: EUUID = dynamicObj.eGet("eType") as? EUUID {
-            if let eTypeObj = await resolve(eTypeId) {
+            if let eTypeObj = resolve(eTypeId) {
                 eType = EClassifierResolver.resolvingReferenceType(eTypeObj)
             } else {
                 eType = EClass(name: "EObject")

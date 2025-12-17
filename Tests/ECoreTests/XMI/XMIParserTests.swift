@@ -1,3 +1,4 @@
+import Foundation
 //
 // XMIParserTests.swift
 // ECoreTests
@@ -6,7 +7,7 @@
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
 import Testing
-import Foundation
+
 @testable import ECore
 
 /// Test suite for XMI parsing functionality
@@ -37,7 +38,9 @@ struct XMIParserTests {
         let testResourcesURL = bundleResourcesURL.appendingPathComponent("Resources")
         var isDirectory = ObjCBool(false)
 
-        if fm.fileExists(atPath: testResourcesURL.path, isDirectory: &isDirectory), isDirectory.boolValue {
+        if fm.fileExists(atPath: testResourcesURL.path, isDirectory: &isDirectory),
+            isDirectory.boolValue
+        {
             return testResourcesURL
         } else {
             return bundleResourcesURL
@@ -56,16 +59,16 @@ struct XMIParserTests {
     @Test("Parse minimal XMI structure")
     func testParseMinimalXMI() async throws {
         let xmi = """
-        <?xml version="1.0" encoding="UTF-8"?>
-        <ecore:EPackage
-            xmi:version="2.0"
-            xmlns:xmi="http://www.omg.org/XMI"
-            xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore"
-            name="test"
-            nsURI="http://test"
-            nsPrefix="test">
-        </ecore:EPackage>
-        """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <ecore:EPackage
+                xmi:version="2.0"
+                xmlns:xmi="http://www.omg.org/XMI"
+                xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore"
+                name="test"
+                nsURI="http://test"
+                nsPrefix="test">
+            </ecore:EPackage>
+            """
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".ecore")
@@ -149,9 +152,10 @@ struct XMIParserTests {
         #expect(nsURI == "http://swift-modelling.org/test/animals")
 
         // Verify classifiers were parsed
-        let classifiers = await resource.eGet(objectId: pkg!.id, feature: "eClassifiers") as? [EUUID]
+        let classifiers =
+            await resource.eGet(objectId: pkg!.id, feature: "eClassifiers") as? [EUUID]
         #expect(classifiers != nil)
-        #expect(classifiers?.count == 2) // Animal class and Species enum
+        #expect(classifiers?.count == 2)  // Animal class and Species enum
     }
 
     /// Test parsing organisation.ecore with references
@@ -164,7 +168,8 @@ struct XMIParserTests {
     @Test("Parse organisation.ecore metamodel with references")
     func testParseOrganisationEcore() async throws {
         let resourcesURL = try getResourcesURL()
-        let url = resourcesURL.appendingPathComponent("xmi").appendingPathComponent("organisation.ecore")
+        let url = resourcesURL.appendingPathComponent("xmi").appendingPathComponent(
+            "organisation.ecore")
 
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw TestError.fileNotFound("organisation.ecore")
@@ -183,9 +188,10 @@ struct XMIParserTests {
         #expect(pkgName == "organisation")
 
         // Verify classifiers were parsed
-        let classifiers = await resource.eGet(objectId: pkg!.id, feature: "eClassifiers") as? [EUUID]
+        let classifiers =
+            await resource.eGet(objectId: pkg!.id, feature: "eClassifiers") as? [EUUID]
         #expect(classifiers != nil)
-        #expect(classifiers?.count == 3) // Person, Team, Organisation
+        #expect(classifiers?.count == 3)  // Person, Team, Organisation
     }
 
     // MARK: - Instance Parsing Tests
@@ -258,7 +264,8 @@ struct XMIParserTests {
 
         // Verify first member's name
         if let firstMemberId = members?.first {
-            let memberName = await resource.eGet(objectId: firstMemberId, feature: "name") as? String
+            let memberName =
+                await resource.eGet(objectId: firstMemberId, feature: "name") as? String
             #expect(memberName == "Alice")
 
             // Verify XPath reference resolution - leader should point to first member
@@ -284,7 +291,8 @@ struct XMIParserTests {
     @Test("Parse XMI with arbitrary attributes and type inference")
     func testArbitraryAttributes() async throws {
         let resourcesURL = try getResourcesURL()
-        let url = resourcesURL.appendingPathComponent("xmi").appendingPathComponent("arbitrary-attributes.xmi")
+        let url = resourcesURL.appendingPathComponent("xmi").appendingPathComponent(
+            "arbitrary-attributes.xmi")
 
         guard FileManager.default.fileExists(atPath: url.path) else {
             throw TestError.fileNotFound("arbitrary-attributes.xmi")
@@ -328,5 +336,257 @@ struct XMIParserTests {
         // Verify String fallback for non-parseable values
         let status = await resource.eGet(objectId: record!.id, feature: "status") as? String
         #expect(status == "pending")
+    }
+
+    // MARK: - ResourceSet Metamodel Lookup Tests (Phase 0.10)
+
+    /// Test that XMI parser uses ResourceSet for metamodel lookup instead of always creating dynamic EClasses
+    @Test("ResourceSet metamodel lookup - registered metamodel should be used")
+    func testResourceSetMetamodelLookup() async throws {
+        // Create a ResourceSet and register a metamodel
+        let resourceSet = ResourceSet()
+
+        // Create a simple metamodel with a Person class
+        let stringType = EDataType(name: "EString")
+        var personClass = EClass(name: "Person")
+        let nameAttr = EAttribute(name: "name", eType: stringType)
+        personClass.eStructuralFeatures = [nameAttr]
+
+        var metamodelPackage = EPackage(
+            name: "family",
+            nsURI: "http://family/1.0",
+            nsPrefix: "fam"
+        )
+        metamodelPackage.eClassifiers = [personClass]
+
+        // Register the metamodel in the ResourceSet
+        await resourceSet.registerMetamodel(metamodelPackage, uri: "http://family/1.0")
+
+        // Create XMI content that references this metamodel
+        let xmiContent = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <fam:Person xmlns:fam="http://family/1.0"
+                        xmlns:xmi="http://www.omg.org/XMI"
+                        xmi:version="2.0"
+                        name="John Doe"/>
+            """
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".xmi")
+        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        // Parse with ResourceSet - should use registered metamodel
+        let parser = XMIParser(resourceSet: resourceSet)
+        let resource = try await parser.parse(tempURL)
+        let roots = await resource.getRootObjects()
+
+        #expect(roots.count == 1)
+
+        let person = roots[0] as? DynamicEObject
+        #expect(person != nil)
+
+        // Verify that the object uses the registered EClass, not a dynamic one
+        #expect(person!.eClass.name == "Person")
+
+        // Verify that the name attribute was parsed correctly
+        let name = await resource.eGet(objectId: person!.id, feature: "name") as? String
+        #expect(name == "John Doe")
+    }
+
+    /// Test fallback to dynamic EClass creation when metamodel is not registered
+    @Test("ResourceSet metamodel lookup - fallback to dynamic EClass")
+    func testResourceSetFallbackToDynamic() async throws {
+        // Create a ResourceSet but don't register the needed metamodel
+        let resourceSet = ResourceSet()
+
+        // Create XMI content that references an unregistered metamodel
+        let xmiContent = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <unknown:Widget xmlns:unknown="http://unknown/1.0"
+                           xmlns:xmi="http://www.omg.org/XMI"
+                           xmi:version="2.0"
+                           title="Test Widget"/>
+            """
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".xmi")
+        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        // Parse with ResourceSet - should fall back to dynamic creation
+        let parser = XMIParser(resourceSet: resourceSet)
+        let resource = try await parser.parse(tempURL)
+        let roots = await resource.getRootObjects()
+
+        #expect(roots.count == 1)
+
+        let widget = roots[0] as? DynamicEObject
+        #expect(widget != nil)
+
+        // Verify that a dynamic EClass was created
+        #expect(widget!.eClass.name == "Widget")
+
+        // Verify that the title attribute was parsed correctly
+        let title = await resource.eGet(objectId: widget!.id, feature: "title") as? String
+        #expect(title == "Test Widget")
+    }
+
+    /// Test parsing without ResourceSet - should always create dynamic EClasses
+    @Test("No ResourceSet - always creates dynamic EClasses")
+    func testParsingWithoutResourceSet() async throws {
+        // Create XMI content
+        let xmiContent = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <test:Sample xmlns:test="http://test/1.0"
+                        xmlns:xmi="http://www.omg.org/XMI"
+                        xmi:version="2.0"
+                        value="123"/>
+            """
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".xmi")
+        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        // Parse without ResourceSet - should create dynamic EClass
+        let parser = XMIParser()  // No ResourceSet
+        let resource = try await parser.parse(tempURL)
+        let roots = await resource.getRootObjects()
+
+        #expect(roots.count == 1)
+
+        let sample = roots[0] as? DynamicEObject
+        #expect(sample != nil)
+
+        // Verify that a dynamic EClass was created
+        #expect(sample!.eClass.name == "Sample")
+
+        // Verify that the value attribute was parsed correctly (type inference converts "123" to Int)
+        let value = await resource.eGet(objectId: sample!.id, feature: "value") as? Int
+        #expect(value == 123)
+    }
+
+    /// Test that ResourceSet metamodel lookup creates proper instances
+    @Test("ResourceSet metamodel lookup creates instances with registered types")
+    func testResourceSetCreatesProperInstances() async throws {
+        // Create a ResourceSet and register a metamodel
+        let resourceSet = ResourceSet()
+
+        // Create metamodel with Employee class
+        let stringType = EDataType(name: "EString")
+        var employeeClass = EClass(name: "Employee")
+        let nameAttr = EAttribute(name: "name", eType: stringType)
+        employeeClass.eStructuralFeatures = [nameAttr]
+
+        var companyPackage = EPackage(
+            name: "company",
+            nsURI: "http://company/1.0",
+            nsPrefix: "comp"
+        )
+        companyPackage.eClassifiers = [employeeClass]
+
+        // Register the metamodel
+        await resourceSet.registerMetamodel(companyPackage, uri: "http://company/1.0")
+
+        // Create XMI content with single Employee instance
+        let xmiContent = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <comp:Employee xmlns:comp="http://company/1.0"
+                          xmlns:xmi="http://www.omg.org/XMI"
+                          xmi:version="2.0"
+                          name="Alice"/>
+            """
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".xmi")
+        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        // Parse with ResourceSet
+        let parser = XMIParser(resourceSet: resourceSet)
+        let resource = try await parser.parse(tempURL)
+        let roots = await resource.getRootObjects()
+
+        #expect(roots.count == 1)
+
+        // Verify instance uses registered EClass (not dynamic)
+        let employee = roots[0] as? DynamicEObject
+        #expect(employee != nil)
+        #expect(employee!.eClass.name == "Employee")
+
+        // Verify the instance can access registered metamodel structure
+        let name = await resource.eGet(objectId: employee!.id, feature: "name") as? String
+        #expect(name == "Alice")
+
+        // Verify this is the registered EClass (not a dynamic one)
+        let registeredEmployeeClass = companyPackage.getClassifier("Employee") as? EClass
+        #expect(registeredEmployeeClass != nil)
+        #expect(employee!.eClass.id == registeredEmployeeClass!.id)
+    }
+
+    /// Test complex metamodel lookup with inheritance
+    @Test("ResourceSet metamodel lookup with inheritance")
+    func testMetamodelLookupWithInheritance() async throws {
+        // Create ResourceSet
+        let resourceSet = ResourceSet()
+
+        // Create metamodel with inheritance: Person -> Employee
+        let stringType = EDataType(name: "EString")
+        let intType = EDataType(name: "EInt")
+        var personClass = EClass(name: "Person")
+        let nameAttr = EAttribute(name: "name", eType: stringType)
+        personClass.eStructuralFeatures = [nameAttr]
+
+        var employeeClass = EClass(name: "Employee")
+        let salaryAttr = EAttribute(name: "salary", eType: intType)
+        employeeClass.eStructuralFeatures = [salaryAttr]
+        employeeClass.eSuperTypes = [personClass]  // Employee extends Person
+
+        var hrPackage = EPackage(
+            name: "hr",
+            nsURI: "http://hr/1.0",
+            nsPrefix: "hr"
+        )
+        hrPackage.eClassifiers = [personClass, employeeClass]
+
+        // Register the metamodel
+        await resourceSet.registerMetamodel(hrPackage, uri: "http://hr/1.0")
+
+        // Create XMI content with inheritance
+        let xmiContent = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <hr:Employee xmlns:hr="http://hr/1.0"
+                        xmlns:xmi="http://www.omg.org/XMI"
+                        xmi:version="2.0"
+                        name="Jane Smith"
+                        salary="90000"/>
+            """
+
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".xmi")
+        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        // Parse with ResourceSet
+        let parser = XMIParser(resourceSet: resourceSet)
+        let resource = try await parser.parse(tempURL)
+        let roots = await resource.getRootObjects()
+
+        #expect(roots.count == 1)
+
+        let employee = roots[0] as? DynamicEObject
+        #expect(employee != nil)
+
+        // Verify correct EClass was used
+        #expect(employee!.eClass.name == "Employee")
+
+        // Verify inherited attribute works
+        let name = await resource.eGet(objectId: employee!.id, feature: "name") as? String
+        #expect(name == "Jane Smith")
+
+        // Verify own attribute works
+        let salary = await resource.eGet(objectId: employee!.id, feature: "salary") as? Int
+        #expect(salary == 90000)
     }
 }

@@ -5,9 +5,31 @@
 //  Created by Rene Hexel on 17/12/2025.
 //  Copyright © 2025 Rene Hexel. All rights reserved.
 //
-
 import Foundation
 import BigInt
+
+// MARK: - XML Namespace Attributes
+
+/// XML namespace attribute names used in document parsing.
+///
+/// Provides type-safe access to standard XML namespace declaration attributes.
+/// These are used during XMI parsing to resolve namespace URIs for metamodel lookup.
+///
+/// ## Usage
+///
+/// ```swift
+/// let defaultNS = element[XMLNamespace.xmlns]
+/// let prefixedNS = element["xmlns:\(prefix)"]
+/// ```
+public enum XMLNamespace {
+    /// Default namespace declaration attribute.
+    public static let xmlns = "xmlns"
+
+    /// Namespace prefix for generating xmlns:prefix attributes.
+    public static func prefixed(_ prefix: String) -> String {
+        return Self.xmlns + ":" + prefix
+    }
+}
 
 // MARK: - XMI Attribute Names
 
