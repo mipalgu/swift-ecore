@@ -589,4 +589,106 @@ struct XMIParserTests {
         let salary = await resource.eGet(objectId: employee!.id, feature: "salary") as? Int
         #expect(salary == 90000)
     }
+
+    // MARK: - Reference Type Resolution Tests
+
+    /// Test that child elements are typed by their parent's reference eType, not element name
+    ///
+    /// This test validates the critical behavior where XML element names represent
+    /// reference names (like `<father>`, `<mother>`), but the actual EClass of the
+    /// child object should come from the reference's eType (e.g., `Member`).
+    ///
+    /// Without this, `getAllInstancesOf(Member)` would return 0 because instances
+    /// would be created with EClass names matching the XML element names instead.
+    @Test("Parse instances with reference-based type resolution")
+    func testReferenceTypeResolution() async throws {
+        // Create a simple metamodel with proper type references
+        // Note: We need to create the Person class first, then reference it
+        let personClass = EClass(
+            name: "Person",
+            eStructuralFeatures: [
+                EAttribute(name: "firstName", eType: EDataType(name: "EString"))
+            ]
+        )
+
+        let familyClass = EClass(
+            name: "Family",
+            eStructuralFeatures: [
+                EAttribute(name: "name", eType: EDataType(name: "EString")),
+                EReference(
+                    name: "father",
+                    eType: personClass,
+                    containment: true
+                ),
+                EReference(
+                    name: "mother",
+                    eType: personClass,
+                    containment: true
+                )
+            ]
+        )
+
+        let metamodel = EPackage(
+            name: "TestFamily",
+            nsURI: "http://test.family",
+            nsPrefix: "fam",
+            eClassifiers: [familyClass, personClass]
+        )
+
+        // Create XMI content with <father> and <mother> elements
+        // These should be typed as "Person", not "father"/"mother"
+        let xmiContent = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <xmi:XMI xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns="http://test.family">
+          <Family name="Smith">
+            <father firstName="John"/>
+            <mother firstName="Jane"/>
+          </Family>
+        </xmi:XMI>
+        """
+
+        // Write to temporary file
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-reference-types.xmi")
+        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+
+        // Register metamodel in ResourceSet
+        let resourceSet = ResourceSet()
+        await resourceSet.registerMetamodel(metamodel, uri: "http://test.family")
+
+        // Parse with ResourceSet
+        let parser = XMIParser(resourceSet: resourceSet)
+        let resource = try await parser.parse(tempURL)
+
+        // Get all objects
+        let allObjects = await resource.getAllObjects()
+        #expect(allObjects.count == 3)  // 1 Family + 2 Persons
+
+        // Get the Person EClass from metamodel
+        guard let personClass = metamodel.getClassifier("Person") as? EClass else {
+            Issue.record("Person class not found in metamodel")
+            return
+        }
+
+        // Critical test: getAllInstancesOf(Person) should find both father and mother
+        let persons = await resource.getAllInstancesOf(personClass)
+        #expect(persons.count == 2, "Should find 2 Person instances (father and mother)")
+
+        // Verify the instances have correct EClass
+        for person in persons {
+            #expect(person.eClass.name == "Person",
+                   "Child element should be typed as 'Person' (reference eType), not element name")
+            #expect(person.eClass.id == personClass.id,
+                   "EClass ID should match the metamodel's Person class")
+        }
+
+        // Verify we can access their attributes
+        let firstNames = persons.compactMap { obj -> String? in
+            guard let dynObj = obj as? DynamicEObject else { return nil }
+            return dynObj.eGet("firstName") as? String
+        }
+        #expect(firstNames.contains("John"))
+        #expect(firstNames.contains("Jane"))
+    }
 }

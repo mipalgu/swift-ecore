@@ -303,15 +303,25 @@ public actor XMIParser {
     ///   - resource: The Resource for context and object storage
     /// - Returns: The parsed instance as a DynamicEObject
     /// - Throws: `XMIError` if parsing fails
-    private func parseInstanceElement(_ element: XElement, in resource: Resource) async throws
-        -> DynamicEObject
+    private func parseInstanceElement(
+        _ element: XElement,
+        in resource: Resource,
+        parentEClass: EClass? = nil,
+        referenceName: String? = nil
+    ) async throws -> DynamicEObject
     {
         // First pass: collect all structural information for this class
         let structureInfo = collectStructuralInfo(from: element)
         let className = structureInfo.className
 
         // Try to find EClass from registered metamodel, fall back to dynamic creation
-        let eClass = await lookupEClass(className: className, element: element, resource: resource)
+        let eClass = await lookupEClass(
+            className: className,
+            element: element,
+            resource: resource,
+            parentEClass: parentEClass,
+            referenceName: referenceName
+        )
 
         // Then enhance it with discovered features (only for dynamically created classes)
         recordStructureInfo(for: className, with: structureInfo)
@@ -355,7 +365,12 @@ public actor XMIParser {
                 referenceMap[instance.id, default: [:]][childName] = href
             } else {
                 // It's a contained child object
-                let childObject = try await parseInstanceElement(child, in: resource)
+                let childObject = try await parseInstanceElement(
+                    child,
+                    in: resource,
+                    parentEClass: eClass as? EClass,
+                    referenceName: childName
+                )
                 await resource.register(childObject)
 
                 // Add to containment reference array
@@ -987,26 +1002,45 @@ public actor XMIParser {
 
     /// Looks up an EClass from registered metamodels, falling back to dynamic creation
     ///
-    /// This method attempts to resolve the EClass from a registered metamodel in the ResourceSet.
-    /// If no ResourceSet is available or the metamodel doesn't contain the class, it falls back
-    /// to creating a new dynamic EClass.
+    /// This method attempts to resolve the EClass in the following order:
+    /// 1. If parent context is available, look up the reference's eType
+    /// 2. Otherwise, resolve from ResourceSet using namespace URI
+    /// 3. Fall back to creating a new dynamic EClass
     ///
     /// - Parameters:
     ///   - className: The name of the class to look up
     ///   - element: The XML element being parsed (for namespace resolution)
     ///   - resource: The resource being populated
+    ///   - parentEClass: The parent element's EClass (if parsing a child element)
+    ///   - referenceName: The name of the reference feature (XML element name)
     /// - Returns: The EClass from metamodel if found, otherwise a new dynamic EClass
     private func lookupEClass(
         className: String,
         element: XElement,
-        resource: Resource
+        resource: Resource,
+        parentEClass: EClass? = nil,
+        referenceName: String? = nil
     ) async -> EClass {
-        // Step 1: Check cache first
+        // Step 1: If we have parent context, try to resolve from the reference type
+        if let parentEClass = parentEClass,
+           let referenceName = referenceName {
+            // Look for a reference feature with this name
+            if let reference = parentEClass.allReferences.first(where: { $0.name == referenceName }) {
+                // Get the eType of the reference
+                if let referenceType = reference.eType as? EClass {
+                    // Cache using the actual type name, not the element name
+                    eClassCache[referenceType.name] = referenceType
+                    return referenceType
+                }
+            }
+        }
+
+        // Step 2: Check cache
         if let cachedClass = eClassCache[className] {
             return cachedClass
         }
 
-        // Step 2: Try to resolve from ResourceSet
+        // Step 3: Try to resolve from ResourceSet using namespace
         if let resourceSet = self.resourceSet {
             // Extract namespace URI from element
             if let namespaceURI = extractNamespaceURI(from: element) {
@@ -1022,7 +1056,7 @@ public actor XMIParser {
             }
         }
 
-        // Step 3: Fall back to dynamic EClass creation
+        // Step 4: Fall back to dynamic EClass creation
         let eClass = EClass(name: className)
         eClassCache[className] = eClass
         return eClass
