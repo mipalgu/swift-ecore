@@ -294,11 +294,6 @@ struct OrderPreservationTests {
         let serializer = XMISerializer()
         let xmiString = try await serializer.serialize(resource)
 
-        // Debug: Print the serialized XMI
-        print("=== SERIALIZED XMI ===")
-        print(xmiString)
-        print("====================")
-
         // Write to temporary file
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")

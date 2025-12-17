@@ -693,18 +693,18 @@ public actor Resource {
         let typeName = eClass.name
 
         switch typeName {
-        case "EClass":
+        case EcoreClassifier.eClass.rawValue:
             return try await createEClass(from: object, shouldIgnoreUnresolvedFeatures: true)
-        case "EEnum":
+        case EcoreClassifier.eEnum.rawValue:
             return try await createEEnum(from: object, shouldIgnoreUnresolvedLiterals: true)
-        case "EDataType":
+        case EcoreClassifier.eDataType.rawValue:
             guard let result = EDataType(object: object) else {
                 throw XMIError.missingRequiredAttribute(
-                    "Failed to initialise EDataType from object")
+                    ErrorMessage.missingNameAttribute.rawValue)
             }
             return result
         default:
-            throw XMIError.unsupportedFeature("Unsupported classifier type: \(typeName)")
+            throw XMIError.unknownElement("Unsupported classifier type: \(typeName)")
         }
     }
 

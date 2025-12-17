@@ -200,7 +200,7 @@ public struct EPackage: ENamedElement {
 
         // Extract classifiers using type resolver
         var eClassifiers: [any EClassifier] = []
-        if let classifiersList: [any EObject] = dynamicObj.eGet("eClassifiers") as? [any EObject] {
+        if let classifiersList: [any EObject] = dynamicObj.eGet(.eClassifiers) {
             for classifierObj in classifiersList {
                 do {
                     let classifier = try EClassifierResolver.resolvingType(classifierObj)
@@ -218,7 +218,7 @@ public struct EPackage: ENamedElement {
 
         // Extract subpackages recursively
         var eSubpackages: [EPackage] = []
-        if let subpackagesList: [any EObject] = dynamicObj.eGet("eSubpackages") as? [any EObject] {
+        if let subpackagesList: [any EObject] = dynamicObj.eGet(.eSubpackages) {
             for subpackageObj in subpackagesList {
                 if let subpackage = try? EPackage(
                     object: subpackageObj,
@@ -384,5 +384,5 @@ public struct EPackageClassifier: EClassifier {
     /// The name of this classifier.
     ///
     /// Always returns `"EPackage"` to identify this as the metaclass for packages.
-    public var name: String { "EPackage" }
+    public var name: String { EcoreClassifier.ePackage.rawValue }
 }

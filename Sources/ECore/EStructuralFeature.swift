@@ -490,7 +490,7 @@ public struct EAttributeClassifier: EClassifier {
     /// The name of this classifier.
     ///
     /// Always returns `"EAttribute"` to identify this as the metaclass for attributes.
-    public var name: String { "EAttribute" }
+    public var name: String { EcoreClassifier.eAttribute.rawValue }
 }
 
 /// Metaclass for `EReference`.
@@ -505,7 +505,7 @@ public struct EReferenceClassifier: EClassifier {
     /// The name of this classifier.
     ///
     /// Always returns `"EReference"` to identify this as the metaclass for references.
-    public var name: String { "EReference" }
+    public var name: String { EcoreClassifier.eReference.rawValue }
 }
 
 // MARK: - EStructuralFeature Type Resolution
@@ -531,20 +531,20 @@ public enum EStructuralFeatureResolver {
         let typeName = eClass.name
 
         switch typeName {
-        case "EAttribute":
+        case EcoreClassifier.eAttribute.rawValue:
             guard let result = EAttribute(object: object) else {
                 throw XMIError.missingRequiredAttribute(
-                    "Failed to initialize EAttribute from object")
+                    ErrorMessage.missingNameAttribute.rawValue)
             }
             return result
-        case "EReference":
+        case EcoreClassifier.eReference.rawValue:
             guard let result = EReference(object: object) else {
                 throw XMIError.missingRequiredAttribute(
-                    "Failed to initialize EReference from object")
+                    ErrorMessage.missingNameAttribute.rawValue)
             }
             return result
         default:
-            throw XMIError.unsupportedFeature("Unsupported feature type: \(typeName)")
+            throw XMIError.unknownElement("Unsupported structural feature type: \(typeName)")
         }
     }
 }
@@ -561,25 +561,25 @@ extension EAttribute {
     /// - Returns: A new EAttribute instance, or `nil` if the object is invalid or missing required attributes.
     public init?(object: any EObject) {
         guard let dynamicObj = object as? DynamicEObject,
-            let name: String = dynamicObj.eGet("name") as? String
+            let name: String = dynamicObj.eGet(.name)
         else {
             return nil
         }
 
-        let lowerBound: Int = dynamicObj.eGet("lowerBound") as? Int ?? 0
-        let upperBound: Int = dynamicObj.eGet("upperBound") as? Int ?? 1
-        let changeable: Bool = dynamicObj.eGet("changeable") as? Bool ?? true
-        let volatile: Bool = dynamicObj.eGet("volatile") as? Bool ?? false
-        let transient: Bool = dynamicObj.eGet("transient") as? Bool ?? false
-        let isID: Bool = dynamicObj.eGet("iD") as? Bool ?? false
-        let defaultValueLiteral: String? = dynamicObj.eGet("defaultValueLiteral") as? String
+        let lowerBound: Int = dynamicObj.getIntProperty(.lowerBound, defaultValue: 0)
+        let upperBound: Int = dynamicObj.getIntProperty(.upperBound, defaultValue: 1)
+        let changeable: Bool = dynamicObj.getBoolProperty(.changeable, defaultValue: true)
+        let volatile: Bool = dynamicObj.getBoolProperty(.volatile, defaultValue: false)
+        let transient: Bool = dynamicObj.getBoolProperty(.transient, defaultValue: false)
+        let isID: Bool = dynamicObj.getBoolProperty(.iD, defaultValue: false)
+        let defaultValueLiteral: String? = dynamicObj.eGet(.defaultValueLiteral)
 
         // Resolve eType
         let eType: any EClassifier
-        if dynamicObj.eGet("eType") as? any EObject != nil {
-            eType = EDataType(name: "EString")  // Fallback for non-resource context
+        if let _: any EObject = dynamicObj.eGet(.eType) {
+            eType = EDataType(name: EcoreDataType.eString.rawValue)  // Fallback for non-resource context
         } else {
-            eType = EDataType(name: "EString")
+            eType = EDataType(name: EcoreDataType.eString.rawValue)
         }
 
         // Call existing designated initializer
@@ -609,25 +609,25 @@ extension EReference {
     /// - Returns: A new EReference instance, or `nil` if the object is invalid or missing required attributes.
     public init?(object: any EObject) {
         guard let dynamicObj = object as? DynamicEObject,
-            let name: String = dynamicObj.eGet("name") as? String
+            let name: String = dynamicObj.eGet(.name)
         else {
             return nil
         }
 
-        let lowerBound: Int = dynamicObj.eGet("lowerBound") as? Int ?? 0
-        let upperBound: Int = dynamicObj.eGet("upperBound") as? Int ?? 1
-        let containment: Bool = dynamicObj.eGet("containment") as? Bool ?? false
-        let changeable: Bool = dynamicObj.eGet("changeable") as? Bool ?? true
-        let volatile: Bool = dynamicObj.eGet("volatile") as? Bool ?? false
-        let transient: Bool = dynamicObj.eGet("transient") as? Bool ?? false
-        let resolveProxies: Bool = dynamicObj.eGet("resolveProxies") as? Bool ?? true
+        let lowerBound: Int = dynamicObj.getIntProperty(.lowerBound, defaultValue: 0)
+        let upperBound: Int = dynamicObj.getIntProperty(.upperBound, defaultValue: 1)
+        let containment: Bool = dynamicObj.getBoolProperty(.containment, defaultValue: false)
+        let changeable: Bool = dynamicObj.getBoolProperty(.changeable, defaultValue: true)
+        let volatile: Bool = dynamicObj.getBoolProperty(.volatile, defaultValue: false)
+        let transient: Bool = dynamicObj.getBoolProperty(.transient, defaultValue: false)
+        let resolveProxies: Bool = dynamicObj.getBoolProperty(.resolveProxies, defaultValue: true)
 
         // Resolve eType
         let eType: any EClassifier
-        if dynamicObj.eGet("eType") as? any EObject != nil {
-            eType = EClass(name: "EObject")  // Fallback for non-resource context
+        if let _: any EObject = dynamicObj.eGet(.eType) {
+            eType = EClass(name: EcoreClassifier.eObject.rawValue)  // Fallback for non-resource context
         } else {
-            eType = EClass(name: "EObject")
+            eType = EClass(name: EcoreClassifier.eObject.rawValue)
         }
 
         // eOpposite resolution deferred (TODO: two-pass conversion)

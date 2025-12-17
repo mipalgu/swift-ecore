@@ -95,16 +95,16 @@ public struct EDataType: EClassifier, ENamedElement {
         if instanceClassName == nil {
             self.instanceClassName =
                 switch name {
-                case "EString": "Swift.String"
-                case "EInt": "Swift.Int"
-                case "EBoolean": "Swift.Bool"
-                case "EFloat": "Swift.Float"
-                case "EDouble": "Swift.Double"
-                case "EDate": "Foundation.Date"
-                case "EChar": "Swift.Character"
-                case "EByte": "Swift.Int8"
-                case "EShort": "Swift.Int16"
-                case "ELong": "Swift.Int64"
+                case EcoreDataType.eString.rawValue: "Swift.String"
+                case EcoreDataType.eInt.rawValue: "Swift.Int"
+                case EcoreDataType.eBoolean.rawValue: "Swift.Bool"
+                case EcoreDataType.eFloat.rawValue: "Swift.Float"
+                case EcoreDataType.eDouble.rawValue: "Swift.Double"
+                case EcoreDataType.eDate.rawValue: "Foundation.Date"
+                case EcoreDataType.eChar.rawValue: "Swift.Character"
+                case EcoreDataType.eByte.rawValue: "Swift.Int8"
+                case EcoreDataType.eShort.rawValue: "Swift.Int16"
+                case EcoreDataType.eLong.rawValue: "Swift.Int64"
                 default: nil
                 }
         } else {
@@ -465,7 +465,7 @@ public struct EDataTypeClassifier: EClassifier {
     /// The name of this classifier.
     ///
     /// Always returns `"EDataType"` to identify this as the metaclass for data types.
-    public var name: String { "EDataType" }
+    public var name: String { EcoreClassifier.eDataType.rawValue }
 }
 
 /// Metaclass for `EEnumLiteral`.
@@ -481,7 +481,7 @@ public struct EEnumLiteralClassifier: EClassifier {
     /// The name of this classifier.
     ///
     /// Always returns `"EEnumLiteral"` to identify this as the metaclass for enum literals.
-    public var name: String { "EEnumLiteral" }
+    public var name: String { EcoreClassifier.eEnumLiteral.rawValue }
 }
 
 /// Metaclass for `EEnum`.
@@ -497,7 +497,7 @@ public struct EEnumClassifier: EClassifier {
     /// The name of this classifier.
     ///
     /// Always returns `"EEnum"` to identify this as the metaclass for enumerations.
-    public var name: String { "EEnum" }
+    public var name: String { EcoreClassifier.eEnum.rawValue }
 }
 
 // MARK: - EClassifier Type Resolution
@@ -523,17 +523,17 @@ public enum EClassifierResolver {
         let typeName = eClass.name
 
         switch typeName {
-        case "EClass":
+        case EcoreClassifier.eClass.rawValue:
             guard let result = EClass(object: object) else {
-                throw XMIError.missingRequiredAttribute("Failed to initialize EClass from object")
+                throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
             }
             return result
-        case "EEnum":
+        case EcoreClassifier.eEnum.rawValue:
             guard let result = EEnum(object: object) else {
-                throw XMIError.missingRequiredAttribute("Failed to initialize EEnum from object")
+                throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
             }
             return result
-        case "EDataType":
+        case EcoreClassifier.eDataType.rawValue:
             guard let result = EDataType(object: object) else {
                 throw XMIError.missingRequiredAttribute(
                     "Failed to initialize EDataType from object")
@@ -552,9 +552,9 @@ public enum EClassifierResolver {
     /// - Returns: The resolved EDataType.
     public static func resolvingDataType(_ object: any EObject) -> any EClassifier {
         guard let dynamicObj = object as? DynamicEObject,
-            let typeName: String = dynamicObj.eGet("name") as? String
+            let typeName: String = dynamicObj.eGet(.name)
         else {
-            return EDataType(name: "EString")
+            return EDataType(name: EcoreDataType.eString.rawValue)
         }
 
         return EDataType(name: typeName)
@@ -571,9 +571,9 @@ public enum EClassifierResolver {
     /// - Returns: The resolved EClass.
     public static func resolvingReferenceType(_ object: any EObject) -> any EClassifier {
         guard let dynamicObj = object as? DynamicEObject,
-            let className: String = dynamicObj.eGet("name") as? String
+            let className: String = dynamicObj.eGet(.name)
         else {
-            return EClass(name: "EObject")
+            return EClass(name: EcoreClassifier.eObject.rawValue)
         }
 
         return EClass(name: className)
@@ -595,14 +595,14 @@ extension EEnum {
     /// - Returns: A new EEnum instance, or `nil` if the object is invalid or missing required attributes.
     public init?(object: any EObject, shouldIgnoreUnresolvedLiterals: Bool = false) {
         guard let dynamicObj = object as? DynamicEObject,
-            let name: String = dynamicObj.eGet("name") as? String
+            let name: String = dynamicObj.eGet(.name)
         else {
             return nil
         }
 
         // Extract enum literals
         var literals: [EEnumLiteral] = []
-        if let literalsList: [any EObject] = dynamicObj.eGet("eLiterals") as? [any EObject] {
+        if let literalsList: [any EObject] = dynamicObj.eGet(.eLiterals) {
             for literalObj in literalsList {
                 if let literal = EEnumLiteral(object: literalObj) {
                     literals.append(literal)

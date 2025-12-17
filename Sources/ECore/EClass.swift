@@ -155,32 +155,17 @@ public struct EClass: EClassifier, ENamedElement {
     /// - Returns: A new EClass instance, or `nil` if the object is invalid or missing required attributes.
     public init?(object: any EObject, shouldIgnoreUnresolvedFeatures: Bool = false) {
         guard let dynamicObj = object as? DynamicEObject,
-            let name: String = dynamicObj.eGet("name") as? String
+            let name: String = dynamicObj.eGet(.name)
         else {
             return nil
         }
 
-        let isAbstract: Bool = {
-            if let boolValue = dynamicObj.eGet("abstract") as? Bool {
-                return boolValue
-            } else if let stringValue = dynamicObj.eGet("abstract") as? String {
-                return stringValue.lowercased() == "true"
-            }
-            return false
-        }()
-        let isInterface: Bool = {
-            if let boolValue = dynamicObj.eGet("interface") as? Bool {
-                return boolValue
-            } else if let stringValue = dynamicObj.eGet("interface") as? String {
-                return stringValue.lowercased() == "true"
-            }
-            return false
-        }()
+        let isAbstract: Bool = dynamicObj.getBoolProperty(.abstract, defaultValue: false)
+        let isInterface: Bool = dynamicObj.getBoolProperty(.interface, defaultValue: false)
 
         // Extract structural features
         var eStructuralFeatures: [any EStructuralFeature] = []
-        if let featuresList: [any EObject] = dynamicObj.eGet("eStructuralFeatures")
-            as? [any EObject]
+        if let featuresList: [any EObject] = dynamicObj.eGet(.eStructuralFeatures)
         {
             for featureObj in featuresList {
                 if let feature = try? EStructuralFeatureResolver.resolvingFeature(featureObj) {
@@ -397,5 +382,5 @@ public struct EClassClassifier: EClassifier {
     /// The name of this classifier.
     ///
     /// Always returns `"EClass"`, identifying this as the metaclass for class definitions.
-    public var name: String { "EClass" }
+    public var name: String { EcoreClassifier.eClass.rawValue }
 }

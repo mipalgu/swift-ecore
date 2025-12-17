@@ -132,7 +132,7 @@ public actor XMIParser {
         }
 
         // Check XMI version if present in root element
-        if let xmiVersion = rootElement["xmi:version"] {
+        if let xmiVersion = rootElement[.xmiVersion] {
             // Accept XMI 2.0 and later
             if let version = Double(xmiVersion), version < 2.0 {
                 throw XMIError.unsupportedXMIVersion(xmiVersion)
@@ -174,17 +174,17 @@ public actor XMIParser {
         let elementName = element.name
 
         // Handle Ecore metamodel elements
-        if elementName == "ecore:EPackage" || element["xsi:type"] == "ecore:EPackage" {
+        if elementName == "ecore:EPackage" || element.isEcoreType(.ePackage) {
             return try await parseEPackage(element, in: resource)
-        } else if element["xsi:type"] == "ecore:EClass" {
+        } else if element.isEcoreType(.eClass) {
             return try await parseEClass(element, in: resource)
-        } else if element["xsi:type"] == "ecore:EEnum" {
+        } else if element.isEcoreType(.eEnum) {
             return try await parseEEnum(element, in: resource)
-        } else if element["xsi:type"] == "ecore:EDataType" {
+        } else if element.isEcoreType(.eDataType) {
             return try await parseEDataType(element, in: resource)
-        } else if element["xsi:type"] == "ecore:EAttribute" {
+        } else if element.isEcoreType(.eAttribute) {
             return try await parseEAttribute(element, in: resource)
-        } else if element["xsi:type"] == "ecore:EReference" {
+        } else if element.isEcoreType(.eReference) {
             return try await parseEReference(element, in: resource)
         }
 
@@ -295,7 +295,7 @@ public actor XMIParser {
         var instance = DynamicEObject(eClass: enhancedEClass)
 
         // Register with xmi:id if present
-        if let xmiId = element["xmi:id"] {
+        if let xmiId = element[.xmiId] {
             xmiIdMap[xmiId] = instance.id
         }
 
@@ -369,8 +369,8 @@ public actor XMIParser {
     private func parseEPackage(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element["name"] else {
-            throw XMIError.missingRequiredAttribute("name")
+        guard let name = element[.name] else {
+            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
         guard let nsURI = element["nsURI"] else {
             throw XMIError.missingRequiredAttribute("nsURI")
@@ -380,22 +380,22 @@ public actor XMIParser {
         }
 
         // Create EPackage class if not already in resource
-        let ePackageClass = getOrCreateEClass("EPackage", in: resource)
+        let ePackageClass = getOrCreateEClass(EcoreClassifier.ePackage.rawValue, in: resource)
         var pkg = DynamicEObject(eClass: ePackageClass)
 
         // Register with xmi:id if present
-        if let xmiId = element["xmi:id"] {
+        if let xmiId = element[.xmiId] {
             xmiIdMap[xmiId] = pkg.id
         }
 
         // Set basic attributes BEFORE registering
-        pkg.eSet("name", value: name)
+        pkg.eSet(.name, name)
         pkg.eSet("nsURI", value: nsURI)
         pkg.eSet("nsPrefix", value: nsPrefix)
 
         // Parse classifiers (eClassifiers)
         var classifierIds: [EUUID] = []
-        for child in element.children("eClassifiers") {
+        for child in element.children(.eClassifiers) {
             if let classifier = try await parseElement(child, in: resource) {
                 // Note: Child parser already registered this object
                 classifierIds.append(classifier.id)
@@ -409,7 +409,7 @@ public actor XMIParser {
         }
 
         if !classifierIds.isEmpty {
-            pkg.eSet("eClassifiers", value: classifierIds)
+            pkg.eSet(.eClassifiers, classifierIds)
         }
 
         // Register the package object after all features are set (but not as a root - caller decides that)
@@ -430,37 +430,33 @@ public actor XMIParser {
     private func parseEClass(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element["name"] else {
-            throw XMIError.missingRequiredAttribute("name")
+        guard let name = element[.name] else {
+            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eClassClass = getOrCreateEClass("EClass", in: resource)
+        let eClassClass = getOrCreateEClass(EcoreClassifier.eClass.rawValue, in: resource)
         var eClass = DynamicEObject(eClass: eClassClass)
 
-        if let xmiId = element["xmi:id"] {
+        if let xmiId = element[.xmiId] {
             xmiIdMap[xmiId] = eClass.id
         }
 
         // Set basic attributes BEFORE registering
-        eClass.eSet("name", value: name)
+        eClass.eSet(.name, name)
 
         // Parse abstract attribute
-        if let abstractValue = element["abstract"] {
-            if let boolValue = Bool(abstractValue) {
-                eClass.eSet("abstract", value: boolValue)
-            }
+        if let isAbstract = element.getBool(.abstract) {
+            eClass.eSet(.abstract, isAbstract)
         }
 
         // Parse interface attribute
-        if let interfaceValue = element["interface"] {
-            if let boolValue = Bool(interfaceValue) {
-                eClass.eSet("interface", value: boolValue)
-            }
+        if let isInterface = element.getBool(.interface) {
+            eClass.eSet(.interface, isInterface)
         }
 
         // Parse structural features
         var featureIds: [EUUID] = []
-        for child in element.children("eStructuralFeatures") {
+        for child in element.children(.eStructuralFeatures) {
             if let feature = try await parseElement(child, in: resource) {
                 // Note: Child parser already registered this object
                 featureIds.append(feature.id)
@@ -468,7 +464,7 @@ public actor XMIParser {
         }
 
         if !featureIds.isEmpty {
-            eClass.eSet("eStructuralFeatures", value: featureIds)
+            eClass.eSet(.eStructuralFeatures, featureIds)
         }
 
         // Register the object after all features are set
@@ -489,30 +485,30 @@ public actor XMIParser {
     private func parseEEnum(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element["name"] else {
-            throw XMIError.missingRequiredAttribute("name")
+        guard let name = element[.name] else {
+            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eEnumClass = getOrCreateEClass("EEnum", in: resource)
+        let eEnumClass = getOrCreateEClass(EcoreClassifier.eEnum.rawValue, in: resource)
         var eEnum = DynamicEObject(eClass: eEnumClass)
 
-        if let xmiId = element["xmi:id"] {
+        if let xmiId = element[.xmiId] {
             xmiIdMap[xmiId] = eEnum.id
         }
 
         // Set name before registering
-        eEnum.eSet("name", value: name)
+        eEnum.eSet(.name, name)
 
         // Parse literals
         var literalIds: [EUUID] = []
-        for child in element.children("eLiterals") {
+        for child in element.children(.eLiterals) {
             let literal = try await parseEEnumLiteral(child, in: resource)
             // Note: parseEEnumLiteral already registered this object
             literalIds.append(literal.id)
         }
 
         if !literalIds.isEmpty {
-            eEnum.eSet("eLiterals", value: literalIds)
+            eEnum.eSet(.eLiterals, literalIds)
         }
 
         // Register after all features are set
@@ -533,24 +529,24 @@ public actor XMIParser {
     private func parseEEnumLiteral(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element["name"] else {
-            throw XMIError.missingRequiredAttribute("name")
+        guard let name = element[.name] else {
+            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eEnumLiteralClass = getOrCreateEClass("EEnumLiteral", in: resource)
+        let eEnumLiteralClass = getOrCreateEClass(EcoreClassifier.eEnumLiteral.rawValue, in: resource)
         var literal = DynamicEObject(eClass: eEnumLiteralClass)
 
         // Set features before registering
-        literal.eSet("name", value: name)
+        literal.eSet(.name, name)
 
         // Value defaults to ordinal position if not specified
-        if let valueStr = element["value"], let value = Int(valueStr) {
-            literal.eSet("value", value: value)
+        if let value = element.getInt(.value) {
+            literal.eSet(.value, value)
         }
 
         // Literal string defaults to name if not specified
-        let literalStr = element["literal"] ?? name
-        literal.eSet("literal", value: literalStr)
+        let literalStr = element[.literal] ?? name
+        literal.eSet(.literal, literalStr)
 
         // Register after all features are set
         await resource.register(literal)
@@ -570,30 +566,28 @@ public actor XMIParser {
     private func parseEDataType(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element["name"] else {
-            throw XMIError.missingRequiredAttribute("name")
+        guard let name = element[.name] else {
+            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eDataTypeClass = getOrCreateEClass("EDataType", in: resource)
+        let eDataTypeClass = getOrCreateEClass(EcoreClassifier.eDataType.rawValue, in: resource)
         var dataType = DynamicEObject(eClass: eDataTypeClass)
 
-        if let xmiId = element["xmi:id"] {
+        if let xmiId = element[.xmiId] {
             xmiIdMap[xmiId] = dataType.id
         }
 
         // Set features before registering
-        dataType.eSet("name", value: name)
+        dataType.eSet(.name, name)
 
         // Parse instanceClassName attribute
-        if let instanceClassName = element["instanceClassName"] {
-            dataType.eSet("instanceClassName", value: instanceClassName)
+        if let instanceClassName = element[.instanceClassName] {
+            dataType.eSet(.instanceClassName, instanceClassName)
         }
 
         // Parse serializable attribute
-        if let serializableValue = element["serializable"] {
-            if let boolValue = Bool(serializableValue) {
-                dataType.eSet("serialisable", value: boolValue)
-            }
+        if let isSerializable = element.getBool(.serializable) {
+            dataType.eSet(.serializable, isSerializable)
         }
 
         // Register after features are set
@@ -614,59 +608,51 @@ public actor XMIParser {
     private func parseEAttribute(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element["name"] else {
-            throw XMIError.missingRequiredAttribute("name")
+        guard let name = element[.name] else {
+            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eAttributeClass = getOrCreateEClass("EAttribute", in: resource)
+        let eAttributeClass = getOrCreateEClass(EcoreClassifier.eAttribute.rawValue, in: resource)
         var attribute = DynamicEObject(eClass: eAttributeClass)
 
         // Set features before registering
-        attribute.eSet("name", value: name)
+        attribute.eSet(.name, name)
 
         // eType will be resolved in second pass
-        if let eType = element["eType"] {
+        if let eType = element[.eType] {
             // Store for later resolution
             attribute.eSet("_eType_ref", value: eType)
         }
 
         // Parse multiplicity
-        if let lowerBound = element["lowerBound"], let lb = Int(lowerBound) {
-            attribute.eSet("lowerBound", value: lb)
+        if let lowerBound = element.getInt(.lowerBound) {
+            attribute.eSet(.lowerBound, lowerBound)
         }
 
-        if let upperBound = element["upperBound"], let ub = Int(upperBound) {
-            attribute.eSet("upperBound", value: ub)
+        if let upperBound = element.getInt(.upperBound) {
+            attribute.eSet(.upperBound, upperBound)
         }
 
         // Parse boolean attributes
-        if let idValue = element["iD"] {
-            if let boolValue = Bool(idValue) {
-                attribute.eSet("iD", value: boolValue)
-            }
+        if let isID = element.getBool(.iD) {
+            attribute.eSet(.iD, isID)
         }
 
-        if let changeableValue = element["changeable"] {
-            if let boolValue = Bool(changeableValue) {
-                attribute.eSet("changeable", value: boolValue)
-            }
+        if let isChangeable = element.getBool(.changeable) {
+            attribute.eSet(.changeable, isChangeable)
         }
 
-        if let volatileValue = element["volatile"] {
-            if let boolValue = Bool(volatileValue) {
-                attribute.eSet("volatile", value: boolValue)
-            }
+        if let isVolatile = element.getBool(.volatile) {
+            attribute.eSet(.volatile, isVolatile)
         }
 
-        if let transientValue = element["transient"] {
-            if let boolValue = Bool(transientValue) {
-                attribute.eSet("transient", value: boolValue)
-            }
+        if let isTransient = element.getBool(.transient) {
+            attribute.eSet(.transient, isTransient)
         }
 
         // Default value
-        if let defaultValue = element["defaultValueLiteral"] {
-            attribute.eSet("defaultValueLiteral", value: defaultValue)
+        if let defaultValue = element[.defaultValueLiteral] {
+            attribute.eSet(.defaultValueLiteral, defaultValue)
         }
 
         // Register after features are set
@@ -687,32 +673,32 @@ public actor XMIParser {
     private func parseEReference(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element["name"] else {
-            throw XMIError.missingRequiredAttribute("name")
+        guard let name = element[.name] else {
+            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
 
-        let eReferenceClass = getOrCreateEClass("EReference", in: resource)
+        let eReferenceClass = getOrCreateEClass(EcoreClassifier.eReference.rawValue, in: resource)
         var reference = DynamicEObject(eClass: eReferenceClass)
 
         // Set features before registering
-        reference.eSet("name", value: name)
+        reference.eSet(.name, name)
 
         // eType will be resolved in second pass
-        if let eType = element["eType"] {
+        if let eType = element[.eType] {
             reference.eSet("_eType_ref", value: eType)
         }
 
         // Containment
-        let containment = element["containment"] == "true"
-        reference.eSet("containment", value: containment)
+        let isContainment = element.getBool(.containment) ?? false
+        reference.eSet(.containment, isContainment)
 
         // Parse multiplicity
-        if let lowerBound = element["lowerBound"], let lb = Int(lowerBound) {
-            reference.eSet("lowerBound", value: lb)
+        if let lowerBound = element.getInt(.lowerBound) {
+            reference.eSet(.lowerBound, lowerBound)
         }
 
-        if let upperBound = element["upperBound"], let ub = Int(upperBound) {
-            reference.eSet("upperBound", value: ub)
+        if let upperBound = element.getInt(.upperBound) {
+            reference.eSet(.upperBound, upperBound)
         }
 
         // Register after features are set
@@ -834,11 +820,11 @@ public actor XMIParser {
         }
 
         // Create appropriate built-in type
-        let eDataTypeClass = getOrCreateEClass("EDataType", in: resource)
+        let eDataTypeClass = getOrCreateEClass(EcoreClassifier.eDataType.rawValue, in: resource)
         var dataType = DynamicEObject(eClass: eDataTypeClass)
 
         // Set the name based on the fragment
-        dataType.eSet("name", value: typeName)
+        dataType.eSet(.name, typeName)
 
         // Register with resource and cache
         Task {
@@ -975,12 +961,12 @@ public actor XMIParser {
     ///   - resource: The Resource for context
     /// - Returns: An EClass instance
     private func getOrCreateEClass(_ className: String, in resource: Resource) -> EClass {
-        // Check if we already have this EClass in our cache
+        // Check if we already have this EClass
         if let existingClass = eClassCache[className] {
             return existingClass
         }
 
-        // Create a new EClass and cache it
+        // Create new EClass
         let eClass = EClass(name: className)
         eClassCache[className] = eClass
         return eClass

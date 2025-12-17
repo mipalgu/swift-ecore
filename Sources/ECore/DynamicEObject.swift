@@ -219,10 +219,10 @@ public struct DynamicEObject: EObject {
 
         // Get all metamodel features (attributes and references) in a single collection
         let allMetamodelFeatures = eClass.allStructuralFeatures
-        
+
         // Create a mapping from feature ID to feature name for quick lookup
         let featureIdToName = Dictionary(uniqueKeysWithValues: allMetamodelFeatures.map { ($0.id, $0.name) })
-        
+
         // Add metamodel feature names in the order they were set (from storage)
         for featureId in storage.getSetFeatureIds() {
             if let featureName = featureIdToName[featureId] {
@@ -442,7 +442,7 @@ extension DynamicEObject: Codable {
         let typeName = attribute.eType.name
 
         switch typeName {
-        case "EString":
+        case EcoreDataType.eString.rawValue:
             // Try to decode as string, but allow reasonable coercion
             if let stringValue = try? container.decode(EString.self, forKey: key) {
                 return stringValue
@@ -458,7 +458,7 @@ extension DynamicEObject: Codable {
                     debugDescription: "Cannot convert value to EString"
                 ))
             }
-        case "EInt", "EIntegerObject":
+        case EcoreDataType.eInt.rawValue, EcoreDataType.eIntegerObject.rawValue:
             // Try to decode as int, reject invalid strings
             if let intValue = try? container.decode(EInt.self, forKey: key) {
                 return intValue
@@ -471,16 +471,13 @@ extension DynamicEObject: Codable {
                     debugDescription: "Cannot convert value to EInt"
                 ))
             }
-        case "EBoolean", "EBooleanObject":
+        case EcoreDataType.eBoolean.rawValue, EcoreDataType.eBooleanObject.rawValue:
             // Try to decode as boolean, reject invalid strings
             if let boolValue = try? container.decode(EBoolean.self, forKey: key) {
                 return boolValue
             } else if let stringValue = try? container.decode(EString.self, forKey: key) {
-                let lowercased = stringValue.lowercased()
-                if lowercased == "true" {
-                    return true
-                } else if lowercased == "false" {
-                    return false
+                if let boolValue = BooleanString.fromString(stringValue) {
+                    return boolValue
                 } else {
                     throw DecodingError.typeMismatch(EBoolean.self, DecodingError.Context(
                         codingPath: decoder.codingPath + [key],
@@ -493,7 +490,7 @@ extension DynamicEObject: Codable {
                     debugDescription: "Cannot convert value to EBoolean"
                 ))
             }
-        case "EDouble", "EDoubleObject":
+        case EcoreDataType.eDouble.rawValue, EcoreDataType.eDoubleObject.rawValue:
             if let doubleValue = try? container.decode(EDouble.self, forKey: key) {
                 return doubleValue
             } else if let stringValue = try? container.decode(EString.self, forKey: key),
@@ -505,7 +502,7 @@ extension DynamicEObject: Codable {
                     debugDescription: "Cannot convert value to EDouble"
                 ))
             }
-        case "EFloat", "EFloatObject":
+        case EcoreDataType.eFloat.rawValue, EcoreDataType.eFloatObject.rawValue:
             if let floatValue = try? container.decode(EFloat.self, forKey: key) {
                 return floatValue
             } else if let stringValue = try? container.decode(EString.self, forKey: key),
@@ -517,7 +514,7 @@ extension DynamicEObject: Codable {
                     debugDescription: "Cannot convert value to EFloat"
                 ))
             }
-        case "EDate":
+        case EcoreDataType.eDate.rawValue:
             // Be forgiving with date formats - try multiple approaches
             if let dateValue = try? container.decode(EDate.self, forKey: key) {
                 return dateValue
