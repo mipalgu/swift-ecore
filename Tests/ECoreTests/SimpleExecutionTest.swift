@@ -191,5 +191,40 @@ struct SimpleExecutionTests {
         let companies = await executionEngine.allInstancesOf(companyClass)
         #expect(companies.count == 0)
     }
+
+    // MARK: - OCL Operation Tests
+
+    @Test func testOclIsUndefined() async throws {
+        let (sourceResource, _, executionEngine, testPackage) = try await createTestEnvironment()
+
+        guard let personClass = testPackage.getEClass("Person") else {
+            throw ECoreExecutionError.typeError("Person class not found")
+        }
+
+        // Create a test object
+        let person = try TestObjectFactory.createTestPerson(name: "Test", age: 25, personClass: personClass)
+        await sourceResource.add(person)
+
+        // Test oclIsUndefined on non-nil value (should return false)
+        let nameExpr = ECoreExpression.methodCall(
+            receiver: .navigation(source: .variable(name: "self"), property: "name"),
+            methodName: "oclIsUndefined",
+            arguments: []
+        )
+        let nameContext: [String: any EcoreValue] = ["self": person]
+        let nameResult = try await executionEngine.evaluate(nameExpr, context: nameContext)
+        #expect(nameResult as? Bool == false, "oclIsUndefined on non-nil 'name' should return false")
+
+        // Test oclIsUndefined on nil/undefined value (should return true)
+        // Person was created without salary, so it should be nil
+        let salaryExpr = ECoreExpression.methodCall(
+            receiver: .navigation(source: .variable(name: "self"), property: "salary"),
+            methodName: "oclIsUndefined",
+            arguments: []
+        )
+        let salaryContext: [String: any EcoreValue] = ["self": person]
+        let salaryResult = try await executionEngine.evaluate(salaryExpr, context: salaryContext)
+        #expect(salaryResult as? Bool == true, "oclIsUndefined on nil 'salary' should return true")
+    }
 }
 

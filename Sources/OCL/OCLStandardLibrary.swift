@@ -33,6 +33,9 @@ public enum OCLUnaryMethod: String, CaseIterable, Sendable {
     // Logical operations
     case not = "not"
 
+    // Type operations
+    case oclIsUndefined = "oclIsUndefined"
+
     // Collection type conversions
     case asSet = "asSet"
     case asSequence = "asSequence"
@@ -159,6 +162,11 @@ public func invokeUnaryMethod(_ method: OCLUnaryMethod, on receiver: any EcoreVa
     // Logical operations
     case .not:
         return try not(receiver) as any EcoreValue
+
+    // Type operations
+    case .oclIsUndefined:
+        // For non-nil receiver, oclIsUndefined always returns false
+        return false as any EcoreValue
 
     // Collection type conversions
     case .asSet:

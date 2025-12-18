@@ -343,6 +343,11 @@ public actor ECoreExecutionEngine: Sendable {
     }
 
     private func invokeMethod(on receiver: (any EcoreValue)?, method: String, arguments: [any EcoreValue]) async throws -> (any EcoreValue)? {
+        // Special handling for oclIsUndefined() - works on nil values
+        if arguments.isEmpty, let m = OCLUnaryMethod(rawValue: method), m == .oclIsUndefined {
+            return (receiver == nil) as any EcoreValue
+        }
+
         // Try unary methods (no arguments)
         if arguments.isEmpty, let receiver = receiver {
             if let m = OCLUnaryMethod(rawValue: method) {
