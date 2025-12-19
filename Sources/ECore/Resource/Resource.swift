@@ -85,6 +85,13 @@ public actor Resource {
         self.resourceSet = resourceSet
     }
 
+    /// Enable or disable debug mode.
+    ///
+    /// - Parameter enabled: Whether to enable debug output.
+    public func enableDebugging(_ enabled: Bool = true) {
+        debug = enabled
+    }
+
     // MARK: - Object Management
 
     /// Registers an object with this resource without adding it as a root object.

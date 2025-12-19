@@ -149,7 +149,9 @@ public struct EPackage: ENamedElement {
     /// Parses the .ecore file and constructs a fully-formed EPackage with all classifiers
     /// and subpackages.
     ///
-    /// - Parameter url: URL to the .ecore file.
+    /// - Parameters:
+    ///   - url: URL to the .ecore file.
+    ///   - enableDebugging: Whether to enable debug output during parsing.
     /// - Throws: XMIError if the file cannot be read or parsed.
     ///
     /// ## Example
@@ -159,9 +161,12 @@ public struct EPackage: ENamedElement {
     /// let package = try await EPackage(url: url)
     /// print("Loaded package: \(package.name)")
     /// ```
-    public init(url: URL) async throws {
-        let parser = XMIParser()
+    public init(url: URL, enableDebugging: Bool = false) async throws {
+        let parser = XMIParser(enableDebugging: enableDebugging)
         let resource = try await parser.parse(url)
+
+        // Enable debugging on the resource as well
+        await resource.enableDebugging(enableDebugging)
 
         let rootObjects = await resource.getRootObjects()
         guard let dynamicPackage = rootObjects.first else {
