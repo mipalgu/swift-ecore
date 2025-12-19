@@ -1036,15 +1036,26 @@ public actor XMIParser {
         if let parentEClass = parentEClass,
             let referenceName = referenceName
         {
+            if debug {
+                print("[XMI] Resolving child '\(className)' via parent reference '\(parentEClass.name).\(referenceName)'")
+            }
             // Look for a reference feature with this name
             if let reference = parentEClass.allReferences.first(where: { $0.name == referenceName })
             {
                 // Get the eType of the reference
                 if let referenceType = reference.eType as? EClass {
+                    if debug {
+                        print("[XMI]   Found from parent reference: \(referenceType.name) with \(referenceType.eStructuralFeatures.count) features")
+                    }
                     // Cache using the actual type name, not the element name
                     eClassCache[referenceType.name] = referenceType
                     return referenceType
+                } else if debug {
+                    print("[XMI]   Reference '\(referenceName)' eType is not EClass")
                 }
+            } else if debug {
+                print("[XMI]   Reference '\(referenceName)' not found on parent '\(parentEClass.name)'")
+                print("[XMI]   Parent has \(parentEClass.allReferences.count) references: \(parentEClass.allReferences.map { $0.name }.joined(separator: ", "))")
             }
         }
 
