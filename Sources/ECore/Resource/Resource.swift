@@ -65,13 +65,17 @@ public actor Resource {
     /// for cross-resource reference resolution.
     public weak var resourceSet: ResourceSet?
 
+    /// Enable debug output.
+    public var debug = false
+
     /// Initialises a new resource with the specified URI.
     ///
     /// - Parameter uri: The URI identifying this resource. Defaults to a generated URI.
-    public init(uri: String = "resource://\(UUID().uuidString)") {
+    public init(uri: String = "resource://\(UUID().uuidString)", enableDebugging: Bool = false) {
         self.uri = uri
-        self.objects = OrderedDictionary<EUUID, any EObject>()
-        self.rootObjects = []
+        objects = OrderedDictionary<EUUID, any EObject>()
+        rootObjects = []
+        debug = enableDebugging
     }
 
     /// Sets the resource set that owns this resource.
@@ -784,9 +788,7 @@ public actor Resource {
     ///   - shouldIgnoreUnresolvedClassifiers: If `true`, continues processing when classifier resolution fails; if `false`, throws on resolution failure (default: `false`).
     /// - Returns: A fully constructed EPackage with all classifiers and subpackages resolved.
     /// - Throws: XMIError if the object is invalid, missing required attributes, or classifier resolution fails when not ignored.
-    public func createEPackage(
-        from object: any EObject, shouldIgnoreUnresolvedClassifiers: Bool = false
-    ) async throws -> EPackage {
+    public func createEPackage(from object: any EObject, shouldIgnoreUnresolvedClassifiers: Bool = false) async throws -> EPackage {
         guard let dynamicObj = object as? DynamicEObject else {
             throw XMIError.invalidObjectType("Expected DynamicEObject, got \(type(of: object))")
         }
@@ -797,9 +799,10 @@ public actor Resource {
         let nsURI: String = dynamicObj.eGet("nsURI") as? String ?? "http://\(name.lowercased())"
         let nsPrefix: String = dynamicObj.eGet("nsPrefix") as? String ?? name.lowercased()
 
-        // Debug output to trace nsURI handling
-        print("[DEBUG] Resource.createEPackage: name='\(name)', retrieved nsURI='\(dynamicObj.eGet("nsURI") as? String ?? "nil")', final nsURI='\(nsURI)'")
-
+        // Debug output to trace nsURI handling (commented out - needs debug flag)
+        if debug {
+            print("[DEBUG] Resource.createEPackage: name='\(name)', retrieved nsURI='\(dynamicObj.eGet("nsURI") as? String ?? "nil")', final nsURI='\(nsURI)'")
+        }
         // Extract classifiers using type resolver
         var eClassifiers: [any EClassifier] = []
         if let classifierIds: [EUUID] = dynamicObj.eGet("eClassifiers") as? [EUUID] {

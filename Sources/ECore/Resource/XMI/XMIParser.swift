@@ -447,6 +447,10 @@ public actor XMIParser {
 
         if debug {
             print("[XMI] Parsed EPackage '\(name)' with nsURI='\(nsURI)', nsPrefix='\(nsPrefix)'")
+            // Verify the values were stored correctly
+            let retrievedNSURI = pkg.eGet("nsURI") as? String
+            let retrievedNSPrefix = pkg.eGet("nsPrefix") as? String
+            print("[XMI] Verification: retrieved nsURI='\(retrievedNSURI ?? "nil")', nsPrefix='\(retrievedNSPrefix ?? "nil")'")
         }
 
         // Parse classifiers (eClassifiers)
