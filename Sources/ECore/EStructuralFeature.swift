@@ -631,8 +631,9 @@ extension EReference {
             eType = EClass(name: EcoreClassifier.eObject.rawValue)
         }
 
-        // eOpposite resolution deferred (TODO: two-pass conversion)
-        let opposite: EUUID? = nil
+        // Resolve eOpposite - try eOpposite first, then fall back to opposite
+        let opposite: EUUID? = (object as? DynamicEObject)?.eGet(XMIAttribute.eOpposite.rawValue) as? EUUID
+            ?? (object as? DynamicEObject)?.eGet(XMIAttribute.opposite.rawValue) as? EUUID
 
         // Call existing designated initializer
         self.init(

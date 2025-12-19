@@ -724,7 +724,7 @@ public actor XMIParser {
         // eType will be resolved in second pass
         if let eType = element[.eType] {
             // Store for later resolution
-            attribute.eSet("_eType_ref", value: eType)
+            attribute.eSet(EcoreClassifier.XMIParsingConstants.tempETypeRef, value: eType)
         }
 
         // Parse multiplicity
@@ -789,7 +789,24 @@ public actor XMIParser {
 
         // eType will be resolved in second pass
         if let eType = element[.eType] {
-            reference.eSet("_eType_ref", value: eType)
+            reference.eSet(EcoreClassifier.XMIParsingConstants.tempETypeRef, value: eType)
+        }
+
+        // eOpposite will be resolved in second pass - try both eOpposite and opposite attributes
+        if let eOpposite = element[.eOpposite] {
+            reference.eSet(EcoreClassifier.XMIParsingConstants.tempEOppositeRef, value: eOpposite)
+            reference.eSet(EcoreClassifier.XMIParsingConstants.tempOppositeType, value: XMIAttribute.eOpposite.rawValue)
+            if debug {
+                print("[XMI DEBUG] parseEReference: Found eOpposite='\(eOpposite)' for reference '\(name)'")
+            }
+        } else if let opposite = element[.opposite] {
+            reference.eSet(EcoreClassifier.XMIParsingConstants.tempEOppositeRef, value: opposite)
+            reference.eSet(EcoreClassifier.XMIParsingConstants.tempOppositeType, value: XMIAttribute.opposite.rawValue)
+            if debug {
+                print("[XMI DEBUG] parseEReference: Found opposite='\(opposite)' for reference '\(name)'")
+            }
+        } else if debug {
+            print("[XMI DEBUG] parseEReference: No eOpposite/opposite found for reference '\(name)'")
         }
 
         // Containment
@@ -822,33 +839,69 @@ public actor XMIParser {
     private func resolveReferences(in resource: Resource) async throws {
         let allObjects = await resource.getAllObjects()
 
+
+
         // Create XPath resolver for this resource
         let xpathResolver = XPathResolver(resource: resource)
 
         for object in allObjects {
             // Resolve eType references (metamodel)
-            if let eTypeRef = await resource.eGet(objectId: object.id, feature: "_eType_ref")
+            if let eTypeRef = await resource.eGet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempETypeRef)
                 as? String
             {
                 if let resolved = await resolveReference(
                     eTypeRef, using: xpathResolver, in: resource)
                 {
-                    await resource.eSet(objectId: object.id, feature: "eType", value: resolved)
+                    await resource.eSet(objectId: object.id, feature: XMIAttribute.eType.rawValue, value: resolved)
                 }
                 // Clear temporary reference
-                await resource.eSet(objectId: object.id, feature: "_eType_ref", value: nil)
+                await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempETypeRef, value: nil)
+            }
+
+            // Resolve eOpposite references (metamodel)
+            if let eOppositeRef = await resource.eGet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempEOppositeRef)
+                as? String
+            {
+                if debug {
+                    print("[XMI DEBUG] resolveReferences: Resolving eOpposite reference '\(eOppositeRef)' for object \(object.id)")
+                }
+
+                if let resolved = await resolveReference(
+                    eOppositeRef, using: xpathResolver, in: resource) {
+                    // Determine which attribute type was used and store accordingly
+                    let oppositeType = await resource.eGet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempOppositeType) as? String
+                    let targetAttribute = oppositeType == XMIAttribute.eOpposite.rawValue ? XMIAttribute.eOpposite.rawValue : XMIAttribute.opposite.rawValue
+                    await resource.eSet(objectId: object.id, feature: targetAttribute, value: resolved)
+
+                    if debug {
+                        print("[XMI DEBUG] resolveReferences: Successfully resolved '\(eOppositeRef)' to \(resolved) for attribute '\(targetAttribute)'")
+                    }
+                } else if debug {
+                    print("[XMI DEBUG] resolveReferences: Failed to resolve eOpposite reference '\(eOppositeRef)'")
+                }
+                // Clear temporary references
+                await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempEOppositeRef, value: nil)
+                await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempOppositeType, value: nil)
             }
 
             // Resolve instance-level references from referenceMap
             if let references = referenceMap[object.id] {
                 for (featureName, href) in references {
+                    if debug {
+                        print("[XMI DEBUG] Resolving reference: object \(object.id), feature '\(featureName)', href '\(href)'")
+                    }
                     // Resolve the href using XPath or fragment lookup
                     // This may return EUUID (same-resource) or ResourceProxy (cross-resource)
                     if let resolved = await resolveReference(
                         href, using: xpathResolver, in: resource)
                     {
+                        if debug {
+                            print("[XMI DEBUG] Reference resolved: '\(href)' -> \(resolved)")
+                        }
                         await resource.eSet(
                             objectId: object.id, feature: featureName, value: resolved)
+                    } else if debug {
+                        print("[XMI DEBUG] Reference resolution failed for '\(href)'")
                     }
                 }
             }
@@ -880,10 +933,23 @@ public actor XMIParser {
             let fragment = String(reference.dropFirst())
 
             // First try XPath resolution (for paths like //@members.0)
-            if let resolver = xpathResolver, fragment.contains("/") {
-                if let id = await resolver.resolve(reference) {
-                    return id
+            if let resolver = xpathResolver, fragment.contains("/"), fragment.contains("@") {
+                if debug {
+                    print("[XMI DEBUG] Attempting XPath resolution for reference: '\(reference)'")
                 }
+                if let id = await resolver.resolve(reference) {
+                    if debug {
+                        print("[XMI DEBUG] XPath resolution successful: '\(reference)' -> \(id)")
+                    }
+                    return id
+                } else if debug {
+                    print("[XMI DEBUG] XPath resolution failed for reference: '\(reference)'")
+                }
+            }
+
+            // Then try EMF fragment resolution (for paths like //ClassName/featureName)
+            if fragment.hasPrefix("//") && !fragment.contains("@") {
+                return await resolveEMFFragmentReference(fragment, in: resource)
             }
 
             // Fall back to fragment map or xmi:id map
@@ -968,6 +1034,101 @@ public actor XMIParser {
         }
 
         return uri
+    }
+
+    /// Resolve EMF fragment references like //ClassName/featureName
+    ///
+    /// - Parameters:
+    ///   - fragment: The EMF fragment (without leading #) like "//Member/familyMother"
+    ///   - resource: The current Resource containing all objects
+    /// - Returns: The resolved object ID, or nil if not found
+    private func resolveEMFFragmentReference(_ fragment: String, in resource: Resource) async -> (any EcoreValue)? {
+        // Remove leading "//"
+        let path = String(fragment.dropFirst(2))
+        let components = path.split(separator: "/")
+
+        if components.count == 1 {
+            // Format: //ClassName - resolve to the EClass itself
+            let className = String(components[0])
+
+            if debug {
+                print("[XMI DEBUG] Resolving EMF fragment to class: '\(className)'")
+            }
+
+            // Find the EClass with the given name
+            let allObjects = await resource.getAllObjects()
+            for object in allObjects {
+                if let dynamicObj = object as? DynamicEObject,
+                   dynamicObj.eClass.name == "EClass",
+                   let objName = dynamicObj.eGet("name") as? String,
+                   objName == className {
+
+                    if debug {
+                        print("[XMI DEBUG] Found class '\(className)' with ID \(object.id)")
+                    }
+                    return object.id
+                }
+            }
+
+            if debug {
+                print("[XMI DEBUG] Class '\(className)' not found")
+            }
+            return nil
+
+        } else if components.count == 2 {
+            // Format: //ClassName/featureName - resolve to a feature within the class
+            let className = String(components[0])
+            let featureName = String(components[1])
+
+            if debug {
+                print("[XMI DEBUG] Resolving EMF fragment: class='\(className)', feature='\(featureName)'")
+            }
+
+            // Find the EClass with the given name
+            let allObjects = await resource.getAllObjects()
+            for object in allObjects {
+                if let dynamicObj = object as? DynamicEObject,
+                   dynamicObj.eClass.name == "EClass",
+                   let objName = dynamicObj.eGet("name") as? String,
+                   objName == className {
+
+                    if debug {
+                        print("[XMI DEBUG] Found class '\(className)' with ID \(object.id)")
+                    }
+
+                    // Find the feature within this class
+                    if let featureIds = dynamicObj.eGet("eStructuralFeatures") as? [EUUID] {
+                        for featureId in featureIds {
+                            if let featureObj = await resource.resolve(featureId) as? DynamicEObject,
+                               let featureObjName = featureObj.eGet("name") as? String,
+                               featureObjName == featureName {
+
+                                if debug {
+                                    print("[XMI DEBUG] Found feature '\(featureName)' with ID \(featureId)")
+                                }
+                                return featureId
+                            }
+                        }
+                    }
+
+                    if debug {
+                        print("[XMI DEBUG] Feature '\(featureName)' not found in class '\(className)'")
+                    }
+                    return nil
+                }
+            }
+
+            if debug {
+                print("[XMI DEBUG] Class '\(className)' not found")
+            }
+            return nil
+
+        } else {
+            if debug {
+                print("[XMI DEBUG] EMF fragment '\(fragment)' has invalid format, expected //ClassName or //ClassName/featureName")
+            }
+            return nil
+        }
     }
 
     // MARK: - Helper Methods

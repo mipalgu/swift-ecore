@@ -59,6 +59,18 @@ public actor Resource {
     /// Maintains insertion order.
     private var rootObjects: [EUUID]
 
+    /// Pending opposite reference resolutions.
+    ///
+    /// Maps EReference ID to (source DynamicEObject ID, target DynamicEObject ID)
+    /// for deferred opposite reference resolution after all EReference objects are created.
+    var pendingOppositeResolutions: [EUUID: (EUUID, EUUID)] = [:]
+
+    /// Cache of EReference objects created during package creation for opposite resolution
+    var ereferenceCache: [EUUID: EReference] = [:]
+
+    /// Cache mapping feature DynamicEObject IDs to their corresponding EReference objects
+    var featureToEReferenceCache: [EUUID: EReference] = [:]
+
     /// The resource set that owns this resource, if any.
     ///
     /// Resources can be managed independently or as part of a resource set
@@ -819,7 +831,40 @@ public actor Resource {
             let featureNames = dynamicObj.getFeatureNames()
             print("[DEBUG]   DynamicEObject has \(featureNames.count) features: \(featureNames)")
         }
-        // Extract classifiers using type resolver
+
+        // 2-PHASE RESOLUTION: First create all EReference objects, then resolve opposites, then create EClasses
+
+        // PHASE 1: Create all EReference objects (which populates cache and handles forward resolution)
+        if let classifierIds: [EUUID] = dynamicObj.eGet("eClassifiers") as? [EUUID] {
+            for classifierId in classifierIds {
+                if let classifierObj = resolve(classifierId) {
+                    if let dynamicClassifier = classifierObj as? DynamicEObject,
+                       dynamicClassifier.eClass.name == EcoreClassifier.eClass.rawValue {
+                        // This is an EClass - create all its EReference objects first
+                        if let featureIds: [EUUID] = dynamicClassifier.eGet("eStructuralFeatures") as? [EUUID] {
+                            for featureId in featureIds {
+                                if let featureObj = resolve(featureId),
+                                   let dynamicFeature = featureObj as? DynamicEObject,
+                                   dynamicFeature.eClass.name == EcoreClassifier.eReference.rawValue {
+                                    // Create the EReference - this populates the cache
+                                    let eRef = try await createEReference(from: featureObj)
+                                    featureToEReferenceCache[featureId] = eRef
+
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // PHASE 2: Resolve all pending opposite references now that all EReferences are created
+        if debug {
+            print("[DEBUG] About to call resolvePendingOppositeReferences() with \(pendingOppositeResolutions.count) pending resolutions")
+        }
+        await resolvePendingOppositeReferences()
+
+        // PHASE 3: Now create classifiers - EClasses will use the fully-resolved cached EReferences
         var eClassifiers: [any EClassifier] = []
         if let classifierIds: [EUUID] = dynamicObj.eGet("eClassifiers") as? [EUUID] {
             for classifierId in classifierIds {
@@ -854,14 +899,18 @@ public actor Resource {
             }
         }
 
-        // Create the package
-        return EPackage(
+        // Clear the cache after package creation
+        let result = EPackage(
             name: name,
             nsURI: nsURI,
             nsPrefix: nsPrefix,
             eClassifiers: eClassifiers,
             eSubpackages: eSubpackages
         )
+
+        ereferenceCache.removeAll()
+        featureToEReferenceCache.removeAll()
+        return result
     }
 
     /// Create an EClass from a DynamicEObject with full cross-reference resolution.
@@ -903,14 +952,22 @@ public actor Resource {
             return false
         }()
 
-        // Extract structural features
+        // Extract structural features - use cached EReference objects if available
         var eStructuralFeatures: [any EStructuralFeature] = []
         if let featureIds: [EUUID] = dynamicObj.eGet("eStructuralFeatures") as? [EUUID] {
             for featureId in featureIds {
                 if let featureObj = resolve(featureId) {
                     do {
-                        let feature = try await resolvingFeature(featureObj)
-                        eStructuralFeatures.append(feature)
+                        // Check if we have a cached EReference for this feature ID first
+                        if let cachedEReference = featureToEReferenceCache[featureId] {
+                            eStructuralFeatures.append(cachedEReference)
+
+
+                        } else {
+
+                            let feature = try await resolvingFeature(featureObj)
+                            eStructuralFeatures.append(feature)
+                        }
                     } catch {
                         if !shouldIgnoreUnresolvedFeatures {
                             throw error
@@ -1156,10 +1213,8 @@ public actor Resource {
             eType = EClass(name: "EObject")
         }
 
-        // eOpposite resolution deferred (TODO: two-pass conversion)
-        let opposite: EUUID? = nil
-
-        return EReference(
+        // Create EReference without opposite reference - will be resolved in second pass
+        let eReference = EReference(
             name: name,
             eType: eType,
             lowerBound: lowerBound,
@@ -1168,9 +1223,161 @@ public actor Resource {
             volatile: volatile,
             transient: transient,
             containment: containment,
-            opposite: opposite,
+            opposite: nil,
             resolveProxies: resolveProxies
         )
+
+        // Try to resolve opposite directly if target DynamicEObject already has an EReference created
+        var finalEReference = eReference
+        if let oppositeDynamicId = dynamicObj.eGet(XMIAttribute.eOpposite.rawValue) as? EUUID
+            ?? dynamicObj.eGet(XMIAttribute.opposite.rawValue) as? EUUID {
+
+            // Check if we already have an EReference for the target DynamicEObject
+            var targetEReferenceId: EUUID? = nil
+
+            // Search through existing pendingOppositeResolutions to find if target already has an EReference
+            for (existingEReferenceId, (existingSourceDynamicId, _)) in pendingOppositeResolutions {
+                if existingSourceDynamicId == oppositeDynamicId {
+                    targetEReferenceId = existingEReferenceId
+                    break
+                }
+            }
+
+            if let targetId = targetEReferenceId {
+                // Create updated EReference with opposite set
+                finalEReference = EReference(
+                    id: eReference.id,
+                    name: eReference.name,
+                    eType: eReference.eType,
+                    lowerBound: eReference.lowerBound,
+                    upperBound: eReference.upperBound,
+                    changeable: eReference.changeable,
+                    volatile: eReference.volatile,
+                    transient: eReference.transient,
+                    containment: eReference.containment,
+                    opposite: targetId,
+                    resolveProxies: eReference.resolveProxies,
+                    eAnnotations: eReference.eAnnotations
+                )
+
+                if debug {
+                    print("[DEBUG] createEReference: Set opposite for EReference \(finalEReference.id) (name: \(name)) to \(targetId)")
+                }
+            } else {
+                // Store for later resolution
+                pendingOppositeResolutions[eReference.id] = (dynamicObj.id, oppositeDynamicId)
+
+                if debug {
+                    print("[DEBUG] createEReference: Stored pending opposite for EReference \(eReference.id) (name: \(name))")
+                    print("[DEBUG]   Source DynamicEObject: \(dynamicObj.id)")
+                    print("[DEBUG]   Target DynamicEObject: \(oppositeDynamicId)")
+                }
+            }
+        } else {
+            if debug {
+                print("[DEBUG] createEReference: No opposite found for EReference \(eReference.id) (name: \(name))")
+                print("[DEBUG]   eOpposite value: \(dynamicObj.eGet(XMIAttribute.eOpposite.rawValue) ?? "nil")")
+                print("[DEBUG]   opposite value: \(dynamicObj.eGet(XMIAttribute.opposite.rawValue) ?? "nil")")
+            }
+        }
+
+        // Cache the EReference for potential backward opposite resolution
+        ereferenceCache[finalEReference.id] = finalEReference
+
+        return finalEReference
+    }
+
+    /// Resolve pending opposite references after all EReference objects are created.
+    ///
+    /// This method should be called after creating all structural features for an EPackage
+    /// to properly establish bidirectional opposite references between EReference objects.
+    public func resolvePendingOppositeReferences() async {
+        if debug {
+            print("[DEBUG] resolvePendingOppositeReferences() called with \(pendingOppositeResolutions.count) pending resolutions")
+        }
+
+        // Create a mapping from DynamicEObject ID to EReference ID using ALL cached EReferences
+        var dynamicToEReferenceMap: [EUUID: EUUID] = [:]
+
+        // Build mapping from all EReferences in cache, correlating with their source DynamicEObjects
+        // For pending resolutions, the correlation is direct
+        for (eReferenceId, (sourceDynamicId, _)) in pendingOppositeResolutions {
+            dynamicToEReferenceMap[sourceDynamicId] = eReferenceId
+        }
+
+        // For forward-resolved EReferences, find their source DynamicEObjects by reverse lookup
+        // The key insight: if an EReference was forward-resolved, it means its target DynamicEObject
+        // was already processed and should be in pendingOppositeResolutions as a source
+        for (eReferenceId, eReference) in ereferenceCache {
+            // Skip if this EReference is already mapped (from pending resolutions)
+            if pendingOppositeResolutions[eReferenceId] != nil {
+                continue
+            }
+
+            // This is a forward-resolved EReference - find which DynamicEObject it came from
+            // by checking which pending resolution's target matches this EReference's source
+            for (pendingEReferenceId, (_, targetDynamicId)) in pendingOppositeResolutions {
+                // If this cached EReference has an opposite pointing to the pending EReference,
+                // then the targetDynamicId is the source of our cached EReference
+                if eReference.opposite == pendingEReferenceId {
+                    dynamicToEReferenceMap[targetDynamicId] = eReferenceId
+                    break
+                }
+            }
+        }
+
+        if debug && !pendingOppositeResolutions.isEmpty {
+            print("[DEBUG] Resolving \(pendingOppositeResolutions.count) pending opposite references using cache")
+            for (eReferenceId, (sourceDynamicId, targetDynamicId)) in pendingOppositeResolutions {
+                print("[DEBUG]   EReference \(eReferenceId) (from \(sourceDynamicId)) -> target \(targetDynamicId)")
+                if let targetEReferenceId = dynamicToEReferenceMap[targetDynamicId] {
+                    print("[DEBUG]     Found target EReference \(targetEReferenceId) in cache")
+                } else {
+                    print("[DEBUG]     Target not found in cache")
+                }
+            }
+        }
+
+        // Update cached EReference objects with backward opposite references
+        for (eReferenceId, (_, targetDynamicId)) in pendingOppositeResolutions {
+            if let targetEReferenceId = dynamicToEReferenceMap[targetDynamicId],
+               let currentEReference = ereferenceCache[eReferenceId] {
+
+                // Create updated EReference with opposite set
+                let updatedEReference = EReference(
+                    id: currentEReference.id,
+                    name: currentEReference.name,
+                    eType: currentEReference.eType,
+                    lowerBound: currentEReference.lowerBound,
+                    upperBound: currentEReference.upperBound,
+                    changeable: currentEReference.changeable,
+                    volatile: currentEReference.volatile,
+                    transient: currentEReference.transient,
+                    containment: currentEReference.containment,
+                    opposite: targetEReferenceId,
+                    resolveProxies: currentEReference.resolveProxies,
+                    eAnnotations: currentEReference.eAnnotations
+                )
+
+                // Update both caches
+                ereferenceCache[eReferenceId] = updatedEReference
+
+                // Also update the featureToEReferenceCache to ensure EClass creation uses the updated version
+                for (featureId, cachedRef) in featureToEReferenceCache {
+                    if cachedRef.id == eReferenceId {
+                        featureToEReferenceCache[featureId] = updatedEReference
+                        break
+                    }
+                }
+
+                if debug {
+                    print("[DEBUG] Updated cached EReference \(eReferenceId) (name: \(updatedEReference.name)) with opposite: \(updatedEReference.opposite?.description ?? "nil")")
+                }
+            }
+        }
+
+        // Clear pending resolutions but keep cache for EClass creation
+        pendingOppositeResolutions.removeAll()
     }
 }
 

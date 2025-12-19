@@ -106,6 +106,9 @@ public enum XMIAttribute: String, CaseIterable, Sendable {
     /// The opposite reference for EReference elements.
     case opposite = "opposite"
 
+    /// The eOpposite attribute for EReference elements in Ecore metamodels.
+    case eOpposite = "eOpposite"
+
     // MARK: - XMI-Specific Attributes
 
     /// The XMI identifier attribute.
@@ -155,6 +158,7 @@ public enum XMIAttribute: String, CaseIterable, Sendable {
         case .upperBound: return "Maximum multiplicity bound"
         case .eType: return "Feature type reference"
         case .opposite: return "Bidirectional reference opposite"
+        case .eOpposite: return "Ecore bidirectional reference opposite"
         case .xmiId: return "XMI element identifier"
         case .xmiType: return "XMI element type declaration"
         case .xsiType: return "XSI element type declaration"
@@ -312,6 +316,23 @@ public enum EcoreClassifier: String, CaseIterable, Sendable {
         case .eGenericType: return "Generic type metaclass"
         case .eTypeParameter: return "Type parameter metaclass"
         }
+    }
+
+    // MARK: - XMI Parsing Constants
+
+    /// Constants used during XMI parsing for temporary reference storage.
+    ///
+    /// These constants define the property names used to temporarily store unresolved
+    /// references during XMI parsing, before they are resolved in the second pass.
+    public enum XMIParsingConstants {
+        /// Temporary storage key for eType references during XMI parsing.
+        public static let tempETypeRef = "_eType_ref"
+
+        /// Temporary storage key for eOpposite references during XMI parsing.
+        public static let tempEOppositeRef = "_eOpposite_ref"
+
+        /// Temporary storage key for tracking which opposite attribute type was used.
+        public static let tempOppositeType = "_opposite_type"
     }
 }
 
