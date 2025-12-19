@@ -189,6 +189,59 @@ struct OppositeReferenceTests {
         }
     }
 
+    @Test func testBidirectionalReferenceEClassInstanceMismatch() async throws {
+        // This test specifically reproduces the bidirectional reference regression issue:
+        // During metamodel loading, Member EClass has correct structural features (5 features)
+        // But during model instance parsing, Member EClass from reference.eType has 0 features
+
+        let resourcesURL = try getResourcesURL()
+        let metamodelURL = resourcesURL.appendingPathComponent("metamodels/Families.ecore")
+
+        // Step 1: Load metamodel and verify Member class has bidirectional references
+        let package = try await EPackage(url: metamodelURL) // enableDebugging: true for debugging
+        guard let memberClass = package.getClassifier("Member") as? EClass else {
+            throw ECoreExecutionError.typeError("Member class not found in metamodel")
+        }
+
+        // Verify Member has the expected 5 structural features including bidirectional references
+        #expect(memberClass.eStructuralFeatures.count == 5,
+                "Member should have 5 features: firstName, lastName, familyFather, familyMother, familySon, familyDaughter")
+
+        // Verify familyMother exists in the metamodel
+        guard let familyMotherRef = memberClass.getStructuralFeature(name: "familyMother") as? EReference else {
+            throw ECoreExecutionError.typeError("familyMother reference not found in Member class")
+        }
+        #expect(familyMotherRef.name == "familyMother")
+
+        // Step 2: Get the Family class and check its mother reference's eType
+        guard let familyClass = package.getClassifier("Family") as? EClass else {
+            throw ECoreExecutionError.typeError("Family class not found in metamodel")
+        }
+
+        guard let motherRef = familyClass.getStructuralFeature(name: "mother") as? EReference else {
+            throw ECoreExecutionError.typeError("mother reference not found in Family class")
+        }
+
+        // Step 3: This is the key test - check if motherRef.eType has the same features as memberClass
+        guard let motherRefEType = motherRef.eType as? EClass else {
+            throw ECoreExecutionError.typeError("mother reference eType should be EClass")
+        }
+
+        // This assertion should fail with the current implementation because
+        // motherRef.eType is a placeholder EClass with only the name, not the full resolved EClass
+        #expect(motherRefEType.eStructuralFeatures.count == memberClass.eStructuralFeatures.count,
+                "Member EClass from reference.eType should have same features as metamodel Member EClass")
+
+        // Specifically check that motherRef.eType has the familyMother reference
+        let eTypeFamilyMother = motherRefEType.getStructuralFeature(name: "familyMother")
+        #expect(eTypeFamilyMother != nil,
+                "Member EClass from reference.eType should have familyMother reference")
+
+        // Compare the EClass instances directly - they should be the same object
+        #expect(motherRefEType.id == memberClass.id,
+                "Member EClass from reference.eType should be the same instance as metamodel Member EClass")
+    }
+
     @Test func testEOppositeAttributeParsing() async throws {
         // Test that eOpposite attributes are correctly parsed from XMI
         let resourcesURL = try getResourcesURL()

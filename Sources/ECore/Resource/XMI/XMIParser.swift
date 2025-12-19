@@ -1255,6 +1255,10 @@ public actor XMIParser {
                 if let referenceType = reference.eType as? EClass {
                     if debug {
                         print("[XMI]   Found from parent reference: \(referenceType.name) with \(referenceType.eStructuralFeatures.count) features")
+                        print("[XMI]   EClass ID: \(referenceType.id)")
+                        if referenceType.name == "Member" {
+                            print("[XMI]   Member features: \(referenceType.eStructuralFeatures.map { $0.name }.joined(separator: ", "))")
+                        }
                     }
                     // Cache using the actual type name, not the element name
                     eClassCache[referenceType.name] = referenceType
@@ -1289,6 +1293,10 @@ public actor XMIParser {
                     if let eClass = metamodel.getClassifier(className) as? EClass {
                         if debug {
                             print("[XMI]   Found EClass with \(eClass.eStructuralFeatures.count) features")
+                            print("[XMI]   EClass ID: \(eClass.id)")
+                            if eClass.name == "Member" {
+                                print("[XMI]   Member features: \(eClass.eStructuralFeatures.map { $0.name }.joined(separator: ", "))")
+                            }
                         }
                         // Cache and return
                         eClassCache[className] = eClass

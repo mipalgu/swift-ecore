@@ -71,6 +71,12 @@ public actor Resource {
     /// Cache mapping feature DynamicEObject IDs to their corresponding EReference objects
     var featureToEReferenceCache: [EUUID: EReference] = [:]
 
+    /// Cache mapping EClass names to their fully resolved EClass instances for proper reference type resolution
+    var eClassNameCache: [String: EClass] = [:]
+
+    /// Cache mapping EClass IDs to their instances for Phase 5 updates
+    var eClassIdCache: [EUUID: EClass] = [:]
+
     /// The resource set that owns this resource, if any.
     ///
     /// Resources can be managed independently or as part of a resource set
@@ -777,13 +783,11 @@ public actor Resource {
 
     /// Resolve a reference type for an EReference.
     ///
-    /// Creates a placeholder EClass with just the name from the type object.
-    ///
-    /// - Note: In a full implementation, this would use two-pass conversion to
-    ///         resolve to the actual EClass from the package.
+    /// First tries to use cached resolved EClass instances from Phase 3, falls back
+    /// to creating placeholder EClass instances that will be updated in Phase 4.
     ///
     /// - Parameter object: The DynamicEObject containing eType reference.
-    /// - Returns: The resolved EClass.
+    /// - Returns: The resolved EClass (cached if available, otherwise placeholder).
     public func resolvingReferenceType(_ object: any EObject) -> any EClassifier {
         guard let dynamicObj = object as? DynamicEObject,
             let className: String = dynamicObj.eGet("name") as? String
@@ -791,6 +795,12 @@ public actor Resource {
             return EClass(name: "EObject")
         }
 
+        // Try to use cached resolved EClass first (from Phase 3)
+        if let cachedEClass = eClassNameCache[className] {
+            return cachedEClass
+        }
+
+        // Fall back to placeholder that will be updated in Phase 4
         return EClass(name: className)
     }
 
@@ -832,7 +842,7 @@ public actor Resource {
             print("[DEBUG]   DynamicEObject has \(featureNames.count) features: \(featureNames)")
         }
 
-        // 2-PHASE RESOLUTION: First create all EReference objects, then resolve opposites, then create EClasses
+        // 5-PHASE RESOLUTION: First create all EReference objects, then resolve opposites, then create EClasses, then update reference types, then update EClass features
 
         // PHASE 1: Create all EReference objects (which populates cache and handles forward resolution)
         if let classifierIds: [EUUID] = dynamicObj.eGet("eClassifiers") as? [EUUID] {
@@ -872,6 +882,12 @@ public actor Resource {
                     do {
                         let classifier = try await resolvingType(classifierObj)
                         eClassifiers.append(classifier)
+
+                        // Populate EClass caches for Phase 4 reference type updates and Phase 5 feature updates
+                        if let eClass = classifier as? EClass {
+                            eClassNameCache[eClass.name] = eClass
+                            eClassIdCache[eClass.id] = eClass
+                        }
                     } catch {
                         if shouldIgnoreUnresolvedClassifiers {
                             // Continue processing other classifiers
@@ -883,6 +899,12 @@ public actor Resource {
                 }
             }
         }
+
+        // PHASE 4: Update all EReference.eType references to use actual resolved EClass instances
+        await updateReferenceTypes()
+
+        // PHASE 5: Update EClass.eStructuralFeatures with updated EReference instances
+        eClassifiers = await updateEClassFeatures(eClassifiers)
 
         // Extract subpackages recursively
         var eSubpackages: [EPackage] = []
@@ -910,7 +932,138 @@ public actor Resource {
 
         ereferenceCache.removeAll()
         featureToEReferenceCache.removeAll()
+        eClassNameCache.removeAll()
+        eClassIdCache.removeAll()
         return result
+    }
+
+    /// Phase 4: Update all EReference.eType references to use actual resolved EClass instances.
+    ///
+    /// This method iterates through all cached EReference instances and updates any
+    /// placeholder EClass instances in eType with the actual resolved EClass instances
+    /// from the eClassNameCache populated in Phase 3. Updates are done in-place to
+    /// ensure EClass.eStructuralFeatures arrays still reference the updated objects.
+    private func updateReferenceTypes() async {
+        if debug {
+            print("[DEBUG] Phase 4: Updating EReference.eType references with resolved EClass instances")
+            print("[DEBUG]   Available resolved EClasses: \(eClassNameCache.keys.sorted())")
+            print("[DEBUG]   EReferences to update: \(ereferenceCache.count)")
+        }
+
+        for (eReferenceId, var eReference) in ereferenceCache {
+            // Check if this EReference has a placeholder EClass as eType
+            if let eClassType = eReference.eType as? EClass,
+               let resolvedEClass = eClassNameCache[eClassType.name],
+               eClassType.id != resolvedEClass.id {
+
+                if debug {
+                    print("[DEBUG]   Updating EReference '\(eReference.name)' eType from placeholder '\(eClassType.name)' to resolved EClass")
+                    print("[DEBUG]     Placeholder features: \(eClassType.eStructuralFeatures.count)")
+                    print("[DEBUG]     Resolved features: \(resolvedEClass.eStructuralFeatures.count)")
+                }
+
+                // Update the eType and store back in cache
+                eReference.eType = resolvedEClass
+                ereferenceCache[eReferenceId] = eReference
+            }
+        }
+
+        // Also update EReferences in featureToEReferenceCache
+        for (featureId, var eReference) in featureToEReferenceCache {
+            if let eClassType = eReference.eType as? EClass,
+               let resolvedEClass = eClassNameCache[eClassType.name],
+               eClassType.id != resolvedEClass.id {
+
+                if debug {
+                    print("[DEBUG]   Updating cached EReference '\(eReference.name)' eType from placeholder '\(eClassType.name)' to resolved EClass")
+                }
+
+                eReference.eType = resolvedEClass
+                featureToEReferenceCache[featureId] = eReference
+            }
+        }
+
+        if debug {
+            print("[DEBUG] Phase 4 complete: Updated EReference types with resolved EClass instances in-place")
+        }
+    }
+
+    /// Phase 5: Update EClass.eStructuralFeatures arrays with updated EReference instances.
+    ///
+    /// This method updates all cached EClass instances to use the EReference instances
+    /// that were updated in Phase 4, ensuring that EClass.eStructuralFeatures contain
+    /// EReference objects with correct eType references to resolved EClass instances.
+    ///
+    /// - Parameter classifiers: The array of classifiers to update
+    /// - Returns: Updated array of classifiers with EClass instances containing updated features
+    private func updateEClassFeatures(_ classifiers: [any EClassifier]) async -> [any EClassifier] {
+        if debug {
+            print("[DEBUG] Phase 5: Updating EClass.eStructuralFeatures with updated EReference instances")
+            print("[DEBUG]   EClasses to update: \(eClassIdCache.count)")
+        }
+
+        // First update the cached EClass instances
+        for (eClassId, var eClass) in eClassIdCache {
+            var updatedFeatures: [any EStructuralFeature] = []
+            var hasUpdates = false
+
+            for feature in eClass.eStructuralFeatures {
+                if let eReference = feature as? EReference {
+                    // Check if we have an updated version of this EReference in the cache
+                    if let updatedEReference = ereferenceCache[eReference.id] {
+                        updatedFeatures.append(updatedEReference)
+                        if updatedEReference.eType.id != eReference.eType.id {
+                            hasUpdates = true
+                            if debug {
+                                print("[DEBUG]     Updated feature '\(eReference.name)' in EClass '\(eClass.name)'")
+                            }
+                        }
+                    } else if let updatedEReference = featureToEReferenceCache.values.first(where: { $0.id == eReference.id }) {
+                        updatedFeatures.append(updatedEReference)
+                        if updatedEReference.eType.id != eReference.eType.id {
+                            hasUpdates = true
+                            if debug {
+                                print("[DEBUG]     Updated cached feature '\(eReference.name)' in EClass '\(eClass.name)'")
+                            }
+                        }
+                    } else {
+                        updatedFeatures.append(feature)
+                    }
+                } else {
+                    updatedFeatures.append(feature)
+                }
+            }
+
+            if hasUpdates {
+                eClass.eStructuralFeatures = updatedFeatures
+                eClassIdCache[eClassId] = eClass
+                eClassNameCache[eClass.name] = eClass
+
+                if debug {
+                    print("[DEBUG]   Updated EClass '\(eClass.name)' with \(updatedFeatures.count) features")
+                }
+            }
+        }
+
+        // Then update the classifiers array to use the updated EClass instances
+        var updatedClassifiers: [any EClassifier] = []
+        for classifier in classifiers {
+            if let eClass = classifier as? EClass,
+               let updatedEClass = eClassIdCache[eClass.id] {
+                updatedClassifiers.append(updatedEClass)
+                if debug {
+                    print("[DEBUG]   Replaced classifier '\(eClass.name)' with updated version")
+                }
+            } else {
+                updatedClassifiers.append(classifier)
+            }
+        }
+
+        if debug {
+            print("[DEBUG] Phase 5 complete: Updated EClass.eStructuralFeatures and classifiers array with updated EReference instances")
+        }
+
+        return updatedClassifiers
     }
 
     /// Create an EClass from a DynamicEObject with full cross-reference resolution.
