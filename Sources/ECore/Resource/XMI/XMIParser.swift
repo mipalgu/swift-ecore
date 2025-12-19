@@ -76,11 +76,22 @@ public actor XMIParser {
     /// Raw XML content for attribute order extraction
     private var rawXMLContent: String = ""
 
+    /// Debug mode flag for systematic tracing
+    private var debug: Bool = false
+
     /// Initialises a new XMI parser
     ///
     /// - Parameter resourceSet: Optional ResourceSet for cross-resource reference resolution
-    public init(resourceSet: ResourceSet? = nil) {
+    public init(resourceSet: ResourceSet? = nil, enableDebugging: Bool = false) {
         self.resourceSet = resourceSet
+        debug = enableDebugging
+    }
+
+    /// Enable or disable debug mode for systematic tracing
+    ///
+    /// - Parameter enabled: Whether to enable debug output
+    public func enableDebugging(_ enabled: Bool = true) {
+        debug = enabled
     }
 
     /// Get or create an EClass for the specified classifier type.
@@ -1046,19 +1057,39 @@ public actor XMIParser {
         if let resourceSet = self.resourceSet {
             // Extract namespace URI from element
             if let namespaceURI = extractNamespaceURI(from: element) {
+                if debug {
+                    print("[XMI] Resolving class '\(className)' with namespace '\(namespaceURI)'")
+                }
                 // Query ResourceSet for metamodel
                 if let metamodel = await resourceSet.getMetamodel(uri: namespaceURI) {
+                    if debug {
+                        print("[XMI]   Found metamodel: \(metamodel.name)")
+                    }
                     // Look up EClass by name
                     if let eClass = metamodel.getClassifier(className) as? EClass {
+                        if debug {
+                            print("[XMI]   Found EClass with \(eClass.eStructuralFeatures.count) features")
+                        }
                         // Cache and return
                         eClassCache[className] = eClass
                         return eClass
+                    } else if debug {
+                        print("[XMI]   EClass '\(className)' not found in metamodel")
                     }
+                } else if debug {
+                    print("[XMI]   No metamodel registered for namespace '\(namespaceURI)'")
                 }
+            } else if debug {
+                print("[XMI] No namespace URI found for element '\(element.name)'")
             }
+        } else if debug {
+            print("[XMI] No ResourceSet available for class lookup")
         }
 
         // Step 4: Fall back to dynamic EClass creation
+        if debug {
+            print("[XMI] Creating dynamic EClass for '\(className)'")
+        }
         let eClass = EClass(name: className)
         eClassCache[className] = eClass
         return eClass
