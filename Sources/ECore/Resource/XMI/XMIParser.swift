@@ -445,6 +445,10 @@ public actor XMIParser {
         pkg.eSet("nsURI", value: nsURI)
         pkg.eSet("nsPrefix", value: nsPrefix)
 
+        if debug {
+            print("[XMI] Parsed EPackage '\(name)' with nsURI='\(nsURI)', nsPrefix='\(nsPrefix)'")
+        }
+
         // Parse classifiers (eClassifiers)
         var classifierIds: [EUUID] = []
         for child in element.children(.eClassifiers) {

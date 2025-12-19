@@ -797,6 +797,9 @@ public actor Resource {
         let nsURI: String = dynamicObj.eGet("nsURI") as? String ?? "http://\(name.lowercased())"
         let nsPrefix: String = dynamicObj.eGet("nsPrefix") as? String ?? name.lowercased()
 
+        // Debug output to trace nsURI handling
+        print("[DEBUG] Resource.createEPackage: name='\(name)', retrieved nsURI='\(dynamicObj.eGet("nsURI") as? String ?? "nil")', final nsURI='\(nsURI)'")
+
         // Extract classifiers using type resolver
         var eClassifiers: [any EClassifier] = []
         if let classifierIds: [EUUID] = dynamicObj.eGet("eClassifiers") as? [EUUID] {
