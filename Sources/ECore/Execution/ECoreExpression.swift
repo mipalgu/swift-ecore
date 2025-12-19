@@ -85,7 +85,7 @@ extension ECoreExpression {
 }
 
 /// Errors that can occur during execution.
-public enum ECoreExecutionError: Error, Sendable, Equatable, CustomStringConvertible {
+public enum ECoreExecutionError: Error, Sendable, Equatable, CustomStringConvertible, LocalizedError {
     case unknownProperty(String, String)
     case invalidNavigation(String)
     case typeError(String)
@@ -111,6 +111,10 @@ public enum ECoreExecutionError: Error, Sendable, Equatable, CustomStringConvert
         case .evaluationError(let message):
             return "Evaluation error: \(message)"
         }
+    }
+
+    public var errorDescription: String? {
+        description
     }
 }
 

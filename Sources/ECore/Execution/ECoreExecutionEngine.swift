@@ -56,14 +56,30 @@ public actor ECoreExecutionEngine: Sendable {
     /// Cross-reference resolution cache.
     private var resolutionCache: [EUUID: any EObject] = [:]
 
+    /// Debug mode flag for systematic tracing.
+    private var debug: Bool = false
+
     // MARK: - Initialisation
 
     /// Creates a new execution engine with the specified models.
     ///
     /// - Parameter models: Dictionary of model aliases to IModel instances
-    public init(models: [String: IModel]) {
+    public init(models: [String: IModel], enableDebugging: Bool = false) {
         self.models = models
-        self.typeProvider = EcoreTypeProvider()
+        typeProvider = EcoreTypeProvider()
+        debug = enableDebugging
+    }
+
+    // MARK: - Debug Configuration
+
+    /// Enable or disable debug output for systematic tracing.
+    ///
+    /// When enabled, the execution engine prints detailed trace information
+    /// for navigation operations, method invocations, and expression evaluation.
+    ///
+    /// - Parameter enabled: Whether to enable debug output
+    public func enableDebugging(_ enabled: Bool = true) {
+        debug = enabled
     }
 
     // MARK: - Navigation Operations
@@ -82,8 +98,15 @@ public actor ECoreExecutionEngine: Sendable {
     public func navigate(from source: any EObject, property: String) async throws -> (
         any EcoreValue
     )? {
+        if debug {
+            print("[ECORE] Navigate: \(source.eClass.name).\(property)")
+        }
+
         let cacheKey = "\(source.id).\(property)"
         if let cached = navigationCache[cacheKey] {
+            if debug {
+                print("[ECORE]   Cached value: \(String(describing: cached))")
+            }
             return cached
         }
 
@@ -92,6 +115,10 @@ public actor ECoreExecutionEngine: Sendable {
 
         let feature = try findStructuralFeature(for: currentObject, named: property)
         let result = currentObject.eGet(feature)
+
+        if debug {
+            print("[ECORE]   Value: \(String(describing: result))")
+        }
 
         // Cache the result for future use if it's an EcoreValue
         if let ecoreResult = result {
@@ -216,8 +243,15 @@ public actor ECoreExecutionEngine: Sendable {
         _ expression: ECoreExpression,
         context: [String: any EcoreValue]
     ) async throws -> (any EcoreValue)? {
+        if debug {
+            print("[ECORE] Evaluating expression: \(expression)")
+        }
+
         switch expression {
         case .navigation(let source, let property):
+            if debug {
+                print("[ECORE]   Navigation: \(property)")
+            }
             let sourceValue = try await evaluateValue(source, context: context)
             guard let sourceObject = sourceValue as? (any EObject) else {
                 throw ECoreExecutionError.invalidNavigation(
@@ -227,9 +261,15 @@ public actor ECoreExecutionEngine: Sendable {
             return result
 
         case .variable(let name):
+            if debug {
+                print("[ECORE]   Variable: \(name)")
+            }
             return context[name]
 
         case .literal(let value):
+            if debug {
+                print("[ECORE]   Literal: \(value)")
+            }
             return value.anyValue as? (any EcoreValue)
 
         case .methodCall(let receiver, let methodName, let arguments):
@@ -343,17 +383,34 @@ public actor ECoreExecutionEngine: Sendable {
     }
 
     private func invokeMethod(on receiver: (any EcoreValue)?, method: String, arguments: [any EcoreValue]) async throws -> (any EcoreValue)? {
+        if debug {
+            print("[ECORE] Invoking method: \(method)")
+            print("[ECORE]   Receiver: \(String(describing: receiver))")
+            print("[ECORE]   Arguments: \(arguments.map { String(describing: $0) })")
+        }
+
         // Special handling for oclIsUndefined() - works on nil values
         if arguments.isEmpty, let m = OCLUnaryMethod(rawValue: method), m == .oclIsUndefined {
-            return (receiver == nil) as any EcoreValue
+            let result = (receiver == nil) as any EcoreValue
+            if debug {
+                print("[ECORE]   Result: \(result)")
+            }
+            return result
         }
 
         // Try unary methods (no arguments)
         if arguments.isEmpty, let receiver = receiver {
             if let m = OCLUnaryMethod(rawValue: method) {
                 do {
-                    return try invokeUnaryMethod(m, on: receiver)
+                    let result = try invokeUnaryMethod(m, on: receiver)
+                    if debug {
+                        print("[ECORE]   Result: \(String(describing: result))")
+                    }
+                    return result
                 } catch {
+                    if debug {
+                        print("[ECORE]   Error: \(error)")
+                    }
                     throw ECoreExecutionError.unsupportedOperation(
                         "Error in \(method): \(error)")
                 }
@@ -364,8 +421,15 @@ public actor ECoreExecutionEngine: Sendable {
         if arguments.count == 1, let receiver = receiver {
             if let m = OCLBinaryMethod(rawValue: method) {
                 do {
-                    return try invokeBinaryMethod(m, on: receiver, with: arguments[0])
+                    let result = try invokeBinaryMethod(m, on: receiver, with: arguments[0])
+                    if debug {
+                        print("[ECORE]   Result: \(String(describing: result))")
+                    }
+                    return result
                 } catch {
+                    if debug {
+                        print("[ECORE]   Error: \(error)")
+                    }
                     throw ECoreExecutionError.unsupportedOperation(
                         "Error in \(method): \(error)")
                 }
@@ -376,8 +440,15 @@ public actor ECoreExecutionEngine: Sendable {
         if arguments.count == 2, let receiver = receiver {
             if let m = OCLTernaryMethod(rawValue: method) {
                 do {
-                    return try invokeTernaryMethod(m, on: receiver, with: arguments[0], and: arguments[1])
+                    let result = try invokeTernaryMethod(m, on: receiver, with: arguments[0], and: arguments[1])
+                    if debug {
+                        print("[ECORE]   Result: \(String(describing: result))")
+                    }
+                    return result
                 } catch {
+                    if debug {
+                        print("[ECORE]   Error: \(error)")
+                    }
                     throw ECoreExecutionError.unsupportedOperation(
                         "Error in \(method): \(error)")
                 }
@@ -385,6 +456,9 @@ public actor ECoreExecutionEngine: Sendable {
         }
 
         // Method not found in OCL enums
+        if debug {
+            print("[ECORE]   Error: Method not supported")
+        }
         throw ECoreExecutionError.unsupportedOperation(
             "Method not supported: \(method) with \(arguments.count) arguments")
     }
