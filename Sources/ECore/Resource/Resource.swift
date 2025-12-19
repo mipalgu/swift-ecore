@@ -803,12 +803,21 @@ public actor Resource {
             throw XMIError.missingRequiredAttribute("name")
         }
 
-        let nsURI: String = dynamicObj.eGet("nsURI") as? String ?? "http://\(name.lowercased())"
-        let nsPrefix: String = dynamicObj.eGet("nsPrefix") as? String ?? name.lowercased()
+        let retrievedNSURI = dynamicObj.eGet("nsURI") as? String
+        let retrievedNSPrefix = dynamicObj.eGet("nsPrefix") as? String
+        let nsURI: String = retrievedNSURI ?? "http://\(name.lowercased())"
+        let nsPrefix: String = retrievedNSPrefix ?? name.lowercased()
 
-        // Debug output to trace nsURI handling (commented out - needs debug flag)
+        // Debug output to trace nsURI handling
         if debug {
-            print("[DEBUG] Resource.createEPackage: name='\(name)', retrieved nsURI='\(dynamicObj.eGet("nsURI") as? String ?? "nil")', final nsURI='\(nsURI)'")
+            print("[DEBUG] Resource.createEPackage: name='\(name)'")
+            print("[DEBUG]   Retrieved nsURI from DynamicEObject: '\(retrievedNSURI ?? "nil")'")
+            print("[DEBUG]   Retrieved nsPrefix from DynamicEObject: '\(retrievedNSPrefix ?? "nil")'")
+            print("[DEBUG]   Final nsURI: '\(nsURI)', Final nsPrefix: '\(nsPrefix)'")
+
+            // Debug: Show all feature names in the DynamicEObject
+            let featureNames = dynamicObj.getFeatureNames()
+            print("[DEBUG]   DynamicEObject has \(featureNames.count) features: \(featureNames)")
         }
         // Extract classifiers using type resolver
         var eClassifiers: [any EClassifier] = []

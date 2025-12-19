@@ -125,6 +125,10 @@ public actor XMIParser {
     /// - Returns: A Resource containing the parsed objects
     /// - Throws: XMIError if parsing fails
     public func parse(_ url: URL) async throws -> Resource {
+        if debug {
+            print("[XMI] Starting to parse file: \(url.path)")
+        }
+
         let data = try Data(contentsOf: url)
         guard let xmlString = String(data: data, encoding: .utf8) else {
             throw XMIError.invalidEncoding
@@ -134,6 +138,10 @@ public actor XMIParser {
         self.rawXMLContent = xmlString
 
         let document = try parseXML(fromText: xmlString)
+
+        if debug {
+            print("[XMI] Root element: '\(String(describing: document.name))'")
+        }
 
         // Create resource via ResourceSet if available, otherwise create directly
         let resource: Resource
@@ -169,6 +177,13 @@ public actor XMIParser {
             throw XMIError.invalidXML("No root element found in document")
         }
 
+        if debug {
+            print("[XMI] parseXMIContent: root element name='\(rootElement.name)'")
+            if let xmiVersion = rootElement[.xmiVersion] {
+                print("[XMI]   XMI version: \(xmiVersion)")
+            }
+        }
+
         // Check XMI version if present in root element
         if let xmiVersion = rootElement[.xmiVersion] {
             // Accept XMI 2.0 and later
@@ -179,6 +194,9 @@ public actor XMIParser {
 
         // Check if root element is xmi:XMI wrapper (for multiple root objects)
         if rootElement.name == "xmi:XMI" || rootElement.name.hasSuffix(":XMI") {
+            if debug {
+                print("[XMI] Processing XMI wrapper with \(Array(rootElement.children).count) child elements")
+            }
             // Multiple root objects wrapped in xmi:XMI
             for childElement in rootElement.children {
                 if let rootObject = try await parseElement(childElement, in: resource) {
@@ -186,10 +204,18 @@ public actor XMIParser {
                 }
             }
         } else {
+            if debug {
+                print("[XMI] Processing single root element: '\(rootElement.name)'")
+            }
             // Single root object
             if let rootObject = try await parseElement(rootElement, in: resource) {
                 await resource.add(rootObject)
             }
+        }
+
+        if debug {
+            let rootObjectCount = await resource.getRootObjects().count
+            print("[XMI] Added \(rootObjectCount) root object(s) to resource")
         }
 
         // Second pass: resolve references
@@ -211,10 +237,21 @@ public actor XMIParser {
     )? {
         let elementName = element.name
 
+        if debug {
+            print("[XMI] parseElement: element name='\(elementName)'")
+            print("[XMI]   isEcoreType(.ePackage): \(element.isEcoreType(.ePackage))")
+        }
+
         // Handle Ecore metamodel elements
         if elementName == "ecore:EPackage" || element.isEcoreType(.ePackage) {
+            if debug {
+                print("[XMI] Calling parseEPackage for element '\(elementName)'")
+            }
             return try await parseEPackage(element, in: resource)
         } else if element.isEcoreType(.eClass) {
+            if debug {
+                print("[XMI] Calling parseEClass for element '\(elementName)'")
+            }
             return try await parseEClass(element, in: resource)
         } else if element.isEcoreType(.eEnum) {
             return try await parseEEnum(element, in: resource)
@@ -226,6 +263,9 @@ public actor XMIParser {
             return try await parseEReference(element, in: resource)
         }
 
+        if debug {
+            print("[XMI] Calling parseInstanceElement for element '\(elementName)'")
+        }
         // Handle model instance elements (non-Ecore elements)
         return try await parseInstanceElement(element, in: resource)
     }
