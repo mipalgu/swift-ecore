@@ -109,6 +109,9 @@ public enum XMIAttribute: String, CaseIterable, Sendable {
     /// The eOpposite attribute for EReference elements in Ecore metamodels.
     case eOpposite = "eOpposite"
 
+    /// The eSuperTypes attribute for EClass elements (inheritance relationships).
+    case eSuperTypes = "eSuperTypes"
+
     // MARK: - XMI-Specific Attributes
 
     /// The XMI identifier attribute.
@@ -159,6 +162,7 @@ public enum XMIAttribute: String, CaseIterable, Sendable {
         case .eType: return "Feature type reference"
         case .opposite: return "Bidirectional reference opposite"
         case .eOpposite: return "Ecore bidirectional reference opposite"
+        case .eSuperTypes: return "EClass inheritance super types"
         case .xmiId: return "XMI element identifier"
         case .xmiType: return "XMI element type declaration"
         case .xsiType: return "XSI element type declaration"
@@ -333,6 +337,9 @@ public enum EcoreClassifier: String, CaseIterable, Sendable {
 
         /// Temporary storage key for tracking which opposite attribute type was used.
         public static let tempOppositeType = "_opposite_type"
+
+        /// Temporary storage key for eSuperTypes references during XMI parsing.
+        public static let tempESuperTypesRef = "_eSuperTypes_ref"
     }
 }
 

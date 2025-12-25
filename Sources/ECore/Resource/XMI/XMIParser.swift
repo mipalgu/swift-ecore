@@ -563,6 +563,14 @@ public actor XMIParser {
             eClass.eSet(.interface, isInterface)
         }
 
+        // Parse eSuperTypes - will be resolved in second pass
+        if let eSuperTypesAttr = element[.eSuperTypes] {
+            eClass.eSet(EcoreClassifier.XMIParsingConstants.tempESuperTypesRef, value: eSuperTypesAttr)
+            if debug {
+                print("[XMI DEBUG] parseEClass: Found eSuperTypes='\(eSuperTypesAttr)' for class '\(name)'")
+            }
+        }
+
         // Parse structural features
         var featureIds: [EUUID] = []
         for child in element.children(.eStructuralFeatures) {
@@ -891,6 +899,46 @@ public actor XMIParser {
                 // Clear temporary references
                 await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempEOppositeRef, value: nil)
                 await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempOppositeType, value: nil)
+            }
+
+            // Resolve eSuperTypes references (metamodel)
+            if let eSuperTypesRef = await resource.eGet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempESuperTypesRef)
+                as? String
+            {
+                if debug {
+                    print("[XMI DEBUG] resolveReferences: Resolving eSuperTypes reference '\(eSuperTypesRef)' for object \(object.id)")
+                }
+
+                // eSuperTypes can be a space-separated list of references
+                let superTypeRefs = eSuperTypesRef.split(separator: " ").map(String.init)
+                var resolvedSuperTypes: [EUUID] = []
+
+                for superTypeRef in superTypeRefs {
+                    if let resolved = await resolveReference(
+                        superTypeRef, using: xpathResolver, in: resource),
+                       let uuid = resolved as? EUUID
+                    {
+                        resolvedSuperTypes.append(uuid)
+                        if debug {
+                            print("[XMI DEBUG] resolveReferences: Successfully resolved superType '\(superTypeRef)' to \(uuid)")
+                        }
+                    } else if debug {
+                        print("[XMI DEBUG] resolveReferences: Failed to resolve superType '\(superTypeRef)'")
+                    }
+                }
+
+                // Set the resolved eSuperTypes
+                if !resolvedSuperTypes.isEmpty {
+                    // For single supertype, set it directly; for multiple, set as array
+                    if resolvedSuperTypes.count == 1 {
+                        await resource.eSet(objectId: object.id, feature: XMIAttribute.eSuperTypes.rawValue, value: resolvedSuperTypes[0])
+                    } else {
+                        await resource.eSet(objectId: object.id, feature: XMIAttribute.eSuperTypes.rawValue, value: resolvedSuperTypes)
+                    }
+                }
+
+                // Clear temporary reference
+                await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempESuperTypesRef, value: nil)
             }
 
             // Resolve instance-level references from referenceMap
