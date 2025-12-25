@@ -42,7 +42,7 @@ public actor ECoreExecutionEngine: Sendable {
     // MARK: - Properties
 
     /// Models indexed by their namespace aliases.
-    private let models: [String: IModel]
+    private var models: [String: IModel]
 
     /// Type provider for ECore type operations.
     private let typeProvider: EcoreTypeProvider
@@ -82,6 +82,21 @@ public actor ECoreExecutionEngine: Sendable {
         debug = enabled
     }
 
+    /// Registers a model with the execution engine.
+    ///
+    /// This allows adding models after the engine has been created, which is useful
+    /// for transformation engines that configure models dynamically.
+    ///
+    /// - Parameters:
+    ///   - model: The model to register
+    ///   - alias: The alias to use for the model
+    public func registerModel(_ model: IModel, alias: String) {
+        models[alias] = model
+        if debug {
+            print("[ECORE] Registered model '\(alias)'")
+        }
+    }
+
     // MARK: - Navigation Operations
 
     /// Navigate a property from a source object.
@@ -114,11 +129,14 @@ public actor ECoreExecutionEngine: Sendable {
         let currentObject = await getLatestObject(source) ?? source
 
         let feature = try findStructuralFeature(for: currentObject, named: property)
-        let result = currentObject.eGet(feature)
+        let rawResult = currentObject.eGet(feature)
 
         if debug {
-            print("[ECORE]   Value: \(String(describing: result))")
+            print("[ECORE]   Value: \(String(describing: rawResult))")
         }
+
+        // Resolve UUIDs to actual objects for references
+        let result: (any EcoreValue)? = await resolveReferences(rawResult)
 
         // Cache the result for future use if it's an EcoreValue
         if let ecoreResult = result {
@@ -326,6 +344,55 @@ public actor ECoreExecutionEngine: Sendable {
             throw ECoreExecutionError.unknownProperty(property, eClass.name)
         }
         return feature
+    }
+
+    /// Resolves UUIDs to actual EObjects for reference navigation.
+    ///
+    /// When navigating references, eGet returns UUIDs instead of objects.
+    /// This method resolves those UUIDs to the actual objects by searching
+    /// through all registered models.
+    ///
+    /// - Parameter value: The value that may contain UUIDs to resolve
+    /// - Returns: The value with UUIDs resolved to objects, or the original value if not a UUID
+    private func resolveReferences(_ value: (any EcoreValue)?) async -> (any EcoreValue)? {
+        guard let value = value else { return nil }
+
+        // Single UUID reference
+        if let uuid = value as? EUUID {
+            if debug {
+                print("[ECORE]   Resolving UUID: \(uuid)")
+            }
+
+            // Check resolution cache first
+            if let cached = resolutionCache[uuid] {
+                if debug {
+                    print("[ECORE]   Resolved from cache: \(cached.eClass.name)")
+                }
+                return cached
+            }
+
+            // Search through all models to find the object
+            for model in models.values {
+                if let resolved = await model.resource.resolve(uuid) {
+                    if debug {
+                        print("[ECORE]   Resolved from model: \(resolved.eClass.name)")
+                    }
+                    // Cache for future lookups
+                    resolutionCache[uuid] = resolved
+                    return resolved
+                }
+            }
+
+            if debug {
+                print("[ECORE]   UUID resolution failed - object not found")
+            }
+            // UUID not found - return nil rather than the UUID
+            return nil
+        }
+
+        // For arrays and other types, return as-is
+        // Array references would need element-by-element resolution in a future enhancement
+        return value
     }
 
     private func isInTargetModel(_ object: any EObject) async -> Bool {

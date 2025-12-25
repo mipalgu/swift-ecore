@@ -432,12 +432,21 @@ public actor XMIParser {
             }
         }
 
-        // Set containment references
+        // Set containment references and their opposites
         for (refName, ids) in childReferences {
             if ids.count == 1 {
                 instance.eSet(refName, value: ids[0])
             } else {
                 instance.eSet(refName, value: ids)
+            }
+
+            // Set opposite reference on contained elements
+            if let eReference = eClass.getStructuralFeature(name: refName) as? EReference,
+               let oppositeId = eReference.opposite,
+               let oppositeRef = await resource.resolveOpposite(eReference) {
+                for childId in ids {
+                    await resource.eSet(objectId: childId, feature: oppositeRef.name, value: instance.id)
+                }
             }
         }
 
