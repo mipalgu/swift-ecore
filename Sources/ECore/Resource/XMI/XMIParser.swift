@@ -442,7 +442,6 @@ public actor XMIParser {
 
             // Set opposite reference on contained elements
             if let eReference = eClass.getStructuralFeature(name: refName) as? EReference,
-               let oppositeId = eReference.opposite,
                let oppositeRef = await resource.resolveOpposite(eReference) {
                 for childId in ids {
                     await resource.eSet(objectId: childId, feature: oppositeRef.name, value: instance.id)
