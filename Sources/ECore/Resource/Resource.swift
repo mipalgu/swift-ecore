@@ -1130,12 +1130,35 @@ public actor Resource {
             }
         }
 
-        // Note: eSuperTypes left empty (TODO: two-pass conversion for type resolution)
+        // Extract and resolve eSuperTypes
+        var eSuperTypes: [EClass] = []
+        let superTypeValue = dynamicObj.eGet("eSuperTypes")
+
+        // Handle both single EUUID and array of EUUIDs
+        if let singleId = superTypeValue as? EUUID {
+            if let superTypeObj = resolve(singleId),
+               let superTypeDynamic = superTypeObj as? DynamicEObject,
+               superTypeDynamic.eClass.name == EcoreClassifier.eClass.rawValue {
+                if let cachedSuperType = eClassIdCache[singleId] {
+                    eSuperTypes.append(cachedSuperType)
+                } else {
+                    do {
+                        let superTypeEClass = try await createEClass(from: superTypeObj, shouldIgnoreUnresolvedFeatures: shouldIgnoreUnresolvedFeatures)
+                        eSuperTypes.append(superTypeEClass)
+                        eClassIdCache[singleId] = superTypeEClass
+                        eClassNameCache[superTypeEClass.name] = superTypeEClass
+                    } catch {
+                        // Skip unresolvable supertypes
+                    }
+                }
+            }
+        }
+
         return EClass(
             name: name,
             isAbstract: isAbstract,
             isInterface: isInterface,
-            eSuperTypes: [],
+            eSuperTypes: eSuperTypes,
             eStructuralFeatures: eStructuralFeatures
         )
     }
