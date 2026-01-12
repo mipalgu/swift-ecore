@@ -88,7 +88,9 @@ public actor Resource {
 
     /// Initialises a new resource with the specified URI.
     ///
-    /// - Parameter uri: The URI identifying this resource. Defaults to a generated URI.
+    /// - Parameters:
+    ///   - uri: The URI identifying this resource. Defaults to a generated URI.
+    ///   - enableDebugging: Whether to enable debug output for this resource
     public init(uri: String = "resource://\(UUID().uuidString)", enableDebugging: Bool = false) {
         self.uri = uri
         objects = OrderedDictionary<EUUID, any EObject>()
@@ -281,7 +283,7 @@ public actor Resource {
     ///
     /// - Parameters:
     ///   - reference: The reference to resolve.
-    ///   - from: The object containing the reference.
+    ///   - object: The object containing the reference.
     /// - Returns: An array of resolved target objects.
     public func resolveReference(_ reference: EReference, from object: any EObject) -> [any EObject]
     {
@@ -699,13 +701,6 @@ public actor Resource {
     // MARK: - EObject Type Resolution
 
     /// Resolves the concrete EClassifier type from a DynamicEObject.
-    ///
-    /// Dispatches to the appropriate concrete type initializer based on eClass.name.
-    ///
-    /// - Parameter object: The DynamicEObject to convert.
-    /// - Returns: EClass, EEnum, or EDataType instance.
-    /// - Throws: XMIError if the object type is unsupported or initialization fails.
-    /// Resolve the concrete EClassifier type from a DynamicEObject.
     ///
     /// Dispatches to the appropriate factory method based on the object's metaclass name.
     /// This method handles UUID-based cross-reference resolution for complex types like

@@ -63,7 +63,9 @@ public actor ECoreExecutionEngine: Sendable {
 
     /// Creates a new execution engine with the specified models.
     ///
-    /// - Parameter models: Dictionary of model aliases to IModel instances
+    /// - Parameters:
+    ///   - models: Dictionary of model aliases to IModel instances
+    ///   - enableDebugging: Whether to enable debug output for systematic tracing
     public init(models: [String: IModel], enableDebugging: Bool = false) {
         self.models = models
         typeProvider = EcoreTypeProvider()

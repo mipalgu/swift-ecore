@@ -79,9 +79,11 @@ public actor XMIParser {
     /// Debug mode flag for systematic tracing
     private var debug: Bool = false
 
-    /// Initialises a new XMI parser
+    /// Initialises a new XMI parser.
     ///
-    /// - Parameter resourceSet: Optional ResourceSet for cross-resource reference resolution
+    /// - Parameters:
+    ///   - resourceSet: Optional ResourceSet for cross-resource reference resolution
+    ///   - enableDebugging: Whether to enable debug output for systematic tracing
     public init(resourceSet: ResourceSet? = nil, enableDebugging: Bool = false) {
         self.resourceSet = resourceSet
         debug = enableDebugging
