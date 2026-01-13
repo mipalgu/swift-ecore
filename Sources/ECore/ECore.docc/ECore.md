@@ -107,9 +107,8 @@ try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "employee
 - ``EFactory``
 - ``EModelElement``
 - ``ENamedElement``
-- ``ETypedElement``
 
-### References
+## See Also
 
 - [Eclipse Modeling Framework (EMF)](https://eclipse.dev/emf/)
 - [OMG MOF (Meta Object Facility)](https://www.omg.org/mof/)

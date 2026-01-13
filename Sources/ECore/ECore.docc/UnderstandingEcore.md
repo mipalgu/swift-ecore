@@ -225,6 +225,6 @@ Models are persisted through ``Resource`` objects:
 
 ## See Also
 
-- [Eclipse Modeling Framework (EMF)](https://eclipse.dev/emf/) - The reference EMF implementation
-- [OMG MOF (Meta Object Facility)](https://www.omg.org/mof/) - The metamodelling standard
-- [OMG XMI (XML Metadata Interchange)](https://www.omg.org/spec/XMI/) - The serialisation format
+- [Eclipse Modeling Framework (EMF)](https://eclipse.dev/emf/)
+- [OMG MOF (Meta Object Facility)](https://www.omg.org/mof/)
+- [OMG XMI (XML Metadata Interchange)](https://www.omg.org/spec/XMI/)
