@@ -1,24 +1,10 @@
-# Swift ECore - EMF/Ecore for Swift
+# Swift ECore
 
-The [swift-ecore](https://github.com/mipalgu/swift-ecore) package
-aims to provide a pure Swift implementation of the
-[Eclipse Modeling Framework (EMF)](https://eclipse.dev/emf/) Ecore metamodelling system for
-Model-Driven Engineering (MDE).
-
-## Overview
-
-Swift ECore enables building model-driven applications in Swift, providing:
-
-- **ECore metamodelling**: Define metamodels using EClass, EAttribute, EReference, and EPackage
-- **Dynamic model instances**: Create and manipulate model instances at runtime
-- **XMI serialisation**: Load and save models in XMI format (compatible with Eclipse EMF)
-- **JSON serialisation**: Alternative JSON format for model persistence
-- **OCL support**: [Object Constraint Language (OCL)](https://www.omg.org/spec/OCL/) operations for model querying
-- **Cross-resource references**: Support for models spanning multiple files
+A pure Swift implementation of [EMF/Ecore](https://eclipse.dev/emf/) for Model-Driven Engineering.
 
 ## Installation
 
-Add swift-ecore as a dependency in your `Package.swift`:
+Add to your `Package.swift`:
 
 ```swift
 dependencies: [
@@ -26,70 +12,29 @@ dependencies: [
 ]
 ```
 
-Then add the product dependency to your target:
+## Products
 
-```swift
-.target(
-    name: "MyApp",
-    dependencies: [
-        .product(name: "ECore", package: "swift-ecore"),
-    ]
-)
-```
-
-### Available Products
-
-The package provides three library products:
-
-| Product | Description |
-|---------|-------------|
-| **ECore** | Core metamodelling framework with XMI/JSON serialisation |
-| **EMFBase** | Base types and protocols (EcoreValue, EUUID, etc.) |
-| **OCL** | Object Constraint Language operations |
-
-## Quick Start
-
-```swift
-import ECore
-
-// Load a metamodel
-let parser = XMIParser()
-let resource = try await parser.parse(URL(fileURLWithPath: "MyMetamodel.ecore"))
-
-// Access the package
-guard let package = resource.rootObjects.first as? EPackage else {
-    fatalError("No package found")
-}
-
-// Find an EClass
-let personClass = package.eClassifiers.first { $0.name == "Person" } as? EClass
-
-// Create a dynamic instance
-let person = DynamicEObject(eClass: personClass!)
-person.eSet("name", value: "Alice")
-```
-
-## Documentation
-
-Detailed documentation is available in the generated DocC documentation:
-
-- **Getting Started**: Installation and first steps
-- **Understanding Ecore**: Core concepts and architecture
-- **API Reference**: Complete API documentation
+- **ECore** - Core metamodelling framework
+- **EMFBase** - Base types and protocols
+- **OCL** - Object Constraint Language operations
 
 ## Requirements
 
-- macOS 15.0+
-- Swift 6.0+
+- Swift 6.0 or later
+- macOS 15.0+, Linux, or Windows
+
+## Documentation
+
+- [Getting Started](https://mipalgu.github.io/swift-ecore/documentation/ecore/gettingstarted)
+- [Understanding Ecore](https://mipalgu.github.io/swift-ecore/documentation/ecore/understandingecore)
+- [API Reference](https://mipalgu.github.io/swift-ecore/documentation/ecore)
 
 ## References
 
-This implementation is based on the following standards and technologies:
-
-- [Eclipse Modeling Framework (EMF)](https://eclipse.dev/emf/) - The reference implementation
-- [OMG MOF (Meta Object Facility)](https://www.omg.org/mof/) - The metamodelling standard
-- [OMG OCL (Object Constraint Language)](https://www.omg.org/spec/OCL/) - Query and constraint language
-- [OMG XMI (XML Metadata Interchange)](https://www.omg.org/spec/XMI/) - Model serialisation format
+- [Eclipse Modeling Framework (EMF)](https://eclipse.dev/emf/)
+- [OMG MOF (Meta Object Facility)](https://www.omg.org/mof/)
+- [OMG XMI (XML Metadata Interchange)](https://www.omg.org/spec/XMI/)
+- [OMG OCL (Object Constraint Language)](https://www.omg.org/spec/OCL/)
 
 ## Related Packages
 
