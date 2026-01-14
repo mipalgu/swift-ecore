@@ -1,6 +1,8 @@
 # Swift ECore
 
-A pure Swift implementation of [EMF/Ecore](https://eclipse.dev/emf/) for Model-Driven Engineering.
+The [swift-ecore](https://github.com/mipalgu/swift-ecore) package
+provides a pure Swift implementation of
+[EMF/Ecore](https://eclipse.dev/emf/) for Model-Driven Engineering.
 
 ## Installation
 
