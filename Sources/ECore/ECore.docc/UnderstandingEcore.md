@@ -4,13 +4,13 @@ Learn the fundamental concepts of the Ecore metamodelling framework.
 
 ## Overview
 
-Ecore is the metamodel at the heart of the
-[Eclipse Modeling Framework (EMF)](https://eclipse.dev/emf/). It provides
+Ecore is the metamodel at the heart of the Eclipse Modeling
+Framework ([EMF](https://eclipse.dev/emf/)). It provides
 a way to define the structure of models - what classes exist, what attributes they have,
 and how they relate to each other.
 
-Ecore is an implementation of the
-[OMG MOF (Meta Object Facility)](https://www.omg.org/mof/) standard, which defines
+Ecore is an implementation of the OMG MOF (Meta Object Facility)
+([OMG MOF](https://www.omg.org/mof/)) standard, which defines
 the metamodelling architecture used in Model-Driven Engineering.
 
 This article explains the core concepts you need to understand when working with ECore.

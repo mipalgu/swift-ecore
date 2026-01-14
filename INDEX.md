@@ -35,5 +35,11 @@ dependencies: [
 
 ## Documentation
 
-The package provides the ECore metamodelling framework, base types, and OCL operations.
-For details, see [Getting Started](https://mipalgu.github.io/swift-ecore/documentation/ecore/gettingstarted) and [Understanding Ecore](https://mipalgu.github.io/swift-ecore/documentation/ecore/understandingecore).
+The package provides the ECore metamodelling framework, OCL
+operations, and EMFBase foundation types.
+For ECore, see
+[Getting Started](documentation/ecore/gettingstarted) and
+[Understanding Ecore](documentation/ecore/understandingecore).
+For OCL, see
+[Getting Started](documentation/ocl/gettingstarted) and
+[Understanding OCL](documentation/ocl/understandingocl).
