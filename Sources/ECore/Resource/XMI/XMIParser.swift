@@ -401,6 +401,17 @@ public actor XMIParser {
 
             guard let attributeValue = element[attributeName] else { continue }
 
+            // Check for XPath-style reference values (e.g., "//@stateMachine.0/@initialState")
+            // These need to be resolved in the second pass rather than stored as strings
+            if attributeValue.contains("//@") || (attributeValue.hasPrefix("#") && attributeValue.contains("//")) {
+                let href = attributeValue.hasPrefix("#") ? attributeValue : "#\(attributeValue)"
+                referenceMap[instance.id, default: [:]][attributeName] = href
+                if debug {
+                    print("[XMI]   Stored XPath reference attribute '\(attributeName)' = '\(href)' for second-pass resolution")
+                }
+                continue
+            }
+
             // Use type inference to convert string to appropriate type
             let value = inferType(from: attributeValue)
             instance.eSet(attributeName, value: value)
