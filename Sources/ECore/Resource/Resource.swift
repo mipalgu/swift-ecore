@@ -1087,11 +1087,22 @@ public actor Resource {
         // EReference.eType or eSuperTypes. Deep nesting requires at least 3
         // passes to fully propagate (e.g., State → OnEntrySection → Section).
         var current = classifiers
-        for pass in 1...3 {
-            current = runFinalisationPass(current)
+        for pass in 1...4 {
+            let updated = runFinalisationPass(current)
             if debug {
-                print("[DEBUG]   Phase 6 pass \(pass) complete")
+                // Check what changed
+                var changedClasses: [String] = []
+                for (before, after) in zip(current, updated) {
+                    if let b = before as? EClass, let a = after as? EClass {
+                        if b.allStructuralFeatures.count != a.allStructuralFeatures.count
+                            || b.eSuperTypes.count != a.eSuperTypes.count {
+                            changedClasses.append("\(a.name): \(b.allStructuralFeatures.count)→\(a.allStructuralFeatures.count)")
+                        }
+                    }
+                }
+                print("[DEBUG]   Phase 6 pass \(pass) complete (\(changedClasses.isEmpty ? "stable" : changedClasses.joined(separator: ", ")))")
             }
+            current = updated
         }
 
         if debug {
