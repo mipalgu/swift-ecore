@@ -284,3 +284,65 @@ extension EcoreReferenceModel {
         return lhs.rootPackage.nsURI == rhs.rootPackage.nsURI
     }
 }
+
+/// Lightweight wrapper providing `IModel` conformance for a `Resource`.
+///
+/// This wrapper enables `Resource` instances to be registered directly with
+/// the execution engine for UUID resolution and model navigation without
+/// requiring a separate metamodel reference model. It is primarily used
+/// for model-to-text transformations where read-only access suffices.
+public struct ResourceModelWrapper: IModel, Sendable {
+    /// The underlying resource containing the model objects.
+    public let resource: Resource
+
+    /// Indicates whether this model allows modifications (always `false`).
+    public var isTarget: Bool = false
+
+    /// The reference model for this wrapper.
+    ///
+    /// Returns a minimal reference model with an empty package, as the
+    /// wrapper is intended for navigation and querying only.
+    public var referenceModel: IReferenceModel {
+        EcoreReferenceModel(
+            rootPackage: EPackage(name: "dynamic", nsURI: "dynamic", nsPrefix: "dyn"),
+            resource: resource
+        )
+    }
+
+    /// Creates a new resource model wrapper.
+    ///
+    /// - Parameter resource: The resource to wrap.
+    public init(resource: Resource) {
+        self.resource = resource
+    }
+
+    /// Attempting to create elements throws a read-only error.
+    ///
+    /// - Parameter metaElement: The EClass defining the type of element to create.
+    /// - Throws: `ECoreExecutionError.readOnlyModel` always.
+    public func createElement(ofType metaElement: EClass) throws -> any EObject {
+        throw ECoreExecutionError.readOnlyModel
+    }
+
+    /// Returns all elements matching the given type.
+    ///
+    /// - Parameter metaElement: The EClass to match against.
+    /// - Returns: An ordered set of matching element IDs.
+    public func getElementsByType(_ metaElement: EClass) async -> OrderedSet<EUUID> {
+        let allObjects = await resource.getAllObjects()
+        return OrderedSet(
+            allObjects.compactMap { obj in
+                guard let objClass = obj.eClass as? EClass else { return nil }
+                return objClass == metaElement || objClass.allSuperTypes.contains(metaElement)
+                    ? obj.id : nil
+            })
+    }
+
+    /// Checks if an object belongs to this model.
+    ///
+    /// - Parameter object: The EObject to test for membership.
+    /// - Returns: `true` if the object is contained in this model's resource.
+    public func isModelOf(_ object: any EObject) async -> Bool {
+        return await resource.contains(id: object.id)
+    }
+}

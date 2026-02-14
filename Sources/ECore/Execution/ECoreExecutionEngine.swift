@@ -99,6 +99,22 @@ public actor ECoreExecutionEngine: Sendable {
         }
     }
 
+    /// Registers a resource directly with the execution engine.
+    ///
+    /// This is a convenience method that wraps a `Resource` in a lightweight
+    /// `IModel` implementation for use in navigation and UUID resolution.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource containing the model objects
+    ///   - alias: The alias to use for the model
+    public func registerResource(_ resource: Resource, alias: String) {
+        let model = ResourceModelWrapper(resource: resource)
+        models[alias] = model
+        if debug {
+            print("[ECORE] Registered resource '\(alias)'")
+        }
+    }
+
     // MARK: - Navigation Operations
 
     /// Navigate a property from a source object.
@@ -392,8 +408,37 @@ public actor ECoreExecutionEngine: Sendable {
             return nil
         }
 
-        // For arrays and other types, return as-is
-        // Array references would need element-by-element resolution in a future enhancement
+        // Array of UUIDs — resolve each element
+        if let uuidArray = value as? [EUUID] {
+            if debug {
+                print("[ECORE]   Resolving array of \(uuidArray.count) UUIDs")
+            }
+            var resolved: [any EcoreValue] = []
+            for uuid in uuidArray {
+                if let cached = resolutionCache[uuid] {
+                    resolved.append(cached)
+                    continue
+                }
+                var found = false
+                for model in models.values {
+                    if let obj = await model.resource.resolve(uuid) {
+                        resolutionCache[uuid] = obj
+                        resolved.append(obj)
+                        found = true
+                        break
+                    }
+                }
+                if !found && debug {
+                    print("[ECORE]   UUID resolution failed for element: \(uuid)")
+                }
+            }
+            if debug {
+                print("[ECORE]   Resolved \(resolved.count)/\(uuidArray.count) elements")
+            }
+            return EcoreValueArray(resolved)
+        }
+
+        // For other types, return as-is
         return value
     }
 
