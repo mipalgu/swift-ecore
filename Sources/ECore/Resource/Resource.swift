@@ -901,6 +901,12 @@ public actor Resource {
         // PHASE 5: Update EClass.eStructuralFeatures with updated EReference instances
         eClassifiers = await updateEClassFeatures(eClassifiers)
 
+        // PHASE 6: Final consistency pass — resolve all EReference.eType to canonical classifiers.
+        // Because EClass is a value type, earlier phases may leave stale copies in nested
+        // EReference.eType fields. This pass builds a canonical name→EClass map from the
+        // final classifiers array and rewrites all EReference.eType fields to use it.
+        eClassifiers = finaliseReferenceTypes(eClassifiers)
+
         // Extract subpackages recursively
         var eSubpackages: [EPackage] = []
         if let subpackageIds: [EUUID] = dynamicObj.eGet("eSubpackages") as? [EUUID] {
@@ -1059,6 +1065,93 @@ public actor Resource {
         }
 
         return updatedClassifiers
+    }
+
+    /// Phase 6: Final consistency pass for EReference.eType resolution.
+    ///
+    /// Because `EClass` is a value type, earlier phases may leave stale copies
+    /// in nested `EReference.eType` fields. This pass builds a canonical
+    /// name-to-EClass map from the final classifiers array and rewrites all
+    /// `EReference.eType` fields (including those on eSuperTypes) to point
+    /// to the canonical version.
+    ///
+    /// - Parameter classifiers: The classifiers to finalise.
+    /// - Returns: Updated classifiers with consistent EReference.eType references.
+    private func finaliseReferenceTypes(_ classifiers: [any EClassifier]) -> [any EClassifier] {
+        if debug {
+            print("[DEBUG] Phase 6: Final consistency pass for EReference.eType")
+        }
+
+        // Build canonical name→EClass map from the final classifiers
+        var canonicalMap: [String: EClass] = [:]
+        for classifier in classifiers {
+            if let eClass = classifier as? EClass {
+                canonicalMap[eClass.name] = eClass
+            }
+        }
+
+        var result: [any EClassifier] = []
+        for classifier in classifiers {
+            guard var eClass = classifier as? EClass else {
+                result.append(classifier)
+                continue
+            }
+
+            var changed = false
+
+            // Update eStructuralFeatures
+            var updatedFeatures: [any EStructuralFeature] = []
+            for feature in eClass.eStructuralFeatures {
+                if var eRef = feature as? EReference,
+                   let refType = eRef.eType as? EClass,
+                   let canonical = canonicalMap[refType.name],
+                   canonical.id != refType.id || canonical.eStructuralFeatures.count != refType.eStructuralFeatures.count {
+                    eRef.eType = canonical
+                    updatedFeatures.append(eRef)
+                    changed = true
+                    if debug {
+                        print("[DEBUG]   Finalised '\(eClass.name).\(eRef.name)' eType → '\(canonical.name)' (\(canonical.eStructuralFeatures.count) features)")
+                    }
+                } else {
+                    updatedFeatures.append(feature)
+                }
+            }
+            if changed {
+                eClass.eStructuralFeatures = updatedFeatures
+            }
+
+            // Update eSuperTypes to canonical versions
+            var updatedSuperTypes: [EClass] = []
+            var superChanged = false
+            for superType in eClass.eSuperTypes {
+                if let canonical = canonicalMap[superType.name],
+                   canonical.id != superType.id || canonical.eStructuralFeatures.count != superType.eStructuralFeatures.count {
+                    updatedSuperTypes.append(canonical)
+                    superChanged = true
+                    if debug {
+                        print("[DEBUG]   Finalised '\(eClass.name)' supertype → '\(canonical.name)' (\(canonical.eStructuralFeatures.count) features)")
+                    }
+                } else {
+                    updatedSuperTypes.append(superType)
+                }
+            }
+            if superChanged {
+                eClass.eSuperTypes = updatedSuperTypes
+            }
+
+            // Update canonical map with the updated version
+            if changed || superChanged {
+                canonicalMap[eClass.name] = eClass
+            }
+
+            result.append(eClass)
+        }
+
+        if debug {
+            print("[DEBUG] Phase 6 complete")
+        }
+
+        return result
     }
 
     /// Create an EClass from a DynamicEObject with full cross-reference resolution.
