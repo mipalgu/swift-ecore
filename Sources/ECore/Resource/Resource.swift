@@ -1126,8 +1126,7 @@ public actor Resource {
                 if var eRef = feature as? EReference,
                    let refType = eRef.eType as? EClass,
                    let canonical = canonicalMap[refType.name],
-                   canonical.id != refType.id || canonical.eStructuralFeatures.count != refType.eStructuralFeatures.count
-                        || canonical.eSuperTypes.count != refType.eSuperTypes.count {
+                   !eClassDeepEqual(canonical, refType) {
                     eRef.eType = canonical
                     updatedFeatures.append(eRef)
                     changed = true
@@ -1147,8 +1146,7 @@ public actor Resource {
             var superChanged = false
             for superType in eClass.eSuperTypes {
                 if let canonical = canonicalMap[superType.name],
-                   canonical.id != superType.id || canonical.eStructuralFeatures.count != superType.eStructuralFeatures.count
-                        || canonical.eSuperTypes.count != superType.eSuperTypes.count {
+                   !eClassDeepEqual(canonical, superType) {
                     updatedSuperTypes.append(canonical)
                     superChanged = true
                     if debug {
@@ -1171,6 +1169,31 @@ public actor Resource {
         }
 
         return result
+    }
+
+    /// Deep comparison of two EClass instances.
+    ///
+    /// Compares IDs, feature counts, supertype counts, and recursively
+    /// checks supertype allStructuralFeatures counts to detect stale copies.
+    private func eClassDeepEqual(_ a: EClass, _ b: EClass) -> Bool {
+        guard a.id == b.id,
+              a.eStructuralFeatures.count == b.eStructuralFeatures.count,
+              a.eSuperTypes.count == b.eSuperTypes.count,
+              a.allStructuralFeatures.count == b.allStructuralFeatures.count
+        else { return false }
+
+        // Check that EReference eTypes match
+        for (af, bf) in zip(a.eStructuralFeatures, b.eStructuralFeatures) {
+            if let aRef = af as? EReference, let bRef = bf as? EReference {
+                if let aType = aRef.eType as? EClass, let bType = bRef.eType as? EClass {
+                    if aType.allStructuralFeatures.count != bType.allStructuralFeatures.count {
+                        return false
+                    }
+                }
+            }
+        }
+
+        return true
     }
 
     /// Create an EClass from a DynamicEObject with full cross-reference resolution.
