@@ -825,18 +825,6 @@ public actor Resource {
         let nsURI: String = retrievedNSURI ?? "http://\(name.lowercased())"
         let nsPrefix: String = retrievedNSPrefix ?? name.lowercased()
 
-        // Debug output to trace nsURI handling
-        if debug {
-            print("[DEBUG] Resource.createEPackage: name='\(name)'")
-            print("[DEBUG]   Retrieved nsURI from DynamicEObject: '\(retrievedNSURI ?? "nil")'")
-            print("[DEBUG]   Retrieved nsPrefix from DynamicEObject: '\(retrievedNSPrefix ?? "nil")'")
-            print("[DEBUG]   Final nsURI: '\(nsURI)', Final nsPrefix: '\(nsPrefix)'")
-
-            // Debug: Show all feature names in the DynamicEObject
-            let featureNames = dynamicObj.getFeatureNames()
-            print("[DEBUG]   DynamicEObject has \(featureNames.count) features: \(featureNames)")
-        }
-
         // 5-PHASE RESOLUTION: First create all EReference objects, then resolve opposites, then create EClasses, then update reference types, then update EClass features
 
         // PHASE 1: Create all EReference objects (which populates cache and handles forward resolution)
@@ -864,9 +852,6 @@ public actor Resource {
         }
 
         // PHASE 2: Resolve all pending opposite references now that all EReferences are created
-        if debug {
-            print("[DEBUG] About to call resolvePendingOppositeReferences() with \(pendingOppositeResolutions.count) pending resolutions")
-        }
         await resolvePendingOppositeReferences()
 
         // PHASE 3: Now create classifiers - EClasses will use the fully-resolved cached EReferences
@@ -945,24 +930,11 @@ public actor Resource {
     /// from the eClassNameCache populated in Phase 3. Updates are done in-place to
     /// ensure EClass.eStructuralFeatures arrays still reference the updated objects.
     private func updateReferenceTypes() async {
-        if debug {
-            print("[DEBUG] Phase 4: Updating EReference.eType references with resolved EClass instances")
-            print("[DEBUG]   Available resolved EClasses: \(eClassNameCache.keys.sorted())")
-            print("[DEBUG]   EReferences to update: \(ereferenceCache.count)")
-        }
-
         for (eReferenceId, var eReference) in ereferenceCache {
             // Check if this EReference has a placeholder EClass as eType
             if let eClassType = eReference.eType as? EClass,
                let resolvedEClass = eClassNameCache[eClassType.name],
                eClassType.id != resolvedEClass.id {
-
-                if debug {
-                    print("[DEBUG]   Updating EReference '\(eReference.name)' eType from placeholder '\(eClassType.name)' to resolved EClass")
-                    print("[DEBUG]     Placeholder features: \(eClassType.eStructuralFeatures.count)")
-                    print("[DEBUG]     Resolved features: \(resolvedEClass.eStructuralFeatures.count)")
-                }
-
                 // Update the eType and store back in cache
                 eReference.eType = resolvedEClass
                 ereferenceCache[eReferenceId] = eReference
@@ -974,18 +946,9 @@ public actor Resource {
             if let eClassType = eReference.eType as? EClass,
                let resolvedEClass = eClassNameCache[eClassType.name],
                eClassType.id != resolvedEClass.id {
-
-                if debug {
-                    print("[DEBUG]   Updating cached EReference '\(eReference.name)' eType from placeholder '\(eClassType.name)' to resolved EClass")
-                }
-
                 eReference.eType = resolvedEClass
                 featureToEReferenceCache[featureId] = eReference
             }
-        }
-
-        if debug {
-            print("[DEBUG] Phase 4 complete: Updated EReference types with resolved EClass instances in-place")
         }
     }
 
@@ -998,11 +961,6 @@ public actor Resource {
     /// - Parameter classifiers: The array of classifiers to update
     /// - Returns: Updated array of classifiers with EClass instances containing updated features
     private func updateEClassFeatures(_ classifiers: [any EClassifier]) async -> [any EClassifier] {
-        if debug {
-            print("[DEBUG] Phase 5: Updating EClass.eStructuralFeatures with updated EReference instances")
-            print("[DEBUG]   EClasses to update: \(eClassIdCache.count)")
-        }
-
         // First update the cached EClass instances
         for (eClassId, var eClass) in eClassIdCache {
             var updatedFeatures: [any EStructuralFeature] = []
@@ -1015,17 +973,11 @@ public actor Resource {
                         updatedFeatures.append(updatedEReference)
                         if updatedEReference.eType.id != eReference.eType.id {
                             hasUpdates = true
-                            if debug {
-                                print("[DEBUG]     Updated feature '\(eReference.name)' in EClass '\(eClass.name)'")
-                            }
                         }
                     } else if let updatedEReference = featureToEReferenceCache.values.first(where: { $0.id == eReference.id }) {
                         updatedFeatures.append(updatedEReference)
                         if updatedEReference.eType.id != eReference.eType.id {
                             hasUpdates = true
-                            if debug {
-                                print("[DEBUG]     Updated cached feature '\(eReference.name)' in EClass '\(eClass.name)'")
-                            }
                         }
                     } else {
                         updatedFeatures.append(feature)
@@ -1039,10 +991,6 @@ public actor Resource {
                 eClass.eStructuralFeatures = updatedFeatures
                 eClassIdCache[eClassId] = eClass
                 eClassNameCache[eClass.name] = eClass
-
-                if debug {
-                    print("[DEBUG]   Updated EClass '\(eClass.name)' with \(updatedFeatures.count) features")
-                }
             }
         }
 
@@ -1052,16 +1000,9 @@ public actor Resource {
             if let eClass = classifier as? EClass,
                let updatedEClass = eClassIdCache[eClass.id] {
                 updatedClassifiers.append(updatedEClass)
-                if debug {
-                    print("[DEBUG]   Replaced classifier '\(eClass.name)' with updated version")
-                }
             } else {
                 updatedClassifiers.append(classifier)
             }
-        }
-
-        if debug {
-            print("[DEBUG] Phase 5 complete: Updated EClass.eStructuralFeatures and classifiers array with updated EReference instances")
         }
 
         return updatedClassifiers
@@ -1078,35 +1019,13 @@ public actor Resource {
     /// - Parameter classifiers: The classifiers to finalise.
     /// - Returns: Updated classifiers with consistent EReference.eType references.
     private func finaliseReferenceTypes(_ classifiers: [any EClassifier]) -> [any EClassifier] {
-        if debug {
-            print("[DEBUG] Phase 6: Final consistency pass for EReference.eType")
-        }
-
         // Run multiple passes since EClass is a value type and updating one
         // class's features may affect other classes that reference it through
         // EReference.eType or eSuperTypes. Deep nesting requires at least 3
         // passes to fully propagate (e.g., State → OnEntrySection → Section).
         var current = classifiers
-        for pass in 1...4 {
-            let updated = runFinalisationPass(current)
-            if debug {
-                // Check what changed
-                var changedClasses: [String] = []
-                for (before, after) in zip(current, updated) {
-                    if let b = before as? EClass, let a = after as? EClass {
-                        if b.allStructuralFeatures.count != a.allStructuralFeatures.count
-                            || b.eSuperTypes.count != a.eSuperTypes.count {
-                            changedClasses.append("\(a.name): \(b.allStructuralFeatures.count)→\(a.allStructuralFeatures.count)")
-                        }
-                    }
-                }
-                print("[DEBUG]   Phase 6 pass \(pass) complete (\(changedClasses.isEmpty ? "stable" : changedClasses.joined(separator: ", ")))")
-            }
-            current = updated
-        }
-
-        if debug {
-            print("[DEBUG] Phase 6 complete")
+        for _ in 1...4 {
+            current = runFinalisationPass(current)
         }
 
         return current
@@ -1141,9 +1060,6 @@ public actor Resource {
                     eRef.eType = canonical
                     updatedFeatures.append(eRef)
                     changed = true
-                    if debug {
-                        print("[DEBUG]   Finalised '\(eClass.name).\(eRef.name)' eType → '\(canonical.name)' (\(canonical.eStructuralFeatures.count) features)")
-                    }
                 } else {
                     updatedFeatures.append(feature)
                 }
@@ -1160,9 +1076,6 @@ public actor Resource {
                    !eClassDeepEqual(canonical, superType) {
                     updatedSuperTypes.append(canonical)
                     superChanged = true
-                    if debug {
-                        print("[DEBUG]   Finalised '\(eClass.name)' supertype → '\(canonical.name)' (\(canonical.eStructuralFeatures.count) features)")
-                    }
                 } else {
                     updatedSuperTypes.append(superType)
                 }
@@ -1250,9 +1163,6 @@ public actor Resource {
         var eStructuralFeatures: [any EStructuralFeature] = []
         let rawFeatureValue = dynamicObj.eGet("eStructuralFeatures")
         if let featureIds: [EUUID] = rawFeatureValue as? [EUUID] {
-            if debug {
-                print("[DEBUG] createEClass '\(name)': found \(featureIds.count) feature IDs")
-            }
             for featureId in featureIds {
                 if let featureObj = resolve(featureId) {
                     do {
@@ -1264,21 +1174,13 @@ public actor Resource {
                             eStructuralFeatures.append(feature)
                         }
                     } catch {
-                        if debug {
-                            print("[DEBUG] createEClass '\(name)': failed to resolve feature \(featureId): \(error)")
-                        }
                         if !shouldIgnoreUnresolvedFeatures {
                             throw error
                         }
                     }
-                } else if debug {
-                    print("[DEBUG] createEClass '\(name)': could not resolve feature UUID \(featureId)")
                 }
             }
         } else if let singleId = rawFeatureValue as? EUUID {
-            if debug {
-                print("[DEBUG] createEClass '\(name)': found single feature ID \(singleId)")
-            }
             if let featureObj = resolve(singleId) {
                 if let cachedEReference = featureToEReferenceCache[singleId] {
                     eStructuralFeatures.append(cachedEReference)
@@ -1286,8 +1188,6 @@ public actor Resource {
                     eStructuralFeatures.append(feature)
                 }
             }
-        } else if debug {
-            print("[DEBUG] createEClass '\(name)': eStructuralFeatures raw value = \(String(describing: rawFeatureValue)) (type: \(rawFeatureValue.map { String(describing: type(of: $0)) } ?? "nil"))")
         }
 
         // Extract and resolve eSuperTypes
@@ -1596,24 +1496,9 @@ public actor Resource {
                     eAnnotations: eReference.eAnnotations
                 )
 
-                if debug {
-                    print("[DEBUG] createEReference: Set opposite for EReference \(finalEReference.id) (name: \(name)) to \(targetId)")
-                }
             } else {
                 // Store for later resolution
                 pendingOppositeResolutions[eReference.id] = (dynamicObj.id, oppositeDynamicId)
-
-                if debug {
-                    print("[DEBUG] createEReference: Stored pending opposite for EReference \(eReference.id) (name: \(name))")
-                    print("[DEBUG]   Source DynamicEObject: \(dynamicObj.id)")
-                    print("[DEBUG]   Target DynamicEObject: \(oppositeDynamicId)")
-                }
-            }
-        } else {
-            if debug {
-                print("[DEBUG] createEReference: No opposite found for EReference \(eReference.id) (name: \(name))")
-                print("[DEBUG]   eOpposite value: \(dynamicObj.eGet(XMIAttribute.eOpposite.rawValue) ?? "nil")")
-                print("[DEBUG]   opposite value: \(dynamicObj.eGet(XMIAttribute.opposite.rawValue) ?? "nil")")
             }
         }
 
@@ -1628,10 +1513,6 @@ public actor Resource {
     /// This method should be called after creating all structural features for an EPackage
     /// to properly establish bidirectional opposite references between EReference objects.
     public func resolvePendingOppositeReferences() async {
-        if debug {
-            print("[DEBUG] resolvePendingOppositeReferences() called with \(pendingOppositeResolutions.count) pending resolutions")
-        }
-
         // Create a mapping from DynamicEObject ID to EReference ID using ALL cached EReferences
         var dynamicToEReferenceMap: [EUUID: EUUID] = [:]
 
@@ -1658,18 +1539,6 @@ public actor Resource {
                 if eReference.opposite == pendingEReferenceId {
                     dynamicToEReferenceMap[targetDynamicId] = eReferenceId
                     break
-                }
-            }
-        }
-
-        if debug && !pendingOppositeResolutions.isEmpty {
-            print("[DEBUG] Resolving \(pendingOppositeResolutions.count) pending opposite references using cache")
-            for (eReferenceId, (sourceDynamicId, targetDynamicId)) in pendingOppositeResolutions {
-                print("[DEBUG]   EReference \(eReferenceId) (from \(sourceDynamicId)) -> target \(targetDynamicId)")
-                if let targetEReferenceId = dynamicToEReferenceMap[targetDynamicId] {
-                    print("[DEBUG]     Found target EReference \(targetEReferenceId) in cache")
-                } else {
-                    print("[DEBUG]     Target not found in cache")
                 }
             }
         }
@@ -1706,9 +1575,6 @@ public actor Resource {
                     }
                 }
 
-                if debug {
-                    print("[DEBUG] Updated cached EReference \(eReferenceId) (name: \(updatedEReference.name)) with opposite: \(updatedEReference.opposite?.description ?? "nil")")
-                }
             }
         }
 
