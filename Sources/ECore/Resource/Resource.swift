@@ -1102,27 +1102,46 @@ public actor Resource {
 
         // Extract structural features - use cached EReference objects if available
         var eStructuralFeatures: [any EStructuralFeature] = []
-        if let featureIds: [EUUID] = dynamicObj.eGet("eStructuralFeatures") as? [EUUID] {
+        let rawFeatureValue = dynamicObj.eGet("eStructuralFeatures")
+        if let featureIds: [EUUID] = rawFeatureValue as? [EUUID] {
+            if debug {
+                print("[DEBUG] createEClass '\(name)': found \(featureIds.count) feature IDs")
+            }
             for featureId in featureIds {
                 if let featureObj = resolve(featureId) {
                     do {
                         // Check if we have a cached EReference for this feature ID first
                         if let cachedEReference = featureToEReferenceCache[featureId] {
                             eStructuralFeatures.append(cachedEReference)
-
-
                         } else {
-
                             let feature = try await resolvingFeature(featureObj)
                             eStructuralFeatures.append(feature)
                         }
                     } catch {
+                        if debug {
+                            print("[DEBUG] createEClass '\(name)': failed to resolve feature \(featureId): \(error)")
+                        }
                         if !shouldIgnoreUnresolvedFeatures {
                             throw error
                         }
                     }
+                } else if debug {
+                    print("[DEBUG] createEClass '\(name)': could not resolve feature UUID \(featureId)")
                 }
             }
+        } else if let singleId = rawFeatureValue as? EUUID {
+            if debug {
+                print("[DEBUG] createEClass '\(name)': found single feature ID \(singleId)")
+            }
+            if let featureObj = resolve(singleId) {
+                if let cachedEReference = featureToEReferenceCache[singleId] {
+                    eStructuralFeatures.append(cachedEReference)
+                } else if let feature = try? await resolvingFeature(featureObj) {
+                    eStructuralFeatures.append(feature)
+                }
+            }
+        } else if debug {
+            print("[DEBUG] createEClass '\(name)': eStructuralFeatures raw value = \(String(describing: rawFeatureValue)) (type: \(rawFeatureValue.map { String(describing: type(of: $0)) } ?? "nil"))")
         }
 
         // Extract and resolve eSuperTypes
