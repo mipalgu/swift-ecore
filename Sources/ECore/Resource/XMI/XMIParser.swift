@@ -1485,9 +1485,17 @@ public actor XMIParser {
 
     /// Collect structural information from an XML element before creating objects
     private func collectStructuralInfo(from element: XElement) -> ElementStructureInfo {
-        // Extract class name
+        // Extract class name — prefer xsi:type if present (for polymorphic elements)
         let className: String
-        if element.name.contains(":") {
+        if let xsiType = element[XMIAttribute.xsiType.rawValue] {
+            // xsi:type="prefix:TypeName" — extract the type name after the colon
+            if xsiType.contains(":") {
+                let parts = xsiType.split(separator: ":")
+                className = String(parts.last ?? "")
+            } else {
+                className = xsiType
+            }
+        } else if element.name.contains(":") {
             let parts = element.name.split(separator: ":")
             className = String(parts.last ?? "")
         } else {
