@@ -1082,21 +1082,16 @@ public actor Resource {
             print("[DEBUG] Phase 6: Final consistency pass for EReference.eType")
         }
 
-        // Run multiple passes until stable, since EClass is a value type
-        // and updating one class's features may affect other classes that
-        // reference it through EReference.eType or eSuperTypes.
+        // Run multiple passes since EClass is a value type and updating one
+        // class's features may affect other classes that reference it through
+        // EReference.eType or eSuperTypes. Deep nesting requires at least 3
+        // passes to fully propagate (e.g., State → OnEntrySection → Section).
         var current = classifiers
         for pass in 1...3 {
-            let updated = runFinalisationPass(current)
-            let changed = zip(current, updated).contains { pair in
-                guard let before = pair.0 as? EClass, let after = pair.1 as? EClass else { return false }
-                return before.allStructuralFeatures.count != after.allStructuralFeatures.count
-            }
-            current = updated
+            current = runFinalisationPass(current)
             if debug {
-                print("[DEBUG]   Phase 6 pass \(pass): \(changed ? "changes made" : "stable")")
+                print("[DEBUG]   Phase 6 pass \(pass) complete")
             }
-            if !changed { break }
         }
 
         if debug {
