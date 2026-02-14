@@ -1402,23 +1402,65 @@ public actor XMIParser {
             let parts = element.name.split(separator: ":", maxSplits: 1)
             let prefix = String(parts[0])
 
-            // Look up xmlns:prefix in attributes
+            // Look up xmlns:prefix in attributes or ancestors
             let nsKey = XMLNamespace.prefixed(prefix)
             if let namespaceURI = element[nsKey] {
                 return namespaceURI
             }
+            // Also check ancestors for the prefixed namespace
+            var current = element.parent
+            while let parent = current {
+                if let namespaceURI = parent[nsKey] {
+                    return namespaceURI
+                }
+                current = parent.parent
+            }
         }
 
         // Case 3: Check parent elements for namespace declarations
-        // (XMI namespace can be declared on root and inherited)
+        // In XMI, child elements without a prefix inherit the metamodel namespace
+        // from the root element. Check for both default (xmlns="...") and prefixed
+        // (xmlns:prefix="...") namespace declarations, excluding standard XMI/XSI
+        // namespaces.
         var current = element.parent
         while let parent = current {
             if let defaultNS = parent[XMLNamespace.xmlns], !defaultNS.isEmpty {
                 return defaultNS
             }
+            // Check prefixed namespaces on ancestors (for XMI instance models
+            // where the root uses xmlns:metamodel="..." rather than xmlns="...")
+            if let metamodelNS = extractMetamodelNamespace(from: parent) {
+                return metamodelNS
+            }
             current = parent.parent
         }
 
+        return nil
+    }
+
+    /// Extracts the metamodel namespace URI from an element's prefixed xmlns declarations.
+    ///
+    /// Finds the first `xmlns:prefix` declaration that is not a standard XMI/XSI namespace,
+    /// which in an XMI instance document is the metamodel namespace.
+    ///
+    /// - Parameter element: The XML element to examine.
+    /// - Returns: The metamodel namespace URI if found, `nil` otherwise.
+    private func extractMetamodelNamespace(from element: XElement) -> String? {
+        // Standard namespaces to exclude
+        let standardNamespaces: Set<String> = [
+            EcoreURI.xmiNamespace.rawValue,
+            EcoreURI.xsiNamespace.rawValue,
+            EcoreURI.ecoreNamespace.rawValue,
+        ]
+        // Check for prefixed namespaces by examining the element's name for a prefix
+        // then looking for xmlns:prefix on this element
+        if element.name.contains(":") {
+            let prefix = String(element.name.split(separator: ":", maxSplits: 1)[0])
+            let nsKey = XMLNamespace.prefixed(prefix)
+            if let uri = element[nsKey], !standardNamespaces.contains(uri) {
+                return uri
+            }
+        }
         return nil
     }
 
