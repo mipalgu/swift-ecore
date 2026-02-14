@@ -1082,7 +1082,33 @@ public actor Resource {
             print("[DEBUG] Phase 6: Final consistency pass for EReference.eType")
         }
 
-        // Build canonical name→EClass map from the final classifiers
+        // Run multiple passes until stable, since EClass is a value type
+        // and updating one class's features may affect other classes that
+        // reference it through EReference.eType or eSuperTypes.
+        var current = classifiers
+        for pass in 1...3 {
+            let updated = runFinalisationPass(current)
+            let changed = zip(current, updated).contains { pair in
+                guard let before = pair.0 as? EClass, let after = pair.1 as? EClass else { return false }
+                return before.allStructuralFeatures.count != after.allStructuralFeatures.count
+            }
+            current = updated
+            if debug {
+                print("[DEBUG]   Phase 6 pass \(pass): \(changed ? "changes made" : "stable")")
+            }
+            if !changed { break }
+        }
+
+        if debug {
+            print("[DEBUG] Phase 6 complete")
+        }
+
+        return current
+    }
+
+    /// Run a single finalisation pass updating EReference.eType and eSuperTypes.
+    private func runFinalisationPass(_ classifiers: [any EClassifier]) -> [any EClassifier] {
+        // Build canonical name→EClass map from the current classifiers
         var canonicalMap: [String: EClass] = [:]
         for classifier in classifiers {
             if let eClass = classifier as? EClass {
@@ -1105,7 +1131,8 @@ public actor Resource {
                 if var eRef = feature as? EReference,
                    let refType = eRef.eType as? EClass,
                    let canonical = canonicalMap[refType.name],
-                   canonical.id != refType.id || canonical.eStructuralFeatures.count != refType.eStructuralFeatures.count {
+                   canonical.id != refType.id || canonical.eStructuralFeatures.count != refType.eStructuralFeatures.count
+                        || canonical.eSuperTypes.count != refType.eSuperTypes.count {
                     eRef.eType = canonical
                     updatedFeatures.append(eRef)
                     changed = true
@@ -1125,7 +1152,8 @@ public actor Resource {
             var superChanged = false
             for superType in eClass.eSuperTypes {
                 if let canonical = canonicalMap[superType.name],
-                   canonical.id != superType.id || canonical.eStructuralFeatures.count != superType.eStructuralFeatures.count {
+                   canonical.id != superType.id || canonical.eStructuralFeatures.count != superType.eStructuralFeatures.count
+                        || canonical.eSuperTypes.count != superType.eSuperTypes.count {
                     updatedSuperTypes.append(canonical)
                     superChanged = true
                     if debug {
@@ -1145,10 +1173,6 @@ public actor Resource {
             }
 
             result.append(eClass)
-        }
-
-        if debug {
-            print("[DEBUG] Phase 6 complete")
         }
 
         return result
