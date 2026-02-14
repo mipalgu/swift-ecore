@@ -1339,8 +1339,13 @@ public actor XMIParser {
             }
         }
 
-        // The effective class name to look up (prefer reference type name for accuracy)
-        let effectiveName = referenceTypeName ?? className
+        // Determine the effective class name to look up.
+        // When xsi:type is present, className is the specific polymorphic type
+        // (e.g., "AssignmentIntegerLHS") and should take precedence over the
+        // reference's declared type (e.g., "Statement"). Use the reference type
+        // name only when className matches the element name (no xsi:type).
+        let hasXsiType = element[XMIAttribute.xsiType.rawValue] != nil
+        let effectiveName = hasXsiType ? className : (referenceTypeName ?? className)
 
         // Step 2: Always prefer canonical version from the metamodel
         if let resourceSet = self.resourceSet {
