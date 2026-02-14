@@ -1299,28 +1299,26 @@ public actor XMIParser {
         parentEClass: EClass? = nil,
         referenceName: String? = nil
     ) async -> EClass {
-        // Step 1: If we have parent context, try to resolve from the reference type
+        // Step 1: Determine the actual type name from parent reference context.
+        // The parent reference's eType may indicate the expected type, but since
+        // EClass is a value type, it may be a stale copy. We use it only for the
+        // type name, then prefer the canonical metamodel version.
+        var referenceTypeName: String? = nil
+        var referenceTypeFallback: EClass? = nil
         if let parentEClass = parentEClass,
             let referenceName = referenceName
         {
             if debug {
                 print("[XMI] Resolving child '\(className)' via parent reference '\(parentEClass.name).\(referenceName)'")
             }
-            // Look for a reference feature with this name
             if let reference = parentEClass.allReferences.first(where: { $0.name == referenceName })
             {
-                // Get the eType of the reference
                 if let referenceType = reference.eType as? EClass {
+                    referenceTypeName = referenceType.name
+                    referenceTypeFallback = referenceType
                     if debug {
-                        print("[XMI]   Found from parent reference: \(referenceType.name) with \(referenceType.eStructuralFeatures.count) features")
-                        print("[XMI]   EClass ID: \(referenceType.id)")
-                        if referenceType.name == "Member" {
-                            print("[XMI]   Member features: \(referenceType.eStructuralFeatures.map { $0.name }.joined(separator: ", "))")
-                        }
+                        print("[XMI]   Found reference type: \(referenceType.name) with \(referenceType.eStructuralFeatures.count) own features, \(referenceType.allStructuralFeatures.count) total")
                     }
-                    // Cache using the actual type name, not the element name
-                    eClassCache[referenceType.name] = referenceType
-                    return referenceType
                 } else if debug {
                     print("[XMI]   Reference '\(referenceName)' eType is not EClass")
                 }
@@ -1330,37 +1328,27 @@ public actor XMIParser {
             }
         }
 
-        // Step 2: Check cache
-        if let cachedClass = eClassCache[className] {
-            return cachedClass
-        }
+        // The effective class name to look up (prefer reference type name for accuracy)
+        let effectiveName = referenceTypeName ?? className
 
-        // Step 3: Try to resolve from ResourceSet using namespace
+        // Step 2: Always prefer canonical version from the metamodel
         if let resourceSet = self.resourceSet {
-            // Extract namespace URI from element
             if let namespaceURI = extractNamespaceURI(from: element) {
                 if debug {
-                    print("[XMI] Resolving class '\(className)' with namespace '\(namespaceURI)'")
+                    print("[XMI] Resolving class '\(effectiveName)' with namespace '\(namespaceURI)'")
                 }
-                // Query ResourceSet for metamodel
                 if let metamodel = await resourceSet.getMetamodel(uri: namespaceURI) {
                     if debug {
                         print("[XMI]   Found metamodel: \(metamodel.name)")
                     }
-                    // Look up EClass by name
-                    if let eClass = metamodel.getClassifier(className) as? EClass {
+                    if let eClass = metamodel.getClassifier(effectiveName) as? EClass {
                         if debug {
-                            print("[XMI]   Found EClass with \(eClass.eStructuralFeatures.count) features")
-                            print("[XMI]   EClass ID: \(eClass.id)")
-                            if eClass.name == "Member" {
-                                print("[XMI]   Member features: \(eClass.eStructuralFeatures.map { $0.name }.joined(separator: ", "))")
-                            }
+                            print("[XMI]   Found canonical EClass '\(eClass.name)' with \(eClass.eStructuralFeatures.count) own features, \(eClass.allStructuralFeatures.count) total")
                         }
-                        // Cache and return
-                        eClassCache[className] = eClass
+                        eClassCache[effectiveName] = eClass
                         return eClass
                     } else if debug {
-                        print("[XMI]   EClass '\(className)' not found in metamodel")
+                        print("[XMI]   EClass '\(effectiveName)' not found in metamodel")
                     }
                 } else if debug {
                     print("[XMI]   No metamodel registered for namespace '\(namespaceURI)'")
@@ -1372,12 +1360,26 @@ public actor XMIParser {
             print("[XMI] No ResourceSet available for class lookup")
         }
 
-        // Step 4: Fall back to dynamic EClass creation
-        if debug {
-            print("[XMI] Creating dynamic EClass for '\(className)'")
+        // Step 3: Check cache
+        if let cachedClass = eClassCache[effectiveName] {
+            return cachedClass
         }
-        let eClass = EClass(name: className)
-        eClassCache[className] = eClass
+
+        // Step 4: Use the reference type fallback if available
+        if let fallback = referenceTypeFallback {
+            if debug {
+                print("[XMI] Using reference type fallback for '\(effectiveName)'")
+            }
+            eClassCache[effectiveName] = fallback
+            return fallback
+        }
+
+        // Step 5: Fall back to dynamic EClass creation
+        if debug {
+            print("[XMI] Creating dynamic EClass for '\(effectiveName)'")
+        }
+        let eClass = EClass(name: effectiveName)
+        eClassCache[effectiveName] = eClass
         return eClass
     }
 
