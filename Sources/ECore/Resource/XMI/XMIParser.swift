@@ -1042,12 +1042,18 @@ public actor XMIParser {
         }
     }
 
-    /// Resolve Ecore built-in types from URIs like "ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"
+    /// Resolve Ecore built-in types from URIs like `ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt`.
+    ///
+    /// This helper extracts the built-in type name from the URI fragment, reuses
+    /// any cached instance, and otherwise creates a dynamic `EDataType`
+    /// representation in the current resource. Registration happens synchronously
+    /// within the parser actor so the resource and cache stay consistent under
+    /// Swift strict concurrency.
     ///
     /// - Parameters:
-    ///   - reference: The Ecore type URI reference
-    ///   - resource: The current Resource for object storage
-    /// - Returns: A DynamicEObject representing the built-in type, or nil if not recognized
+    ///   - reference: The Ecore type URI reference.
+    ///   - resource: The current resource used to register the built-in type.
+    /// - Returns: A dynamic object representing the built-in type, or `nil` if the reference is not recognised.
     private func resolveEcoreBuiltinType(_ reference: String, in resource: Resource) async -> (
         any EcoreValue
     )? {
@@ -1069,9 +1075,7 @@ public actor XMIParser {
         dataType.eSet(.name, typeName)
 
         // Register with resource and cache
-        Task {
-            await resource.register(dataType)
-        }
+        await resource.register(dataType)
         builtinTypeCache[typeName] = dataType
 
         return dataType
