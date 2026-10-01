@@ -31,11 +31,23 @@ import Foundation
 ///     details: ["documentation": "This class represents a person"]
 /// )
 /// ```
-public struct EAnnotation: EcoreValue, Sendable {
+public struct EAnnotation: EObject, EMetaObject {
+    /// The metaclass of annotations is the `EAnnotation` class of ``EcorePackage``.
+    public typealias Classifier = EClass
+
     /// Unique identifier for this annotation.
     ///
     /// Used for identity-based equality comparison.
     public let id: EUUID
+
+    /// The metaclass describing this annotation.
+    public var eClass: EClass { EcorePackage.metaClass(.eAnnotation) }
+
+    /// The identifier of the model element that holds this annotation, if any.
+    public internal(set) var eContainerID: EUUID?
+
+    /// Internal storage for feature values that are not answered reflectively.
+    private var storage = EObjectStorage()
 
     /// The source URI identifying the annotation's purpose.
     ///
@@ -69,6 +81,62 @@ public struct EAnnotation: EcoreValue, Sendable {
         self.id = id
         self.source = source
         self.details = details
+    }
+
+    /// The details of this annotation as metamodel objects.
+    ///
+    /// Each entry is an ``EStringToStringMapEntry`` whose identifier is derived from the
+    /// annotation and the entry key, so repeated reads answer entries with the same identity.
+    /// Entries are ordered by key.
+    public var detailEntries: [EStringToStringMapEntry] {
+        details.keys.sorted().map { key in
+            EStringToStringMapEntry(
+                id: ReflectiveValues.derivedID(from: id, key: key),
+                key: key,
+                value: details[key] ?? "",
+                eContainerID: id)
+        }
+    }
+
+    // MARK: - EObject Protocol Implementation
+
+    /// Reflectively retrieves the value of a feature.
+    ///
+    /// The features `source`, `details`, `eModelElement`, `contents`, and `references` of
+    /// the `EAnnotation` metaclass are answered from the annotation itself.
+    ///
+    /// - Parameter feature: The structural feature whose value to retrieve.
+    /// - Returns: The feature's current value, or `nil` if not set.
+    public func eGet(_ feature: some EStructuralFeature) -> (any EcoreValue)? {
+        if case .value(let value) = reflectiveEGet(feature) { return value }
+        return storage.get(feature: feature.id)
+    }
+
+    /// Reflectively sets the value of a feature.
+    ///
+    /// - Parameters:
+    ///   - feature: The structural feature to modify.
+    ///   - value: The new value, or `nil` to unset.
+    public mutating func eSet(_ feature: some EStructuralFeature, _ value: (any EcoreValue)?) {
+        if reflectiveESet(feature, value) { return }
+        storage.set(feature: feature.id, value: value)
+    }
+
+    /// Checks whether a feature has been explicitly set.
+    ///
+    /// - Parameter feature: The structural feature to check.
+    /// - Returns: `true` if the feature has been set; otherwise, `false`.
+    public func eIsSet(_ feature: some EStructuralFeature) -> Bool {
+        if let isSet = reflectiveEIsSet(feature) { return isSet }
+        return storage.isSet(feature: feature.id)
+    }
+
+    /// Unsets a feature, returning it to its default value.
+    ///
+    /// - Parameter feature: The structural feature to unset.
+    public mutating func eUnset(_ feature: some EStructuralFeature) {
+        if reflectiveEUnset(feature) { return }
+        storage.unset(feature: feature.id)
     }
 
     /// Compares two annotations for equality.
@@ -199,4 +267,92 @@ public protocol ENamedElement: EModelElement {
     /// - Attribute names must be unique within their class
     /// - Package names must be unique within their parent package
     var name: String { get set }
+}
+
+// MARK: - EStringToStringMapEntry
+
+/// A key and value pair of an annotation's details.
+///
+/// Entries are the objects behind the `details` feature of an ``EAnnotation``. Each entry
+/// is contained by its annotation and carries a string key and a string value.
+public struct EStringToStringMapEntry: EObject, EMetaObject {
+    /// The metaclass of map entries is the `EStringToStringMapEntry` class of ``EcorePackage``.
+    public typealias Classifier = EClass
+
+    /// Unique identifier for this entry.
+    public let id: EUUID
+
+    /// The metaclass describing this entry.
+    public var eClass: EClass { EcorePackage.metaClass(.eStringToStringMapEntry) }
+
+    /// The identifier of the annotation that holds this entry, if any.
+    public internal(set) var eContainerID: EUUID?
+
+    /// The key of this entry.
+    public var key: String
+
+    /// The value of this entry.
+    public var value: String
+
+    /// Creates a new entry.
+    ///
+    /// - Parameters:
+    ///   - id: Unique identifier (generates a new UUID if not provided).
+    ///   - key: The key of the entry.
+    ///   - value: The value of the entry.
+    ///   - eContainerID: The identifier of the containing annotation, if any.
+    public init(id: EUUID = EUUID(), key: String, value: String, eContainerID: EUUID? = nil) {
+        self.id = id
+        self.key = key
+        self.value = value
+        self.eContainerID = eContainerID
+    }
+
+    /// Entries contain no objects.
+    public var eContents: [any EObject] { [] }
+
+    /// Reflectively retrieves the value of the `key` or `value` feature.
+    ///
+    /// - Parameter feature: The structural feature whose value to retrieve.
+    /// - Returns: The feature's current value, or `nil` for any other feature.
+    public func eGet(_ feature: some EStructuralFeature) -> (any EcoreValue)? {
+        switch EcorePackage.featureName(forID: feature.id) {
+        case .key: return key
+        case .value: return value
+        default: return nil
+        }
+    }
+
+    /// Reflectively sets the value of the `key` or `value` feature.
+    ///
+    /// - Parameters:
+    ///   - feature: The structural feature to modify.
+    ///   - value: The new string value; `nil` resets the feature to the empty string.
+    public mutating func eSet(_ feature: some EStructuralFeature, _ value: (any EcoreValue)?) {
+        let text = value as? String ?? ""
+        switch EcorePackage.featureName(forID: feature.id) {
+        case .key: key = text
+        case .value: self.value = text
+        default: break
+        }
+    }
+
+    /// Checks whether the `key` or `value` feature holds a non-empty string.
+    ///
+    /// - Parameter feature: The structural feature to check.
+    /// - Returns: `true` if the feature is set; otherwise, `false`.
+    public func eIsSet(_ feature: some EStructuralFeature) -> Bool {
+        switch EcorePackage.featureName(forID: feature.id) {
+        case .key: return !key.isEmpty
+        case .value: return !value.isEmpty
+        default: return false
+        }
+    }
+
+    /// Resets the `key` or `value` feature to the empty string.
+    ///
+    /// - Parameter feature: The structural feature to unset.
+    public mutating func eUnset(_ feature: some EStructuralFeature) {
+        eSet(feature, nil)
+    }
 }

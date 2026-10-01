@@ -51,9 +51,9 @@ import Foundation
 public struct EClass: EClassifier, ENamedElement {
     /// The type of classifier for this class.
     ///
-    /// All instances of `EClass` use ``EClassClassifier`` as their metaclass, establishing
-    /// the metaclass relationship in the Ecore type system.
-    public typealias Classifier = EClassClassifier
+    /// The metaclass of every class is the `EClass` class of ``EcorePackage``, which is
+    /// itself an ``EClass``.
+    public typealias Classifier = EClass
 
     /// Unique identifier for this class.
     ///
@@ -61,7 +61,12 @@ public struct EClass: EClassifier, ENamedElement {
     public let id: EUUID
 
     /// The metaclass describing this class.
-    public let eClass: Classifier
+    ///
+    /// This is the `EClass` descriptor of the reflective Ecore metamodel ``EcorePackage``.
+    public var eClass: EClass { EcorePackage.metaClass(.eClass) }
+
+    /// The identifier of the package that contains this class, if any.
+    public internal(set) var eContainerID: EUUID?
 
     /// The name of this class.
     ///
@@ -73,7 +78,9 @@ public struct EClass: EClassifier, ENamedElement {
     ///
     /// Annotations provide extensible metadata commonly used for code generation hints,
     /// documentation, or custom constraints.
-    public var eAnnotations: [EAnnotation]
+    public var eAnnotations: [EAnnotation] {
+        didSet { ContainerStamp.stamp(&eAnnotations, container: id) }
+    }
 
     /// Whether this class is abstract.
     ///
@@ -98,7 +105,9 @@ public struct EClass: EClassifier, ENamedElement {
     ///
     /// Contains features defined directly on this class, excluding inherited features.
     /// For all features including inherited ones, use ``allStructuralFeatures``.
-    public var eStructuralFeatures: [any EStructuralFeature]
+    public var eStructuralFeatures: [any EStructuralFeature] {
+        didSet { ContainerStamp.stamp(&eStructuralFeatures, container: id) }
+    }
 
     /// The operations (methods) defined on this class.
     ///
@@ -133,7 +142,6 @@ public struct EClass: EClassifier, ENamedElement {
         eAnnotations: [EAnnotation] = []
     ) {
         self.id = id
-        self.eClass = EClassClassifier()
         self.name = name
         self.isAbstract = isAbstract
         self.isInterface = isInterface
@@ -142,6 +150,8 @@ public struct EClass: EClassifier, ENamedElement {
         self.eOperations = eOperations
         self.eAnnotations = eAnnotations
         self.storage = EObjectStorage()
+        ContainerStamp.stamp(&self.eAnnotations, container: id)
+        ContainerStamp.stamp(&self.eStructuralFeatures, container: id)
     }
 
     /// Initialise an EClass from a DynamicEObject.
@@ -239,6 +249,96 @@ public struct EClass: EClassifier, ENamedElement {
         return result
     }
 
+    // MARK: - EMF-Ordered Closures
+
+    /// All supertypes of this class, transitively, in EMF order.
+    ///
+    /// For each direct supertype in declaration order, the supertype's own supertypes come
+    /// first, followed by the supertype itself. Each class appears once, at its first
+    /// position. Cyclic hierarchies are tolerated and do not repeat classes.
+    public var eAllSuperTypes: [EClass] {
+        var result: [EClass] = []
+        var seen: Set<EUUID> = [id]
+        collectAllSuperTypes(into: &result, seen: &seen)
+        return result
+    }
+
+    private func collectAllSuperTypes(into result: inout [EClass], seen: inout Set<EUUID>) {
+        for superType in eSuperTypes {
+            guard seen.insert(superType.id).inserted else { continue }
+            var higher: [EClass] = []
+            superType.collectAllSuperTypes(into: &higher, seen: &seen)
+            result.append(contentsOf: higher)
+            result.append(superType)
+        }
+    }
+
+    /// All structural features of this class, including inherited ones, in EMF order.
+    ///
+    /// The features of each direct supertype (in declaration order, themselves ordered
+    /// the same way) come first, followed by the features declared by this class. Each
+    /// feature appears once, at its first position.
+    public var eAllStructuralFeatures: [any EStructuralFeature] {
+        var result: [any EStructuralFeature] = []
+        var seen: Set<EUUID> = []
+        var visited: Set<EUUID> = []
+        collectAllStructuralFeatures(into: &result, seen: &seen, visited: &visited)
+        return result
+    }
+
+    private func collectAllStructuralFeatures(
+        into result: inout [any EStructuralFeature], seen: inout Set<EUUID>,
+        visited: inout Set<EUUID>
+    ) {
+        guard visited.insert(id).inserted else { return }
+        for superType in eSuperTypes {
+            superType.collectAllStructuralFeatures(into: &result, seen: &seen, visited: &visited)
+        }
+        for feature in eStructuralFeatures where seen.insert(feature.id).inserted {
+            result.append(feature)
+        }
+    }
+
+    /// All attributes of this class, including inherited ones, in EMF order.
+    public var eAllAttributes: [EAttribute] {
+        eAllStructuralFeatures.compactMap { $0 as? EAttribute }
+    }
+
+    /// All references of this class, including inherited ones, in EMF order.
+    public var eAllReferences: [EReference] {
+        eAllStructuralFeatures.compactMap { $0 as? EReference }
+    }
+
+    /// All containment references of this class, including inherited ones, in EMF order.
+    public var eAllContainments: [EReference] {
+        eAllReferences.filter { $0.containment }
+    }
+
+    /// The attributes declared directly by this class.
+    public var eAttributes: [EAttribute] {
+        eStructuralFeatures.compactMap { $0 as? EAttribute }
+    }
+
+    /// The references declared directly by this class.
+    public var eReferences: [EReference] {
+        eStructuralFeatures.compactMap { $0 as? EReference }
+    }
+
+    /// The first identifying attribute of this class, including inherited ones.
+    public var eIDAttribute: EAttribute? {
+        eAllAttributes.first { $0.isID }
+    }
+
+    // MARK: - Containment
+
+    /// The annotations and structural features contained directly by this class.
+    ///
+    /// Objects are listed in the order of the containment features `eAnnotations` and
+    /// `eStructuralFeatures`.
+    public var eContents: [any EObject] {
+        containedObjects.map { $0.object }
+    }
+
     // MARK: - Methods
 
     /// Retrieve a structural feature by name.
@@ -305,6 +405,7 @@ public struct EClass: EClassifier, ENamedElement {
     /// - Parameter feature: The structural feature whose value to retrieve.
     /// - Returns: The feature's current value, or `nil` if not set.
     public func eGet(_ feature: some EStructuralFeature) -> (any EcoreValue)? {
+        if case .value(let value) = reflectiveEGet(feature) { return value }
         return storage.get(feature: feature.id)
     }
 
@@ -317,6 +418,7 @@ public struct EClass: EClassifier, ENamedElement {
     ///   - feature: The structural feature to modify.
     ///   - value: The new value, or `nil` to unset.
     public mutating func eSet(_ feature: some EStructuralFeature, _ value: (any EcoreValue)?) {
+        if reflectiveESet(feature, value) { return }
         storage.set(feature: feature.id, value: value)
     }
 
@@ -328,6 +430,7 @@ public struct EClass: EClassifier, ENamedElement {
     /// - Parameter feature: The structural feature to check.
     /// - Returns: `true` if the feature has been set; otherwise, `false`.
     public func eIsSet(_ feature: some EStructuralFeature) -> Bool {
+        if let isSet = reflectiveEIsSet(feature) { return isSet }
         return storage.isSet(feature: feature.id)
     }
 
@@ -339,6 +442,7 @@ public struct EClass: EClassifier, ENamedElement {
     ///
     /// - Parameter feature: The structural feature to unset.
     public mutating func eUnset(_ feature: some EStructuralFeature) {
+        if reflectiveEUnset(feature) { return }
         storage.unset(feature: feature.id)
     }
 
@@ -364,23 +468,4 @@ public struct EClass: EClassifier, ENamedElement {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
-}
-
-// MARK: - Classifier Type
-
-/// The metaclass for `EClass`.
-///
-/// Describes the structure of `EClass` itself within the metamodel hierarchy,
-/// establishing the metaclass relationship. This classifier describes all
-/// `EClass` instances.
-public struct EClassClassifier: EClassifier {
-    /// Unique identifier for this metaclass.
-    ///
-    /// Each instance creates its own unique identifier.
-    public let id: EUUID = EUUID()
-
-    /// The name of this classifier.
-    ///
-    /// Always returns `"EClass"`, identifying this as the metaclass for class definitions.
-    public var name: String { EcoreClassifier.eClass.rawValue }
 }
