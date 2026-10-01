@@ -11,12 +11,15 @@ import Foundation
 extension XMISerializer {
     /// Serialises a resource using the EMF-style layout selected by the serialiser's options.
     ///
-    /// - Parameter resource: The resource to serialise.
+    /// - Parameters:
+    ///   - resource: The resource to serialise.
+    ///   - documentURI: The URI that relative references are computed against; the URI of the
+    ///     resource if `nil`.
     /// - Returns: The XMI document text.
     /// - Throws: ``XMIError`` if the resource has no root object, a root object is not a
     ///   ``DynamicEObject``, or a reference cannot be resolved.
-    func serializeEMFStyle(_ resource: Resource) async throws -> String {
-        var writer = EMFDocumentWriter(resource: resource, options: options)
+    func serializeEMFStyle(_ resource: Resource, documentURI: String? = nil) async throws -> String {
+        var writer = EMFDocumentWriter(resource: resource, options: options, documentURI: documentURI)
         await writer.prepare()
         return try await writer.document()
     }
@@ -50,6 +53,7 @@ struct EMFDocumentWriter {
 
     private let resource: Resource
     private let options: XMISerializationOptions
+    private let documentURI: String
     private var resourceSet: ResourceSet?
     private var packagesByClassId: [EUUID: PackageInfo] = [:]
     private var packagesByClassName: [String: PackageInfo] = [:]
@@ -65,9 +69,12 @@ struct EMFDocumentWriter {
     /// - Parameters:
     ///   - resource: The resource to write.
     ///   - options: The serialisation options.
-    init(resource: Resource, options: XMISerializationOptions) {
+    ///   - documentURI: The URI that relative references are computed against; the URI of the
+    ///     resource if `nil`.
+    init(resource: Resource, options: XMISerializationOptions, documentURI: String? = nil) {
         self.resource = resource
         self.options = options
+        self.documentURI = documentURI ?? resource.uri
     }
 
     /// Looks up the resource set and indexes the registered metamodels by class.
@@ -144,7 +151,7 @@ struct EMFDocumentWriter {
         if let resourceSet, let found = await resourceSet.resolve(id) {
             let fragment = try await fragment(for: found.object, in: found.resource)
             let targetURI = found.resource.uri
-            let uri = options.relativeURIs ? URIReference.relativise(targetURI, against: resource.uri) : targetURI
+            let uri = options.relativeURIs ? URIReference.relativise(targetURI, against: documentURI) : targetURI
             return ResolvedReference(href: uri + fragment, target: found.object)
         }
         throw XMIError.invalidReference("Cannot resolve object \(id)")
@@ -278,8 +285,9 @@ struct EMFDocumentWriter {
     ///   otherwise a positional fragment.
     /// - Throws: ``XMIError/invalidReference(_:)`` if a positional fragment cannot be built.
     private func fragment(for object: any EObject, in target: Resource) async throws -> String {
-        if options.nameBasedFragments, FragmentNavigator.name(of: object) != nil,
-            let name = await FragmentNavigator(resource: target).fragment(for: object.id)
+        let navigator = FragmentNavigator(resource: target)
+        if options.nameBasedFragments, await navigator.segmentName(of: object) != nil,
+            let name = await navigator.fragment(for: object.id)
         {
             return String(CrossReferenceSyntax.fragmentSeparator) + name
         }
@@ -531,7 +539,7 @@ struct EMFDocumentWriter {
         let separator = String(CrossReferenceSyntax.fragmentSeparator)
         let fragment = proxy.fragment.hasPrefix(separator) ? proxy.fragment : separator + proxy.fragment
         if proxy.uri.isEmpty || proxy.uri == resource.uri { return fragment }
-        let uri = options.relativeURIs ? URIReference.relativise(proxy.uri, against: resource.uri) : proxy.uri
+        let uri = options.relativeURIs ? URIReference.relativise(proxy.uri, against: documentURI) : proxy.uri
         return uri + fragment
     }
 }

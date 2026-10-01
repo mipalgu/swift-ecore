@@ -49,12 +49,18 @@ public struct XMISerializer: Sendable {
 
     /// Serialise a Resource to an XMI file
     ///
+    /// With the EMF-style layout, relative URIs of references are computed against the
+    /// location that is written, which need not be the URI of the resource.
+    ///
     /// - Parameters:
     ///   - resource: The Resource containing objects to serialise
     ///   - url: The URL where the XMI file should be written
     /// - Throws: `XMIError` if serialisation fails or I/O errors occur
     public func serialize(_ resource: Resource, to url: URL) async throws {
-        let xmiString = try await serialize(resource)
+        let xmiString =
+            options != .legacy
+            ? try await serializeEMFStyle(resource, documentURI: url.absoluteURL.absoluteString)
+            : try await serialize(resource)
         try xmiString.write(to: url, atomically: true, encoding: .utf8)
     }
 

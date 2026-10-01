@@ -106,6 +106,21 @@ public struct FragmentNavigator: Sendable {
         return nil
     }
 
+    /// Returns the fragment segment name of an object.
+    ///
+    /// Ecore elements are named by their own names. Objects of a metaclass for which the
+    /// resource set holds a ``FragmentSegmentRule`` are named by that rule.
+    ///
+    /// - Parameter object: The object to name.
+    /// - Returns: The segment name, or `nil` if the object takes no part in name-based fragments.
+    public func segmentName(of object: any EObject) async -> String? {
+        if let name = Self.name(of: object) { return name }
+        guard let dynamic = object as? DynamicEObject,
+            let rule = await resource.resourceSet?.fragmentSegmentRule(forClass: dynamic.eClass.name)
+        else { return nil }
+        return await rule.segmentName(dynamic, resource)
+    }
+
     /// Whether the name is that of an Ecore metaclass such as `EClass` or `EPackage`.
     ///
     /// - Parameter className: The metaclass name to test.
@@ -123,16 +138,19 @@ public struct FragmentNavigator: Sendable {
     ///   - segment: A segment: a name, or a name followed by `.n` to select the nth duplicate.
     /// - Returns: The child, or `nil` if none matches.
     private func child(of object: any EObject, segment: String) async -> (any EObject)? {
-        let children = await namedChildren(of: object)
-        if let exact = children.first(where: { Self.name(of: $0) == segment }) {
-            return exact
+        var names: [(object: any EObject, name: String)] = []
+        for candidate in await namedChildren(of: object) {
+            if let name = await segmentName(of: candidate) { names.append((candidate, name)) }
+        }
+        if let exact = names.first(where: { $0.name == segment }) {
+            return exact.object
         }
         guard let separator = segment.lastIndex(of: CrossReferenceSyntax.indexSeparator),
             let index = Int(segment[segment.index(after: separator)...]), index >= 0
         else { return nil }
         let name = String(segment[..<separator])
-        let matches = children.filter { Self.name(of: $0) == name }
-        return index < matches.count ? matches[index] : nil
+        let matches = names.filter { $0.name == name }
+        return index < matches.count ? matches[index].object : nil
     }
 
     /// Searches the named containment tree below an object for a target.
@@ -145,7 +163,7 @@ public struct FragmentNavigator: Sendable {
         let children = await namedChildren(of: object)
         var seen: [String: Int] = [:]
         for child in children {
-            guard let name = Self.name(of: child) else { continue }
+            guard let name = await segmentName(of: child) else { continue }
             let occurrence = seen[name, default: 0]
             seen[name] = occurrence + 1
             let segment = occurrence == 0 ? name : name + String(CrossReferenceSyntax.indexSeparator) + String(occurrence)
@@ -171,7 +189,9 @@ public struct FragmentNavigator: Sendable {
         case let eEnum as EEnum:
             return eEnum.literals.map { $0 as any EObject }
         case let dynamic as DynamicEObject:
-            guard let containments = Self.dynamicContainments[dynamic.eClass.name] else { return [] }
+            guard let containments = Self.dynamicContainments[dynamic.eClass.name] else {
+                return await containedChildren(of: dynamic)
+            }
             var children: [any EObject] = []
             for containment in containments {
                 switch dynamic.eGet(containment.rawValue) {
@@ -189,5 +209,26 @@ public struct FragmentNavigator: Sendable {
         default:
             return []
         }
+    }
+
+    /// Lists the objects contained in a dynamic object that is not an Ecore element.
+    ///
+    /// - Parameter object: The containing object.
+    /// - Returns: The contained objects, in the order of the containment references.
+    private func containedChildren(of object: DynamicEObject) async -> [any EObject] {
+        var children: [any EObject] = []
+        for reference in (object.eClass as? EClass)?.allReferences ?? [] where reference.containment {
+            switch object.eGet(reference.name) {
+            case let id as EUUID:
+                if let child = await resource.resolve(id) { children.append(child) }
+            case let ids as [EUUID]:
+                for id in ids {
+                    if let child = await resource.resolve(id) { children.append(child) }
+                }
+            default:
+                break
+            }
+        }
+        return children
     }
 }

@@ -62,6 +62,9 @@ public actor ResourceSet {
     /// to handle their specific serialisation formats.
     private var resourceFactories: [String: ResourceFactory]
 
+    /// Fragment segment naming rules, keyed by metaclass name (see ``FragmentSegmentRule``).
+    var fragmentSegmentRules: [String: FragmentSegmentRule] = [:]
+
     /// Initialises a new resource set with empty registries.
     public init() {
         self.resources = [:]
@@ -120,10 +123,15 @@ public actor ResourceSet {
     /// reference external resources. For example, when a reference like
     /// `href="department-b.xmi#/"` is resolved, this method loads the target resource.
     ///
-    /// - Parameter uri: The URI of the XMI file to load
+    /// - Parameters:
+    ///   - uri: The URI of the XMI file to load
+    ///   - referenceParsing: How reference attributes of registered metamodels are read
+    ///     (default ``XMIReferenceParsing/interpreted``)
     /// - Returns: The loaded Resource, either newly loaded or cached from previous load
     /// - Throws: XMIError if parsing fails
-    public func loadXMIResource(uri: String) async throws -> Resource {
+    public func loadXMIResource(
+        uri: String, referenceParsing: XMIReferenceParsing = .interpreted
+    ) async throws -> Resource {
         // Check if already loaded
         if let existing = resources[uri] {
             return existing
@@ -135,7 +143,7 @@ public actor ResourceSet {
         }
 
         // Parse with XMIParser
-        let parser = XMIParser(resourceSet: self)
+        let parser = XMIParser(resourceSet: self, referenceParsing: referenceParsing)
         let resource = try await parser.parse(url)
 
         // Register in the resource set

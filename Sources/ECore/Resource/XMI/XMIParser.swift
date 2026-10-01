@@ -66,6 +66,9 @@ public enum XMIError: Error, Sendable {
 public actor XMIParser {
     private let resourceSet: ResourceSet?
 
+    /// How attributes of reference features declared by registered metamodels are read.
+    private let referenceParsing: XMIReferenceParsing
+
     /// Maps of parsed objects for reference resolution
     private var xmiIdMap: [String: EUUID] = [:]
     private var fragmentMap: [String: EUUID] = [:]
@@ -85,8 +88,13 @@ public actor XMIParser {
     /// - Parameters:
     ///   - resourceSet: Optional ResourceSet for cross-resource reference resolution
     ///   - enableDebugging: Whether to enable debug output for systematic tracing
-    public init(resourceSet: ResourceSet? = nil, enableDebugging: Bool = false) {
+    ///   - referenceParsing: How reference attribute values are read (default ``XMIReferenceParsing/interpreted``)
+    public init(
+        resourceSet: ResourceSet? = nil, enableDebugging: Bool = false,
+        referenceParsing: XMIReferenceParsing = .interpreted
+    ) {
         self.resourceSet = resourceSet
+        self.referenceParsing = referenceParsing
         debug = enableDebugging
     }
 
@@ -404,7 +412,8 @@ public actor XMIParser {
             guard let attributeValue = element[attributeName] else { continue }
 
             // References declared by the metamodel hold one or more (possibly cross-document) references
-            if let reference = enhancedEClass.getStructuralFeature(name: attributeName) as? EReference,
+            if referenceParsing == .interpreted,
+                let reference = enhancedEClass.getStructuralFeature(name: attributeName) as? EReference,
                 !reference.containment
             {
                 declaredReferenceMap[instance.id, default: [:]][attributeName, default: []]
@@ -446,7 +455,9 @@ public actor XMIParser {
 
             // Check if it's a reference or a contained object
             if let href = child[CrossReferenceSyntax.hrefAttribute] {
-                if let reference = declaredFeature as? EReference, !reference.containment {
+                if referenceParsing == .interpreted, let reference = declaredFeature as? EReference,
+                    !reference.containment
+                {
                     // Declared reference in child-element style: keep every occurrence
                     declaredReferenceMap[instance.id, default: [:]][childName, default: []]
                         .append(contentsOf: CrossReference.parseList(href))

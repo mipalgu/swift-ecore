@@ -27,13 +27,19 @@ public struct GenModelDocument: Sendable {
 
 /// How `ecore*` references of a loaded generator model are resolved.
 public enum EcoreReferenceResolution: Sendable {
-    /// Textual references are left as loaded.
+    /// Reference attributes are kept as the text of the document.
     ///
-    /// Use this when reference resolution is provided by the resource set.
+    /// The attribute values are lossless and uninterpreted, for example
+    /// `ecore:EAttribute library.ecore#//Book/title`. Source models named by the
+    /// generator model are still loaded, but nothing is resolved.
     case deferred
 
-    /// Textual references are resolved by walking name and position paths through the
-    /// loaded source models, using ``EcoreFragmentResolver``.
+    /// Reference attributes are read as references and resolved through the resource set.
+    ///
+    /// The source models named by the generator model are loaded as native Ecore
+    /// packages into the same resource set, and the references of the generator model
+    /// are replaced by the identifiers of the native elements they name. References
+    /// that cannot be resolved stay unresolved proxies.
     case nameFragments
 }
 
@@ -91,8 +97,12 @@ public enum GenModelResource {
             let package = try await GenModelPackage.load()
             await resourceSet.registerMetamodel(package, uri: GenModelConstants.nsURI)
         }
+        await GenModelFragments.register(in: resourceSet)
 
-        let resource = try await resourceSet.loadXMIResource(uri: documentURL.absoluteString)
+        let resolvesReferences = resolution == .nameFragments
+        let resource = try await resourceSet.loadXMIResource(
+            uri: documentURL.absoluteString,
+            referenceParsing: resolvesReferences ? .interpreted : .rawText)
         let roots = await resource.getRootObjects()
         guard let root = roots.first as? DynamicEObject,
             root.eClass.name == GenModelConstants.ClassName.genModel
@@ -121,16 +131,15 @@ public enum GenModelResource {
                 }
                 continue
             }
-            foreignPackages[foreignURL] = try await loadForeignModel(
-                at: foreignURL, resourceSet: resourceSet)
+            foreignPackages[foreignURL] =
+                resolvesReferences
+                ? try await loadNativeForeignModel(at: foreignURL, resourceSet: resourceSet)
+                : try await loadForeignModel(at: foreignURL, resourceSet: resourceSet)
         }
 
-        let document = GenModelDocument(
+        if resolvesReferences { await resource.resolveProxies() }
+        return GenModelDocument(
             resource: resource, url: documentURL, foreignPackages: foreignPackages)
-        if case .nameFragments = resolution {
-            await resolveEcoreReferences(in: document)
-        }
-        return document
     }
 
     /// Reads the locations of the source models named by a generator model file.
@@ -150,40 +159,42 @@ public enum GenModelResource {
         return locations
     }
 
-    /// Replaces textual `ecore*` references by references to the loaded native elements.
-    ///
-    /// References that cannot be resolved are left as text.
-    ///
-    /// - Parameter document: A document returned by ``loadDocument(url:resourceSet:resolution:)``.
-    public static func resolveEcoreReferences(in document: GenModelDocument) async {
-        let resolver = EcoreFragmentResolver(packages: document.foreignPackages)
-        let generatorClassNames = Set(GenModelConstants.ClassName.all)
-        for case let object as DynamicEObject in await document.resource.getAllObjects()
-        where generatorClassNames.contains(object.eClass.name) {
-            for feature in GenModelConstants.FeatureName.ecoreReferences {
-                guard let text = object.eGet(feature) as? String,
-                    let target = resolver.resolve(text, relativeTo: document.url)
-                else { continue }
-                await document.resource.eSet(objectId: object.id, feature: feature, value: target)
-            }
-        }
-    }
-
     private static func referencedLocations(in resource: Resource) async -> [String] {
         let generatorClassNames = Set(GenModelConstants.ClassName.all)
         var locations: [String] = []
         for case let object as DynamicEObject in await resource.getAllObjects()
         where generatorClassNames.contains(object.eClass.name) {
             for feature in GenModelConstants.FeatureName.ecoreReferences {
-                if let text = object.eGet(feature) as? String,
-                    let reference = EcoreReference(text), !reference.location.isEmpty,
-                    !locations.contains(reference.location)
-                {
-                    locations.append(reference.location)
+                for location in referencedLocations(of: object.eGet(feature))
+                where !location.isEmpty && !locations.contains(location) {
+                    locations.append(location)
                 }
             }
         }
         return locations.sorted()
+    }
+
+    private static func referencedLocations(of value: (any EcoreValue)?) -> [String] {
+        switch value {
+        case let text as String: return EcoreReference(text).map { [$0.location] } ?? []
+        case let proxy as ResourceProxy: return [proxy.uri]
+        case let proxies as [ResourceProxy]: return proxies.map(\.uri)
+        default: return []
+        }
+    }
+
+    private static func loadNativeForeignModel(at url: URL, resourceSet: ResourceSet) async throws
+        -> EPackage
+    {
+        do {
+            let resource = try await resourceSet.loadEcoreResource(uri: url.absoluteString)
+            guard let package = await resource.getRootObjects().first as? EPackage else {
+                throw XMIError.noRootObject
+            }
+            return package
+        } catch {
+            throw GenModelError.foreignModelUnreadable(url.absoluteString, String(describing: error))
+        }
     }
 
     private static func loadForeignModel(at url: URL, resourceSet: ResourceSet) async throws
@@ -200,5 +211,24 @@ public enum GenModelResource {
         } catch {
             throw GenModelError.foreignModelUnreadable(url.absoluteString, String(describing: error))
         }
+    }
+
+    /// Saves a generator model in the layout that the Eclipse Modeling Framework writes.
+    ///
+    /// References to source models are written as attributes, qualified by the type of
+    /// the target where it differs from the declared type, with name-based fragments and
+    /// URIs relative to the saved file, for example
+    /// `ecoreFeature="ecore:EAttribute library.ecore#//Book/title"`. Generator packages
+    /// are identified by the name of their Ecore package.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource holding the generator model, as returned by ``load(url:resourceSet:resolution:)``.
+    ///   - url: The file to write.
+    /// - Throws: The serialiser's error if a reference cannot be written or the file cannot be written.
+    public static func save(_ resource: Resource, to url: URL) async throws {
+        if let resourceSet = await resource.resourceSet {
+            await GenModelFragments.register(in: resourceSet)
+        }
+        try await XMISerializer(options: .emf).serialize(resource, to: url)
     }
 }
