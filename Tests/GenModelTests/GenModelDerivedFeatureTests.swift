@@ -111,3 +111,48 @@ struct GenModelDerivedFeatureTests {
         #expect(try await ops.navigate(ops.genModel, "modelName") as? String == "Ops")
     }
 }
+
+@Suite("Annotation details of generator model objects")
+struct GenModelAnnotationOrderTests {
+    private static let keys = ["zeta", "alpha", "mid", "beta"]
+
+    private static func entryKeys(of annotation: DynamicEObject, in resource: Resource) async -> [String] {
+        var found: [String] = []
+        for id in annotation.eGet("details") as? [EUUID] ?? [] {
+            if let entry = await resource.resolve(id) as? DynamicEObject,
+                let key = entry.eGet("key") as? String
+            {
+                found.append(key)
+            }
+        }
+        return found
+    }
+
+    @Test("details keep document order when loaded, navigated, saved and reloaded")
+    func order() async throws {
+        let url = try #require(
+            Bundle.module.url(forResource: "ops", withExtension: "genmodel", subdirectory: "Resources"))
+        let resourceSet = ResourceSet()
+        let resource = try await GenModelResource.load(
+            url: url, resourceSet: resourceSet, resolution: .nameFragments)
+        let context = await GenModelContext.snapshot(of: resourceSet)
+        let genClass = try #require(context.genModels.first?.genPackages.first?.genClasses.first)
+        let annotation = try #require(genClass.genAnnotations.first)
+        #expect(await Self.entryKeys(of: annotation.object, in: resource) == Self.keys)
+
+        let engine = ECoreExecutionEngine(models: [:])
+        await engine.registerResource(resource, alias: "gen")
+        let navigated = try await engine.navigate(from: annotation.object, property: "details")
+        let entries = (navigated as? EcoreValueArray)?.values ?? []
+        #expect(entries.compactMap { ($0 as? DynamicEObject)?.eGet("key") as? String } == Self.keys)
+
+        let target = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ordered-\(UUID().uuidString).genmodel")
+        defer { try? FileManager.default.removeItem(at: target) }
+        try await GenModelResource.save(resource, to: target)
+        let text = try String(contentsOf: target, encoding: .utf8)
+        let positions = Self.keys.compactMap { text.range(of: "key=\"\($0)\"")?.lowerBound }
+        #expect(positions.count == Self.keys.count)
+        #expect(positions == positions.sorted())
+    }
+}

@@ -6,6 +6,12 @@
   <foreignModel>ops.ecore</foreignModel>
   <genPackages prefix="Ops" ecorePackage="ops.ecore#/">
     <genClasses ecoreClass="ops.ecore#//Shape">
+      <genAnnotations source="urn:order">
+        <details key="zeta" value="1"/>
+        <details key="alpha" value="2"/>
+        <details key="mid" value="3"/>
+        <details key="beta" value="4"/>
+      </genAnnotations>
       <genFeatures ecoreFeature="ecore:EAttribute ops.ecore#//Shape/label"/>
       <genFeatures ecoreFeature="ecore:EAttribute ops.ecore#//Shape/size"/>
       <genOperations ecoreOperation="ops.ecore#//Shape/scale">
