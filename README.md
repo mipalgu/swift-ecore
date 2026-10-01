@@ -83,6 +83,22 @@ await engine.registerResource(resource, alias: "MM")  // resource holding an EPa
 let classes = try await engine.navigate(from: package, property: "eClassifiers")
 ```
 
+### Faithful `.ecore` Loading ✅
+
+- [x] Multiple `eSuperTypes`, nested `eSubpackages`, `eOperations` with `eParameters`, `eType`, bounds, and `eExceptions`
+- [x] Attribute and reference types resolve to the real `EEnum`, `EDataType`, or `EClass` (local, in nested packages, in other documents, or built into Ecore through `EcorePackage`)
+- [x] Every feature flag (`transient`, `volatile`, `changeable`, `resolveProxies`, `unsettable`, `derived`, `ordered`, `unique`, `iD`), bounds, and `defaultValueLiteral`; `EReference.container`; `instanceClassName` of classes and data types; `serializable`
+- [x] Native `EOperation` and `EParameter` values, reflective access, containment navigation, name-based fragments (`#//Class/op/param`), and serialisation
+- [x] `eGenericType` children supply the type (the raw classifier); type arguments, type parameters, and bounds are not represented
+- [x] Enumerations (`getAllInstancesOf`, `getAllObjectsIncludingContents`) are in document (containment) order and identical on every load
+
+```swift
+let package = try await EPackage(url: libraryURL)       // also resolves types in other documents
+let book = package.getEClass("Book")
+let borrow = book?.eOperations.first                    // EOperation with EParameter values
+let supertypes = book?.eSuperTypes.map(\.name)          // every supertype, in order
+```
+
 ### In-Memory Model ✅
 
 - [x] Binary tree containment tests (BinTree model)

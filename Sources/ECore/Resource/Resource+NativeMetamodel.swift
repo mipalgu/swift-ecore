@@ -23,6 +23,10 @@ extension Resource {
     /// Ecore metamodel (see ``EcorePackage``). A type that cannot be resolved becomes the
     /// `EString` data type for an attribute and the `EObject` class for a reference.
     ///
+    /// A type given by an `eGenericType` child is read as its raw classifier. Type arguments,
+    /// type parameters, and generic bounds are not represented, so a reference to a type
+    /// parameter has no type.
+    ///
     /// Because native classes are value types, a reference records a snapshot of its target
     /// class. Snapshots are accurate to a fixed depth of reference hops; use the identifier
     /// of a reference's type to find the complete class in the package.
