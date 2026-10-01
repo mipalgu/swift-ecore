@@ -38,25 +38,40 @@ extension GenElement {
         }
     }
 
-    /// The lower bound of the feature's multiplicity.
+    /// The Ecore element that carries the type and multiplicity of a feature, operation or parameter.
+    private var ecoreTypedElement: (any ETypedElement)? { ecoreOperation ?? ecoreParameter }
+
+    /// The type of the Ecore element that a feature, operation or parameter describes.
+    ///
+    /// - Returns: The type, or `nil` if the element is not typed, has no type (an operation
+    ///   without a result), or its Ecore element is not resolved.
+    public var ecoreType: (any EClassifier)? {
+        switch ecoreFeature {
+        case let attribute as EAttribute: return attribute.eType
+        case let reference as EReference: return reference.eType
+        default: return ecoreTypedElement?.eType
+        }
+    }
+
+    /// The lower bound of the multiplicity of a feature, operation or parameter.
     public var lowerBound: Int {
         switch ecoreFeature {
         case let attribute as EAttribute: return attribute.lowerBound
         case let reference as EReference: return reference.lowerBound
-        default: return 0
+        default: return ecoreTypedElement?.lowerBound ?? 0
         }
     }
 
-    /// The upper bound of the feature's multiplicity; negative values mean unbounded.
+    /// The upper bound of the multiplicity of a feature, operation or parameter; negative values mean unbounded.
     public var upperBound: Int {
         switch ecoreFeature {
         case let attribute as EAttribute: return attribute.upperBound
         case let reference as EReference: return reference.upperBound
-        default: return 1
+        default: return ecoreTypedElement?.upperBound ?? 1
         }
     }
 
-    /// Whether the feature can hold more than one value.
+    /// Whether the element can hold more than one value.
     public var isListType: Bool { upperBound > 1 || upperBound < 0 }
 
     /// Whether the feature is required, with a lower bound of at least one.
@@ -93,15 +108,23 @@ extension GenElement {
         }
     }
 
-    /// Whether the feature is derived.
-    ///
-    /// Native Ecore features do not record this flag, so the result is always `false`.
-    public var isDerived: Bool { false }
+    /// Whether the feature is derived from other features.
+    public var isDerived: Bool {
+        switch ecoreFeature {
+        case let attribute as EAttribute: return attribute.derived
+        case let reference as EReference: return reference.derived
+        default: return false
+        }
+    }
 
-    /// Whether the feature can be unset.
-    ///
-    /// Native Ecore features do not record this flag, so the result is always `false`.
-    public var isUnsettable: Bool { false }
+    /// Whether the feature distinguishes the unset state from the default value.
+    public var isUnsettable: Bool {
+        switch ecoreFeature {
+        case let attribute as EAttribute: return attribute.unsettable
+        case let reference as EReference: return reference.unsettable
+        default: return false
+        }
+    }
 
     /// Whether the feature has a default value literal.
     public var hasDefault: Bool { defaultValueLiteral != nil }

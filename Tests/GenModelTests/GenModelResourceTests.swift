@@ -327,27 +327,25 @@ struct GenModelResourceTests {
         #expect(owner.reverseGenFeature == books)
     }
 
-    // MARK: - Cross-document resolution by the resource set (not available yet)
+    // MARK: - Cross-document resolution by the resource set
 
     @Test(
-        "ecore references resolve automatically when loaded with deferred resolution",
-        .disabled("requires cross-document XMI references"))
+        "ecore references resolve automatically when loaded with name fragment resolution")
     func automaticResolutionOfClasses() async throws {
         let resourceSet = ResourceSet()
         let resource = try await GenModelResource.load(
-            url: Self.genModelURL, resourceSet: resourceSet, resolution: .deferred)
+            url: Self.genModelURL, resourceSet: resourceSet, resolution: .nameFragments)
         let objects = await resource.getAllObjects().compactMap { $0 as? DynamicEObject }
         let genClass = try #require(objects.first { $0.eClass.name == "GenClass" })
         #expect(!(genClass.eGet("ecoreClass") is String))
     }
 
     @Test(
-        "the facade works on a model loaded with deferred resolution",
-        .disabled("requires cross-document XMI references"))
+        "the facade works on a model loaded with name fragment resolution")
     func facadeAfterAutomaticResolution() async throws {
         let resourceSet = ResourceSet()
         _ = try await GenModelResource.load(
-            url: Self.genModelURL, resourceSet: resourceSet, resolution: .deferred)
+            url: Self.genModelURL, resourceSet: resourceSet, resolution: .nameFragments)
         let context = await GenModelContext.snapshot(of: resourceSet)
         let package = try #require(context.genModels.first?.genPackages.first)
         let book = try #require(package.genClasses.first { $0.name == "Book" })

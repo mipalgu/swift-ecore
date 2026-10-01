@@ -73,6 +73,9 @@ public actor ResourceSet {
     /// Fragment segment naming rules, keyed by metaclass name (see ``FragmentSegmentRule``).
     var fragmentSegmentRules: [String: FragmentSegmentRule] = [:]
 
+    /// Derived feature rules, keyed by class and feature name (see ``DerivedFeatureRule``).
+    var derivedFeatureRules: [DerivedFeatureKey: DerivedFeatureRule] = [:]
+
     /// Initialises a new resource set with empty registries.
     public init() {
         self.resources = [:]

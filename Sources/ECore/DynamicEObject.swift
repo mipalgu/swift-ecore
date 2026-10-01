@@ -130,6 +130,22 @@ public struct DynamicEObject: EObject {
         return storage.get(feature: feature.id)
     }
 
+    /// Reflectively retrieves the value of a feature, substituting its default while it is unset.
+    ///
+    /// This follows the reading semantics of the Eclipse Modeling Framework: an unset many-valued
+    /// feature reads as an empty list, and an unset single-valued attribute reads as its default
+    /// value literal converted to the attribute type or, without a literal, the intrinsic default
+    /// of its type (see ``EcoreDefaultValue``). Whether the feature counts as set is not affected,
+    /// so ``eIsSet(_:)-(some_EStructuralFeature)`` and serialisation behave as before. Use
+    /// ``eGet(_:)-(some_EStructuralFeature)`` to read exactly what has been stored.
+    ///
+    /// - Parameter feature: The structural feature whose value to retrieve.
+    /// - Returns: The stored value, the default of an unset feature, or `nil` if the feature
+    ///   is unset and has no default.
+    public func eGetWithDefault(_ feature: some EStructuralFeature) -> (any EcoreValue)? {
+        storage.get(feature: feature.id) ?? EcoreDefaultValue.value(for: feature)
+    }
+
     /// Reflectively sets the value of a feature.
     ///
     /// - Parameters:
@@ -168,6 +184,20 @@ public struct DynamicEObject: EObject {
             // For dynamic objects without full metamodel, retrieve by name
             return storage.get(name: featureName)
         }
+    }
+
+    /// Reflectively retrieves the value of a feature by name, substituting its default while it is unset.
+    ///
+    /// Names that the class does not define read as stored, or `nil`. For features the class
+    /// defines, the result is that of ``eGetWithDefault(_:)-(some_EStructuralFeature)``.
+    ///
+    /// - Parameter featureName: The name of the structural feature to retrieve.
+    /// - Returns: The stored value, the default of an unset feature, or `nil` if there is none.
+    public func eGetWithDefault(_ featureName: String) -> (any EcoreValue)? {
+        if let feature = eClass.getStructuralFeature(name: featureName) {
+            return eGetWithDefault(feature)
+        }
+        return storage.get(name: featureName)
     }
 
     /// Reflectively sets the value of a feature by name.
