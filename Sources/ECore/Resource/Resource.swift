@@ -1513,6 +1513,7 @@ public actor Resource {
             return false
         }()
         let defaultValueLiteral: String? = dynamicObj.eGet("defaultValueLiteral") as? String
+        let flags = Self.featureFlags(of: dynamicObj)
 
         // Resolve eType
         let eType: any EClassifier
@@ -1537,7 +1538,11 @@ public actor Resource {
             volatile: volatile,
             transient: transient,
             defaultValueLiteral: defaultValueLiteral,
-            isID: isID
+            isID: isID,
+            ordered: flags.ordered,
+            unique: flags.unique,
+            unsettable: flags.unsettable,
+            derived: flags.derived
         )
     }
 
@@ -1632,6 +1637,8 @@ public actor Resource {
             eType = EClass(name: "EObject")
         }
 
+        let flags = Self.featureFlags(of: dynamicObj)
+
         // Create EReference without opposite reference - will be resolved in second pass
         let eReference = EReference(
             name: name,
@@ -1643,7 +1650,11 @@ public actor Resource {
             transient: transient,
             containment: containment,
             opposite: nil,
-            resolveProxies: resolveProxies
+            resolveProxies: resolveProxies,
+            ordered: flags.ordered,
+            unique: flags.unique,
+            unsettable: flags.unsettable,
+            derived: flags.derived
         )
 
         // Try to resolve opposite directly if target DynamicEObject already has an EReference created
@@ -1676,7 +1687,11 @@ public actor Resource {
                     containment: eReference.containment,
                     opposite: targetId,
                     resolveProxies: eReference.resolveProxies,
-                    eAnnotations: eReference.eAnnotations
+                    eAnnotations: eReference.eAnnotations,
+                    ordered: eReference.ordered,
+                    unique: eReference.unique,
+                    unsettable: eReference.unsettable,
+                    derived: eReference.derived
                 )
 
             } else {
@@ -1689,6 +1704,27 @@ public actor Resource {
         ereferenceCache[finalEReference.id] = finalEReference
 
         return finalEReference
+    }
+
+    /// Reads the ordered, unique, unsettable, and derived flags of a feature object.
+    ///
+    /// Flags may be stored as booleans or as their string spelling; absent flags take the
+    /// Ecore defaults (`ordered` and `unique` true, `unsettable` and `derived` false).
+    private static func featureFlags(of object: DynamicEObject) -> (
+        ordered: Bool, unique: Bool, unsettable: Bool, derived: Bool
+    ) {
+        func flag(_ attribute: XMIAttribute, _ defaultValue: Bool) -> Bool {
+            if let boolValue = object.eGet(attribute.rawValue) as? Bool {
+                return boolValue
+            } else if let stringValue = object.eGet(attribute.rawValue) as? String {
+                return stringValue.lowercased() == BooleanString.trueValue.rawValue
+            }
+            return defaultValue
+        }
+        return (
+            ordered: flag(.ordered, true), unique: flag(.unique, true),
+            unsettable: flag(.unsettable, false), derived: flag(.derived, false)
+        )
     }
 
     /// Resolve pending opposite references after all EReference objects are created.
@@ -1744,7 +1780,11 @@ public actor Resource {
                     containment: currentEReference.containment,
                     opposite: targetEReferenceId,
                     resolveProxies: currentEReference.resolveProxies,
-                    eAnnotations: currentEReference.eAnnotations
+                    eAnnotations: currentEReference.eAnnotations,
+                    ordered: currentEReference.ordered,
+                    unique: currentEReference.unique,
+                    unsettable: currentEReference.unsettable,
+                    derived: currentEReference.derived
                 )
 
                 // Update both caches

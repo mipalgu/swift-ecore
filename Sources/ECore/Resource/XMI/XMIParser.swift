@@ -789,6 +789,10 @@ public actor XMIParser {
             attribute.eSet(.transient, isTransient)
         }
 
+        for flag in [XMIAttribute.ordered, .unique, .unsettable, .derived] {
+            if let value = element.getBool(flag) { attribute.eSet(flag.rawValue, value: value) }
+        }
+
         // Default value
         if let defaultValue = element[.defaultValueLiteral] {
             attribute.eSet(.defaultValueLiteral, defaultValue)
@@ -856,6 +860,14 @@ public actor XMIParser {
 
         if let upperBound = element.getInt(.upperBound) {
             reference.eSet(.upperBound, upperBound)
+        }
+
+        let referenceFlags: [XMIAttribute] = [
+            .ordered, .unique, .unsettable, .derived, .changeable, .volatile, .transient,
+            .resolveProxies,
+        ]
+        for flag in referenceFlags {
+            if let value = element.getBool(flag) { reference.eSet(flag.rawValue, value: value) }
         }
 
         // Register after features are set

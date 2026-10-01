@@ -137,6 +137,20 @@ public enum XMIAttribute: String, CaseIterable, Sendable {
     /// The enumeration value for EEnumLiteral elements.
     case value = "value"
 
+    // MARK: - Feature Flags
+
+    /// The ordered flag for structural features.
+    case ordered = "ordered"
+
+    /// The unique flag for structural features.
+    case unique = "unique"
+
+    /// The unsettable flag for structural features.
+    case unsettable = "unsettable"
+
+    /// The derived flag for structural features.
+    case derived = "derived"
+
     // MARK: - Documentation
 
     /// Brief description of the attribute's purpose.
@@ -169,6 +183,10 @@ public enum XMIAttribute: String, CaseIterable, Sendable {
         case .xmiVersion: return "XMI specification version"
         case .xmiUuid: return "XMI universally unique identifier"
         case .literal: return "Enumeration literal name"
+        case .ordered: return "Ordered values flag"
+        case .unique: return "Unique values flag"
+        case .unsettable: return "Unsettable feature flag"
+        case .derived: return "Derived feature flag"
         case .value: return "Enumeration literal ordinal"
         }
     }

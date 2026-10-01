@@ -135,7 +135,9 @@ struct MetamodelSerialisationTests {
             reparsed.getEClass("Library")?.getStructuralFeature(name: "items") as? EReference)
         #expect(items.containment && items.upperBound == -1)
         #expect(items.eType.name == "Item")
-        #expect(reparsed.getEClass("Library")?.getStructuralFeature(name: "featured") is EReference)
+        let featured = try #require(
+            reparsed.getEClass("Library")?.getStructuralFeature(name: "featured") as? EReference)
+        #expect(!featured.resolveProxies)
         #expect(reparsed.getEEnum("Genre")?.literals.map(\.name) == ["fiction", "history"])
         #expect(reparsed.getEEnum("Genre")?.getLiteral(name: "history")?.value == 1)
         #expect(reparsed.getEEnum("Genre")?.getLiteral(name: "history")?.literal == "HISTORY")
@@ -157,6 +159,27 @@ struct MetamodelSerialisationTests {
                 #expect(typeName(of: a) == typeName(of: b) || typeName(of: b) == "EString")
             }
         }
+    }
+
+    @Test("Feature flags survive a round trip")
+    func flagsRoundTrip() async throws {
+        let string = EDataType(name: "EString")
+        let attribute = EAttribute(
+            name: "a", eType: string, ordered: false, unique: false, unsettable: true,
+            derived: true)
+        let reference = EReference(
+            name: "r", eType: EClass(name: "C"), changeable: false, volatile: true,
+            transient: true, resolveProxies: false, ordered: false, unique: false,
+            unsettable: true, derived: true)
+        let c = EClass(name: "C", eStructuralFeatures: [attribute, reference])
+        let reparsed = try await roundTrip(
+            EPackage(name: "p", nsURI: "http://p", nsPrefix: "p", eClassifiers: [c]))
+        let loaded = try #require(reparsed.getEClass("C"))
+        let a = try #require(loaded.getStructuralFeature(name: "a") as? EAttribute)
+        let r = try #require(loaded.getStructuralFeature(name: "r") as? EReference)
+        #expect(!a.ordered && !a.unique && a.unsettable && a.derived)
+        #expect(!r.ordered && !r.unique && r.unsettable && r.derived)
+        #expect(!r.changeable && r.volatile && r.transient && !r.resolveProxies)
     }
 
     @Test("Annotations are written")

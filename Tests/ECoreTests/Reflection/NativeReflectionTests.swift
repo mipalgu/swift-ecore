@@ -446,5 +446,45 @@ struct NativeReflectionTests {
         #expect(try get(familyFather, "eOpposite") as? EUUID == father.id)
         #expect(try get(father, "containment") as? Bool == true)
         #expect(try get(father, "lowerBound") as? Int == 1)
+        #expect(try get(father, "ordered") as? Bool == false)
+        #expect(try get(father, "unique") as? Bool == true)
+        let lastName = try #require(family.getStructuralFeature(name: "lastName") as? EAttribute)
+        #expect(try get(lastName, "ordered") as? Bool == false)
+        #expect(try get(lastName, "unique") as? Bool == false)
+        #expect(try get(lastName, "unsettable") as? Bool == false)
+        #expect(try get(lastName, "derived") as? Bool == false)
+    }
+
+    @Test("Parsed feature flags are read from the document")
+    func parsedFlags() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("flags-\(UUID().uuidString).ecore")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let text = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="f" nsURI="http://f" nsPrefix="f">
+              <eClassifiers xsi:type="ecore:EClass" name="C">
+                <eStructuralFeatures xsi:type="ecore:EAttribute" name="a" unsettable="true"
+                    derived="true" ordered="false" unique="false"
+                    eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+                <eStructuralFeatures xsi:type="ecore:EReference" name="r" unsettable="true"
+                    derived="true" ordered="false" unique="false" changeable="false"
+                    volatile="true" transient="true" resolveProxies="false" eType="#//C"/>
+              </eClassifiers>
+            </ecore:EPackage>
+            """
+        try text.write(to: url, atomically: true, encoding: .utf8)
+        let package = try await EPackage(url: url)
+        let c = try #require(package.getEClass("C"))
+        let a = try #require(c.getStructuralFeature(name: "a") as? EAttribute)
+        let r = try #require(c.getStructuralFeature(name: "r") as? EReference)
+        #expect(a.unsettable && a.derived && !a.ordered && !a.unique)
+        #expect(r.unsettable && r.derived && !r.ordered && !r.unique)
+        #expect(!r.changeable && r.volatile && r.transient && !r.resolveProxies)
+        #expect(try get(r, "derived") as? Bool == true)
+        #expect(try get(r, "unsettable") as? Bool == true)
+        #expect(try get(a, "unique") as? Bool == false)
     }
 }
