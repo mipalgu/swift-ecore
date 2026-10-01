@@ -198,6 +198,9 @@ public struct GenElement: Sendable, Hashable {
     /// The generator class that owns this feature, operation or parameter.
     public var genClass: GenElement? { enclosing(GenModelConstants.ClassName.genClass) }
 
+    /// The generator operation that owns this parameter, or the element itself if it is an operation.
+    public var genOperation: GenElement? { enclosing(GenModelConstants.ClassName.genOperation) }
+
     /// The generator packages of a generator model, in model order.
     public var genPackages: [GenElement] { elements(GenModelConstants.FeatureName.genPackages) }
 
@@ -274,6 +277,20 @@ public struct GenElement: Sendable, Hashable {
         }
     }
 
+    /// The Ecore operation described by a generator operation.
+    public var ecoreOperation: EOperation? {
+        ecoreTargetID(GenModelConstants.FeatureName.ecoreOperation).flatMap {
+            context.ecoreOperation(id: $0)
+        }
+    }
+
+    /// The Ecore parameter described by a generator parameter.
+    public var ecoreParameter: EParameter? {
+        ecoreTargetID(GenModelConstants.FeatureName.ecoreParameter).flatMap {
+            context.ecoreParameter(id: $0)
+        }
+    }
+
     /// The Ecore enumeration described by a generator enumeration.
     public var ecoreEnum: EEnum? {
         ecoreTargetID(GenModelConstants.FeatureName.ecoreEnum).flatMap { context.ecoreEnum(id: $0) }
@@ -296,8 +313,9 @@ public struct GenElement: Sendable, Hashable {
     /// The name of the Ecore element that this element describes.
     ///
     /// For a generator model, which describes no single element, the model name is returned.
-    /// Operations, parameters and type parameters have no native Ecore representation, so
-    /// their names are taken from the last segment of the textual reference when it is name-based.
+    /// Operations and parameters are named by their native elements. Where a reference has not been
+    /// resolved to a native element, and for type parameters, which have no native representation, the
+    /// name is taken from the last segment of the textual reference when it is name-based.
     /// The name is empty if the Ecore element cannot be determined.
     public var name: String {
         if let eClass = ecoreClass { return eClass.name }
@@ -306,6 +324,8 @@ public struct GenElement: Sendable, Hashable {
         if let literal = ecoreEnumLiteral { return literal.name }
         if let dataType = ecoreDataType { return dataType.name }
         if let package = ecorePackage { return package.name }
+        if let operation = ecoreOperation { return operation.name }
+        if let parameter = ecoreParameter { return parameter.name }
         if isKind(of: GenModelConstants.ClassName.genModel) {
             return stringValue(GenModelConstants.FeatureName.modelName) ?? ""
         }

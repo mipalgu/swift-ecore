@@ -34,6 +34,8 @@ public struct GenModelContext: Sendable {
     private let parents: [EUUID: EUUID]
     private let classes: [EUUID: EClass]
     private let features: [EUUID: any EStructuralFeature]
+    private let operations: [EUUID: EOperation]
+    private let parameters: [EUUID: EParameter]
     private let enums: [EUUID: EEnum]
     private let literals: [EUUID: EEnumLiteral]
     private let dataTypes: [EUUID: EDataType]
@@ -44,8 +46,9 @@ public struct GenModelContext: Sendable {
     /// Creates a context from generator model objects and native Ecore packages.
     ///
     /// Only objects whose class is one of the generator metamodel classes are kept.
-    /// All classes, features, enumerations, literals, data types and subpackages of
-    /// the given Ecore packages become resolvable targets of `ecore*` references.
+    /// All classes, features, operations, parameters, enumerations, literals, data types
+    /// and subpackages of the given Ecore packages become resolvable targets of `ecore*`
+    /// references.
     ///
     /// - Parameters:
     ///   - objects: The generator model objects, in a stable order. Objects that are
@@ -79,6 +82,8 @@ public struct GenModelContext: Sendable {
 
         var classes: [EUUID: EClass] = [:]
         var features: [EUUID: any EStructuralFeature] = [:]
+        var operations: [EUUID: EOperation] = [:]
+        var parameters: [EUUID: EParameter] = [:]
         var enums: [EUUID: EEnum] = [:]
         var literals: [EUUID: EEnumLiteral] = [:]
         var dataTypes: [EUUID: EDataType] = [:]
@@ -90,6 +95,10 @@ public struct GenModelContext: Sendable {
                 case let eClass as EClass:
                     classes[eClass.id] = eClass
                     for feature in eClass.eStructuralFeatures { features[feature.id] = feature }
+                    for operation in eClass.eOperations {
+                        operations[operation.id] = operation
+                        for parameter in operation.eParameters { parameters[parameter.id] = parameter }
+                    }
                 case let eEnum as EEnum:
                     enums[eEnum.id] = eEnum
                     for literal in eEnum.literals { literals[literal.id] = literal }
@@ -104,6 +113,8 @@ public struct GenModelContext: Sendable {
         for package in ecorePackages { index(package) }
         self.classes = classes
         self.features = features
+        self.operations = operations
+        self.parameters = parameters
         self.enums = enums
         self.literals = literals
         self.dataTypes = dataTypes
@@ -201,6 +212,8 @@ public struct GenModelContext: Sendable {
 
     func ecoreClass(id: EUUID) -> EClass? { classes[id] }
     func ecoreFeature(id: EUUID) -> (any EStructuralFeature)? { features[id] }
+    func ecoreOperation(id: EUUID) -> EOperation? { operations[id] }
+    func ecoreParameter(id: EUUID) -> EParameter? { parameters[id] }
     func ecoreEnum(id: EUUID) -> EEnum? { enums[id] }
     func ecoreEnumLiteral(id: EUUID) -> EEnumLiteral? { literals[id] }
     func ecoreDataType(id: EUUID) -> EDataType? { dataTypes[id] }
