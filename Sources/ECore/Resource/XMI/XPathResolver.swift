@@ -14,6 +14,7 @@ import Foundation
 /// - `#//@members.0` - Navigate to first member from root
 /// - `#//Person.0/@children.2` - Navigate through multiple containment levels
 /// - `#/0/@children.1` - Index-based navigation
+/// - `#//Book/title` - Name-based navigation of Ecore elements (see ``FragmentNavigator``)
 ///
 /// ## XPath Fragment Format
 ///
@@ -57,6 +58,13 @@ public struct XPathResolver: Sendable {
         if cleanPath.isEmpty || cleanPath == "/" || cleanPath == "//" {
             let roots = await resource.getRootObjects()
             return roots.first?.id
+        }
+
+        // Name-based fragments (//Book/title) identify Ecore elements by name
+        if cleanPath.hasPrefix(CrossReferenceSyntax.fragmentPathPrefix),
+            !cleanPath.contains(CrossReferenceSyntax.positionalMarker)
+        {
+            return await FragmentNavigator(resource: resource).resolve(cleanPath)?.id
         }
 
         // Parse the path components

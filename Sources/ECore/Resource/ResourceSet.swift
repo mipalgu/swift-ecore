@@ -409,6 +409,74 @@ public actor ResourceSet {
         return converted
     }
 
+    // MARK: - Loading Referenced Resources
+
+    /// Loads a resource that another resource refers to.
+    ///
+    /// The resource is returned from the set if it is already loaded. Otherwise it is
+    /// loaded by file type: `.json` files with the JSON parser, everything else
+    /// (including `.ecore`, `.xmi`, and `.genmodel`) with the XMI parser. Ecore
+    /// documents are loaded as the object graph the XMI parser builds; use
+    /// ``loadEcoreResource(uri:)`` to load them as native metamodel objects.
+    ///
+    /// - Parameter uri: The absolute URI of the resource to load.
+    /// - Returns: The loaded resource.
+    /// - Throws: A parsing error if the resource cannot be read or parsed.
+    public func loadReferencedResource(uri: String) async throws -> Resource {
+        if let existing = resources[uri] {
+            return existing
+        }
+        let lowercased = uri.lowercased()
+        if lowercased.hasSuffix(".json") {
+            return try await loadJSONResource(uri: uri)
+        }
+        return try await loadXMIResource(uri: uri)
+    }
+
+    /// Loads an Ecore document as native metamodel objects.
+    ///
+    /// The document is parsed and converted into an ``EPackage`` with its native
+    /// classifiers and features. The package and every element it contains are
+    /// registered in the new resource, so name-based fragments such as `#//Book/title`
+    /// resolve to the native objects. The package is also registered as a metamodel
+    /// under its namespace URI unless one is already registered.
+    ///
+    /// Operations and parameters have no native representation and are therefore not
+    /// part of the resource; use ``loadReferencedResource(uri:)`` to reach them.
+    ///
+    /// - Parameter uri: The absolute URI of the `.ecore` document.
+    /// - Returns: The resource holding the native package as its root object.
+    /// - Throws: ``XMIError`` if the document cannot be read or has no root package.
+    public func loadEcoreResource(uri: String) async throws -> Resource {
+        if let existing = resources[uri] {
+            return existing
+        }
+        guard let url = URL(string: uri) else {
+            throw XMIError.invalidXML("Invalid URI: \(uri)")
+        }
+        let package = try await EPackage(url: url)
+        let resource = await createResource(uri: uri)
+        await resource.registerNativePackage(package)
+        if metamodelRegistry[package.nsURI] == nil {
+            registerMetamodel(package, uri: package.nsURI)
+        }
+        return resource
+    }
+
+    /// Resolves the cross-resource proxies of every resource in the set.
+    ///
+    /// Target resources are loaded on demand. See ``Resource/resolveProxies()`` for
+    /// how individual values are replaced.
+    ///
+    /// - Returns: The combined report over all resources in the set.
+    public func resolveAllProxies() async -> ProxyResolutionReport {
+        var report = ProxyResolutionReport()
+        for resource in Array(resources.values) {
+            report.merge(await resource.resolveProxies())
+        }
+        return report
+    }
+
     // MARK: - Cross-Resource Reference Resolution
 
     /// Resolves an object by its identifier across all resources in the set.

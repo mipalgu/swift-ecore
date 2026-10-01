@@ -91,6 +91,31 @@ provides comprehensive Eclipse Modelling Framework functionality for Swift.
 - [x] XMI serialiser (Step 4.5) - Full serialisation with attributes, containment, and cross-references
 - [x] Round-trip tests - XMI → memory → XMI with in-memory verification at each step
 - [x] Cross-resource references (Step 4.6)
+- [x] Cross-document reference attributes - `ecoreFeature="ecore:EAttribute library.ecore#//Book/title"`, space-separated lists, and `href` child elements, for references declared by a registered metamodel
+- [x] Name-based Ecore fragments - `#/`, `#//Book`, `#//Book/title`, `#//sub/Class`, `#//Enum/Literal`, operations and parameters (`FragmentNavigator`, `XPathResolver`)
+- [x] Proxy resolution - `Resource.resolveProxies()`, `ResourceSet.resolveAllProxies()` and `Resource.eGetResolving(objectId:feature:)` load target resources on demand
+- [x] EMF-style serialisation - `XMISerializer(options: .emf)` writes attribute-style references, type qualifiers, relative URIs, name-based fragments, omits defaults, and writes many-valued attributes as child elements
+
+#### Cross-document references
+
+```swift
+let resourceSet = ResourceSet()
+let mapping = try await EPackage(url: mappingMetamodelURL)
+await resourceSet.registerMetamodel(mapping, uri: mapping.nsURI)
+
+// References to other documents are parsed as ResourceProxy values
+let resource = try await resourceSet.loadXMIResource(uri: instanceURI)
+
+// Load targets on demand and replace proxies by direct references
+let report = await resourceSet.resolveAllProxies()
+
+// Write the document the way EMF does
+let text = try await XMISerializer(options: .emf).serialize(resource)
+```
+
+`.ecore` files reached through a proxy are loaded as the dynamic object graph the parser builds;
+`ResourceSet.loadEcoreResource(uri:)` loads one as native `EPackage`, `EClass`, and related values
+instead.
 
 ### Generic JSON Serialisation ✅
 

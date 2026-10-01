@@ -70,6 +70,7 @@ public actor XMIParser {
     private var xmiIdMap: [String: EUUID] = [:]
     private var fragmentMap: [String: EUUID] = [:]
     private var referenceMap: [EUUID: [String: String]] = [:]  // object ID → (feature name → href)
+    private var declaredReferenceMap: [EUUID: [String: [CrossReference]]] = [:]  // object ID → (declared reference name → references)
     private var eClassCache: [String: EClass] = [:]  // className → EClass for caching dynamically created classes
     private var builtinTypeCache: [String: DynamicEObject] = [:]  // typeName → EDataType for built-in Ecore types
 
@@ -173,6 +174,7 @@ public actor XMIParser {
         xmiIdMap.removeAll()
         fragmentMap.removeAll()
         referenceMap.removeAll()
+        declaredReferenceMap.removeAll()
 
         // Get the root element (e.g., <ecore:EPackage> or <xmi:XMI>)
         guard let rootElement = document.children.first else {
@@ -401,6 +403,15 @@ public actor XMIParser {
 
             guard let attributeValue = element[attributeName] else { continue }
 
+            // References declared by the metamodel hold one or more (possibly cross-document) references
+            if let reference = enhancedEClass.getStructuralFeature(name: attributeName) as? EReference,
+                !reference.containment
+            {
+                declaredReferenceMap[instance.id, default: [:]][attributeName, default: []]
+                    .append(contentsOf: CrossReference.parseList(attributeValue))
+                continue
+            }
+
             // Check for XPath-style reference values (e.g., "//@stateMachine.0/@initialState")
             // These need to be resolved in the second pass rather than stored as strings
             if attributeValue.contains("//@") || (attributeValue.hasPrefix("#") && attributeValue.contains("//")) {
@@ -412,6 +423,14 @@ public actor XMIParser {
                 continue
             }
 
+            // Strings declared by the metamodel stay strings; everything else is inferred
+            if let attribute = enhancedEClass.getStructuralFeature(name: attributeName) as? EAttribute,
+                !attribute.isMany, Self.isStringType(attribute.eType)
+            {
+                instance.eSet(attributeName, value: attributeValue)
+                continue
+            }
+
             // Use type inference to convert string to appropriate type
             let value = inferType(from: attributeValue)
             instance.eSet(attributeName, value: value)
@@ -419,14 +438,25 @@ public actor XMIParser {
 
         // Parse child elements (may be attributes or references)
         var childReferences: [String: [EUUID]] = [:]
+        var childAttributeValues: [String: [String]] = [:]
 
         for child in element.children {
             let childName = child.name
+            let declaredFeature = enhancedEClass.getStructuralFeature(name: childName)
 
             // Check if it's a reference or a contained object
-            if let href = child["href"] {
-                // It's a reference - store for second pass resolution
-                referenceMap[instance.id, default: [:]][childName] = href
+            if let href = child[CrossReferenceSyntax.hrefAttribute] {
+                if let reference = declaredFeature as? EReference, !reference.containment {
+                    // Declared reference in child-element style: keep every occurrence
+                    declaredReferenceMap[instance.id, default: [:]][childName, default: []]
+                        .append(contentsOf: CrossReference.parseList(href))
+                } else {
+                    // It's a reference - store for second pass resolution
+                    referenceMap[instance.id, default: [:]][childName] = href
+                }
+            } else if declaredFeature is EAttribute {
+                // Attribute values written as child elements (many-valued attributes)
+                childAttributeValues[childName, default: []].append(child.immediateTextsCombined)
             } else {
                 // It's a contained child object
                 let childObject = try await parseInstanceElement(
@@ -443,6 +473,13 @@ public actor XMIParser {
                 }
                 childReferences[childName]?.append(childObject.id)
             }
+        }
+
+        for (attributeName, texts) in childAttributeValues {
+            guard let attribute = enhancedEClass.getStructuralFeature(name: attributeName) as? EAttribute else {
+                continue
+            }
+            instance.eSet(attributeName, value: attributeValue(from: texts, for: attribute))
         }
 
         // Set containment references and their opposites
@@ -468,6 +505,36 @@ public actor XMIParser {
         return instance
     }
 
+    /// Whether a data type holds strings.
+    ///
+    /// - Parameter type: The attribute's type.
+    /// - Returns: `true` for `EString` and its object wrapper.
+    private static func isStringType(_ type: any EClassifier) -> Bool {
+        type.name == EcoreDataType.eString.rawValue || type.name == EcoreDataType.eStringObject.rawValue
+    }
+
+    /// Converts the texts of an attribute written as child elements into a feature value.
+    ///
+    /// A single-valued attribute takes its only text; a many-valued attribute becomes an
+    /// array whose element type follows the declared type (strings) or the inferred
+    /// type of the values (integers, doubles, booleans, or strings).
+    ///
+    /// - Parameters:
+    ///   - texts: The text contents of the child elements, in document order.
+    ///   - attribute: The declared attribute.
+    /// - Returns: The value to store.
+    private func attributeValue(from texts: [String], for attribute: EAttribute) -> any EcoreValue {
+        if Self.isStringType(attribute.eType) {
+            return attribute.isMany ? texts : (texts.first ?? "")
+        }
+        let inferred = texts.map { inferType(from: $0) }
+        if !attribute.isMany, let first = inferred.first { return first }
+        if let ints = inferred as? [Int] { return ints }
+        if let doubles = inferred as? [Double] { return doubles }
+        if let bools = inferred as? [Bool] { return bools }
+        return texts
+    }
+
     // MARK: - Ecore Metamodel Parsing
 
     /// Parse an EPackage element
@@ -477,18 +544,19 @@ public actor XMIParser {
     /// - Parameters:
     ///   - element: The ecore:EPackage XML element
     ///   - resource: The Resource for object storage
+    ///   - isSubpackage: Whether the element is a nested package, which need not declare `nsURI` and `nsPrefix`
     /// - Returns: A DynamicEObject representing the EPackage
     /// - Throws: `XMIError.missingRequiredAttribute` if name, nsURI, or nsPrefix is missing
-    private func parseEPackage(_ element: XElement, in resource: Resource) async throws
-        -> DynamicEObject
+    private func parseEPackage(_ element: XElement, in resource: Resource, isSubpackage: Bool = false)
+        async throws -> DynamicEObject
     {
         guard let name = element[.name] else {
             throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
         }
-        guard let nsURI = element["nsURI"] else {
+        guard let nsURI = element["nsURI"] ?? (isSubpackage ? "" : nil) else {
             throw XMIError.missingRequiredAttribute("nsURI")
         }
-        guard let nsPrefix = element["nsPrefix"] else {
+        guard let nsPrefix = element["nsPrefix"] ?? (isSubpackage ? "" : nil) else {
             throw XMIError.missingRequiredAttribute("nsPrefix")
         }
 
@@ -531,6 +599,16 @@ public actor XMIParser {
 
         if !classifierIds.isEmpty {
             pkg.eSet(.eClassifiers, classifierIds)
+        }
+
+        // Parse nested packages
+        var subpackageIds: [EUUID] = []
+        for child in element.children(.eSubpackages) {
+            let subpackage = try await parseEPackage(child, in: resource, isSubpackage: true)
+            subpackageIds.append(subpackage.id)
+        }
+        if !subpackageIds.isEmpty {
+            pkg.eSet(.eSubpackages, subpackageIds)
         }
 
         // Register the package object after all features are set (but not as a root - caller decides that)
@@ -596,10 +674,70 @@ public actor XMIParser {
             eClass.eSet(.eStructuralFeatures, featureIds)
         }
 
+        // Parse operations
+        var operationIds: [EUUID] = []
+        for child in element.children(.eOperations) {
+            operationIds.append(try await parseOperation(child, in: resource).id)
+        }
+        if !operationIds.isEmpty {
+            eClass.eSet(.eOperations, operationIds)
+        }
+
         // Register the object after all features are set
         await resource.register(eClass)
 
         return eClass
+    }
+
+    /// Parse an EOperation element together with its parameters.
+    ///
+    /// - Parameters:
+    ///   - element: The eOperations XML element
+    ///   - resource: The Resource for object storage
+    /// - Returns: A DynamicEObject representing the EOperation
+    /// - Throws: `XMIError.missingRequiredAttribute` if name is missing
+    private func parseOperation(_ element: XElement, in resource: Resource) async throws -> DynamicEObject {
+        var operation = try await parseTypedElement(
+            element, metaclass: .eOperation, in: resource)
+        var parameterIds: [EUUID] = []
+        for child in element.children(.eParameters) {
+            let parameter = try await parseTypedElement(child, metaclass: .eParameter, in: resource)
+            parameterIds.append(parameter.id)
+        }
+        if !parameterIds.isEmpty {
+            operation.eSet(.eParameters, parameterIds)
+        }
+        await resource.register(operation)
+        return operation
+    }
+
+    /// Parse a named, typed Ecore element such as an operation or a parameter.
+    ///
+    /// - Parameters:
+    ///   - element: The XML element
+    ///   - metaclass: The Ecore metaclass of the element
+    ///   - resource: The Resource for object storage
+    /// - Returns: A registered DynamicEObject with name, bounds, and a pending type reference
+    /// - Throws: `XMIError.missingRequiredAttribute` if name is missing
+    private func parseTypedElement(
+        _ element: XElement, metaclass: EcoreClassifier, in resource: Resource
+    ) async throws -> DynamicEObject {
+        guard let name = element[.name] else {
+            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
+        }
+        let metaclassObject = await getOrCreateEClass(metaclass.rawValue, in: resource)
+        var object = DynamicEObject(eClass: metaclassObject)
+        if let xmiId = element[.xmiId] {
+            xmiIdMap[xmiId] = object.id
+        }
+        object.eSet(.name, name)
+        if let eType = element[.eType] {
+            object.eSet(EcoreClassifier.XMIParsingConstants.tempETypeRef, value: eType)
+        }
+        if let lowerBound = element.getInt(.lowerBound) { object.eSet(.lowerBound, lowerBound) }
+        if let upperBound = element.getInt(.upperBound) { object.eSet(.upperBound, upperBound) }
+        await resource.register(object)
+        return object
     }
 
     /// Parse an EEnum element
@@ -953,6 +1091,14 @@ public actor XMIParser {
                 await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempESuperTypesRef, value: nil)
             }
 
+            // Resolve references declared by the metamodel
+            if let declared = declaredReferenceMap[object.id] {
+                for (featureName, references) in declared {
+                    await resolveDeclaredReference(
+                        references, feature: featureName, of: object, using: xpathResolver, in: resource)
+                }
+            }
+
             // Resolve instance-level references from referenceMap
             if let references = referenceMap[object.id] {
                 for (featureName, href) in references {
@@ -975,6 +1121,61 @@ public actor XMIParser {
                 }
             }
         }
+    }
+
+    /// Resolve the references of a metamodel-declared reference feature and store them.
+    ///
+    /// Same-document references become object identifiers and references to other documents
+    /// become ``ResourceProxy`` values. A single-valued feature takes one value and a
+    /// many-valued feature an array. If an array mixes both kinds, the same-document
+    /// references are stored as proxies to this resource so that the array has one type.
+    /// References that cannot be resolved in the same document are dropped.
+    ///
+    /// - Parameters:
+    ///   - references: The parsed references in document order.
+    ///   - featureName: The name of the declared reference.
+    ///   - object: The object that owns the feature.
+    ///   - xpathResolver: The resolver for the document being parsed.
+    ///   - resource: The resource being populated.
+    private func resolveDeclaredReference(
+        _ references: [CrossReference], feature featureName: String, of object: any EObject,
+        using xpathResolver: XPathResolver, in resource: Resource
+    ) async {
+        var identifiers: [EUUID] = []
+        var proxies: [ResourceProxy] = []
+        var kinds: [Bool] = []  // true for same-document identifiers
+
+        for reference in references {
+            let href = reference.uri.isEmpty ? "#\(reference.fragment)" : reference.href
+            guard let resolved = await resolveReference(href, using: xpathResolver, in: resource) else {
+                if debug { print("[XMI DEBUG] Declared reference '\(href)' could not be resolved") }
+                continue
+            }
+            if let identifier = resolved as? EUUID {
+                identifiers.append(identifier)
+                proxies.append(ResourceProxy(uri: resource.uri, fragment: reference.fragment, qualifier: reference.qualifier))
+                kinds.append(true)
+            } else if let proxy = resolved as? ResourceProxy {
+                proxies.append(ResourceProxy(uri: proxy.uri, fragment: proxy.fragment, qualifier: reference.qualifier))
+                kinds.append(false)
+            } else if let target = resolved as? any EObject {
+                identifiers.append(target.id)
+                proxies.append(ResourceProxy(uri: resource.uri, fragment: reference.fragment, qualifier: reference.qualifier))
+                kinds.append(true)
+            }
+        }
+        guard !kinds.isEmpty else { return }
+
+        let isMany = (object.eClass as? EClass)?.getEReference(name: featureName)?.isMany ?? false
+        let value: any EcoreValue
+        if kinds.allSatisfy({ $0 }) {
+            value = (isMany || identifiers.count > 1) ? identifiers : identifiers[0]
+        } else if kinds.allSatisfy({ !$0 }) {
+            value = (isMany || proxies.count > 1) ? proxies : proxies[0]
+        } else {
+            value = proxies
+        }
+        await resource.eSet(objectId: object.id, feature: featureName, value: value)
     }
 
     /// Resolve a reference string to an object ID or ResourceProxy
@@ -1016,9 +1217,17 @@ public actor XMIParser {
                 }
             }
 
+            // The root object of the document
+            if fragment == CrossReferenceSyntax.rootFragment {
+                return await resource.getRootObjects().first?.id
+            }
+
             // Then try EMF fragment resolution (for paths like //ClassName/featureName)
             if fragment.hasPrefix("//") && !fragment.contains("@") {
-                return await resolveEMFFragmentReference(fragment, in: resource)
+                if let resolved = await resolveEMFFragmentReference(fragment, in: resource) {
+                    return resolved
+                }
+                return await FragmentNavigator(resource: resource).resolve(fragment)?.id
             }
 
             // Fall back to fragment map or xmi:id map
@@ -1088,25 +1297,7 @@ public actor XMIParser {
     ///   - baseURI: The base URI to resolve against
     /// - Returns: The resolved absolute or normalized URI
     private func resolveRelativeURI(_ uri: String, relativeTo baseURI: String) -> String {
-        // If URI has a scheme (protocol), it's absolute
-        if uri.contains("://") {
-            return uri
-        }
-
-        // Get the base directory from baseURI
-        if let baseURL = URL(string: baseURI) {
-            let baseDir = baseURL.deletingLastPathComponent()
-            let resolvedURL = baseDir.appendingPathComponent(uri)
-            return resolvedURL.absoluteString
-        }
-
-        // Fallback: simple concatenation
-        if let lastSlash = baseURI.lastIndex(of: "/") {
-            let baseDir = String(baseURI[...lastSlash])
-            return baseDir + uri
-        }
-
-        return uri
+        URIReference.resolve(uri, against: baseURI)
     }
 
     /// Resolve EMF fragment references like //ClassName/featureName

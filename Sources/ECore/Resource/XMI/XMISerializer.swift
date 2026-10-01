@@ -36,8 +36,16 @@ import SwiftXML
 /// ```
 public struct XMISerializer: Sendable {
 
+    /// The options that control the layout of serialised documents.
+    public let options: XMISerializationOptions
+
     /// Initialise a new XMI serialiser
-    public init() {}
+    ///
+    /// - Parameter options: The serialisation options. The default, ``XMISerializationOptions/legacy``,
+    ///   keeps the original layout; use ``XMISerializationOptions/emf`` for the layout that EMF writes.
+    public init(options: XMISerializationOptions = .legacy) {
+        self.options = options
+    }
 
     /// Serialise a Resource to an XMI file
     ///
@@ -56,6 +64,9 @@ public struct XMISerializer: Sendable {
     /// - Returns: XMI formatted string
     /// - Throws: `XMIError` if serialisation fails
     public func serialize(_ resource: Resource) async throws -> String {
+        if options != .legacy {
+            return try await serializeEMFStyle(resource)
+        }
         let roots = await resource.getRootObjects()
 
         guard !roots.isEmpty else {
@@ -260,8 +271,15 @@ public struct XMISerializer: Sendable {
         let href: String
 
         if let targetId = target as? EUUID {
-            // Same-resource reference: Generate XPath
-            href = try await generateXPath(for: targetId, in: resource)
+            if await resource.contains(id: targetId) {
+                // Same-resource reference: Generate XPath
+                href = try await generateXPath(for: targetId, in: resource)
+            } else {
+                // Object of another resource in the same resource set
+                var writer = EMFDocumentWriter(resource: resource, options: options)
+                await writer.prepare()
+                href = try await writer.reference(to: targetId).href
+            }
         } else if let proxy = target as? ResourceProxy {
             // Cross-resource reference: Use proxy's URI and fragment
             let fragment = proxy.fragment.hasPrefix("#") ? proxy.fragment : "#\(proxy.fragment)"
@@ -280,7 +298,7 @@ public struct XMISerializer: Sendable {
     ///   - resource: The Resource containing the object
     /// - Returns: XPath string (e.g., "#//@members.0")
     /// - Throws: `XMIError` if path generation fails
-    private func generateXPath(for objectId: EUUID, in resource: Resource) async throws -> String {
+    func generateXPath(for objectId: EUUID, in resource: Resource) async throws -> String {
         let roots = await resource.getRootObjects()
 
         guard let targetObject = await resource.resolve(objectId) else {
@@ -667,7 +685,7 @@ public struct XMISerializer: Sendable {
     ///
     /// - Parameter object: The object
     /// - Returns: Class name
-    private func getClassName(_ object: any EObject) -> String {
+    func getClassName(_ object: any EObject) -> String {
         if let dynamicObject = object as? DynamicEObject {
             return dynamicObject.eClass.name
         }
@@ -678,7 +696,7 @@ public struct XMISerializer: Sendable {
     ///
     /// - Parameter value: The value to convert
     /// - Returns: String representation
-    private func convertToString(_ value: any EcoreValue) -> String {
+    func convertToString(_ value: any EcoreValue) -> String {
         switch value {
         case let string as String:
             return string
@@ -699,7 +717,7 @@ public struct XMISerializer: Sendable {
     ///
     /// - Parameter string: The string to escape
     /// - Returns: Escaped string
-    private func escapeXML(_ string: String) -> String {
+    func escapeXML(_ string: String) -> String {
         return
             string
             .replacingOccurrences(of: "&", with: "&amp;")

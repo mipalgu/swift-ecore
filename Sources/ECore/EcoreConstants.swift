@@ -623,6 +623,90 @@ public enum EcoreURI: String, CaseIterable, Sendable {
     }
 }
 
+// MARK: - Cross-Reference Syntax
+
+/// Syntax elements of XMI cross-document references.
+///
+/// EMF writes references to other objects as `<resource-uri>#<fragment>` strings,
+/// optionally preceded by a type qualifier (`ecore:EAttribute library.ecore#//Book/title`),
+/// and separates multiple references with a single space. Fragments are either
+/// name based (`//Book/title`, `/` for the root) or positional (`//@features.0`).
+/// This type defines every token of that syntax in one place so that the parser,
+/// the serialiser, and the fragment resolvers agree on it.
+public enum CrossReferenceSyntax {
+    /// Name of the element attribute that holds a reference in child-element style.
+    public static let hrefAttribute = "href"
+
+    /// Separates the resource URI from the fragment.
+    public static let fragmentSeparator: Character = "#"
+
+    /// Separates the individual references of a multi-valued reference attribute.
+    public static let listSeparator: Character = " "
+
+    /// Separates a namespace prefix from a type name in a type qualifier.
+    public static let qualifierSeparator: Character = ":"
+
+    /// The fragment that denotes the root object of a resource.
+    public static let rootFragment = "/"
+
+    /// The prefix of every non-root fragment.
+    public static let fragmentPathPrefix = "//"
+
+    /// Separates the segments of a fragment path.
+    public static let segmentSeparator: Character = "/"
+
+    /// Marks a positional (feature and index) fragment segment.
+    public static let positionalMarker: Character = "@"
+
+    /// Separates a feature name from its index in a positional segment, and a name
+    /// from its duplicate index in a name-based segment.
+    public static let indexSeparator: Character = "."
+
+    /// The relative path component that selects the parent directory.
+    public static let parentDirectory = ".."
+
+    /// The XMI version written to serialised documents.
+    public static let xmiVersion = "2.0"
+
+    /// The conventional prefix of the Ecore namespace.
+    public static let ecorePrefix = "ecore"
+
+    /// The prefix of the XMI namespace.
+    public static let xmiPrefix = "xmi"
+
+    /// The prefix of the XML Schema instance namespace.
+    public static let xsiPrefix = "xsi"
+
+    /// The attribute name that carries a namespace declaration for the given prefix.
+    ///
+    /// - Parameter prefix: The namespace prefix.
+    /// - Returns: The `xmlns:<prefix>` attribute name.
+    public static func namespaceAttribute(for prefix: String) -> String {
+        XMLNamespace.prefixed(prefix)
+    }
+}
+
+// MARK: - XMI Document Layout
+
+/// Layout and fallback constants for serialised XMI documents.
+public enum XMIDocumentSyntax {
+    /// One level of indentation in the EMF-style document layout.
+    public static let indentUnit = "  "
+
+    /// The namespace URI base used for classes that belong to no registered metamodel.
+    ///
+    /// The lower-cased class name is appended to form a namespace URI.
+    public static let fallbackNamespaceBase = "http://swift-modelling.org/test/"
+
+    /// The name of the wrapper element for documents with more than one root object.
+    public static let multipleRootElement = "XMI"
+
+    /// The name of the stored feature that holds the class reference of an object.
+    ///
+    /// It is bookkeeping rather than model data, so serialisers skip it.
+    public static let classFeatureName = "eClass"
+}
+
 // MARK: - Error Message Constants
 
 /// Standardised error messages for Ecore operations.
