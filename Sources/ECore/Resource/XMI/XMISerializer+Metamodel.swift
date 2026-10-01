@@ -163,6 +163,9 @@ private struct MetamodelWriter {
         indent(depth)
         output += "<\(tag) \(typed(.eClass))"
         attribute(EcoreFeatureName.name, eClass.name)
+        if let instanceClassName = eClass.instanceClassName {
+            attribute(EcoreFeatureName.instanceClassName, instanceClassName)
+        }
         if eClass.isAbstract { attribute(EcoreFeatureName.abstract, true) }
         if eClass.isInterface { attribute(EcoreFeatureName.interface, true) }
         if !eClass.eSuperTypes.isEmpty {
@@ -170,12 +173,17 @@ private struct MetamodelWriter {
                 EcoreFeatureName.eSuperTypes,
                 eClass.eSuperTypes.map { reference(to: $0) }.joined(separator: " "))
         }
-        if eClass.eAnnotations.isEmpty && eClass.eStructuralFeatures.isEmpty {
+        if eClass.eAnnotations.isEmpty && eClass.eStructuralFeatures.isEmpty
+            && eClass.eOperations.isEmpty
+        {
             output += "/>\n"
             return
         }
         output += ">\n"
         writeAnnotations(eClass.eAnnotations, depth: depth + 1)
+        for operation in eClass.eOperations {
+            writeOperation(operation, depth: depth + 1)
+        }
         for feature in eClass.eStructuralFeatures {
             if let attribute = feature as? EAttribute {
                 writeAttribute(attribute, depth: depth + 1)
@@ -185,6 +193,52 @@ private struct MetamodelWriter {
         }
         indent(depth)
         output += "</\(tag)>\n"
+    }
+
+    private mutating func writeOperation(_ operation: EOperation, depth: Int) {
+        let tag = EcoreFeatureName.eOperations.rawValue
+        indent(depth)
+        output += "<\(tag)"
+        writeTypedElementAttributes(operation)
+        if !operation.eExceptions.isEmpty {
+            attribute(
+                EcoreFeatureName.eExceptions,
+                operation.eExceptions.map { reference(to: $0) }.joined(separator: " "))
+        }
+        if operation.eAnnotations.isEmpty && operation.eParameters.isEmpty {
+            output += "/>\n"
+            return
+        }
+        output += ">\n"
+        writeAnnotations(operation.eAnnotations, depth: depth + 1)
+        for parameter in operation.eParameters {
+            let parameterTag = EcoreFeatureName.eParameters.rawValue
+            indent(depth + 1)
+            output += "<\(parameterTag)"
+            writeTypedElementAttributes(parameter)
+            if parameter.eAnnotations.isEmpty {
+                output += "/>\n"
+            } else {
+                output += ">\n"
+                writeAnnotations(parameter.eAnnotations, depth: depth + 2)
+                indent(depth + 1)
+                output += "</\(parameterTag)>\n"
+            }
+        }
+        indent(depth)
+        output += "</\(tag)>\n"
+    }
+
+    /// Writes the name, multiplicity, and type that operations and parameters share.
+    private mutating func writeTypedElementAttributes<Element: ETypedElement & ENamedElement>(
+        _ element: Element
+    ) {
+        attribute(EcoreFeatureName.name, element.name)
+        if !element.ordered { attribute(EcoreFeatureName.ordered, false) }
+        if !element.unique { attribute(EcoreFeatureName.unique, false) }
+        if element.lowerBound != 0 { attribute(EcoreFeatureName.lowerBound, element.lowerBound) }
+        if element.upperBound != 1 { attribute(EcoreFeatureName.upperBound, element.upperBound) }
+        if let type = element.eType { attribute(EcoreFeatureName.eType, reference(to: type)) }
     }
 
     private mutating func writeEnum(_ eEnum: EEnum, depth: Int) {
