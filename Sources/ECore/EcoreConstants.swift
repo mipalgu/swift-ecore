@@ -381,6 +381,79 @@ public enum EcoreClassifier: String, CaseIterable, Sendable {
 
         /// Temporary storage key for eExceptions references during XMI parsing.
         public static let tempEExceptionsRef = "_eExceptions_ref"
+
+        /// Temporary storage key for annotation references during XMI parsing.
+        public static let tempReferencesRef = "_references_ref"
+    }
+}
+
+// MARK: - Annotation Sources and Keys
+
+/// The source URIs of the annotations that tools commonly attach to Ecore models.
+///
+/// An annotation's ``EAnnotation/source`` says which tool interprets its details. The
+/// nested enumerations list the detail keys that those tools read, so that no other file
+/// needs to spell them.
+///
+/// ## Usage
+///
+/// ```swift
+/// let text = eClass.getEAnnotationDetail(
+///     source: AnnotationSource.genModel, key: AnnotationSource.GenModelKey.documentation)
+/// ```
+public enum AnnotationSource {
+    /// The source of code generation settings and documentation.
+    public static let genModel = "http://www.eclipse.org/emf/2002/GenModel"
+
+    /// The source of constraints and delegates that the Ecore metamodel itself defines.
+    public static let ecore = EcoreURI.ecoreNamespace.rawValue
+
+    /// The source of the extended metadata that controls the XML form of a model.
+    public static let extendedMetaData = "http:///org/eclipse/emf/ecore/util/ExtendedMetaData"
+
+    /// The source of Object Constraint Language definitions.
+    public static let ocl = "http://www.eclipse.org/emf/2002/Ecore/OCL"
+
+    /// The detail keys of annotations with the ``genModel`` source.
+    public enum GenModelKey {
+        /// The documentation text of an element.
+        public static let documentation = "documentation"
+        /// The body of an operation or derived feature.
+        public static let body = "body"
+        /// The body of the getter of a derived feature.
+        public static let get = "get"
+        /// The visibility of a suppressed getter.
+        public static let suppressedGetVisibility = "suppressedGetVisibility"
+        /// The visibility of a suppressed setter.
+        public static let suppressedSetVisibility = "suppressedSetVisibility"
+        /// The visibility of a suppressed `isSet` operation.
+        public static let suppressedIsSetVisibility = "suppressedIsSetVisibility"
+        /// The visibility of a suppressed `unset` operation.
+        public static let suppressedUnsetVisibility = "suppressedUnsetVisibility"
+    }
+
+    /// The detail keys of annotations with the ``ecore`` source.
+    public enum EcoreKey {
+        /// The names of the constraints that a classifier declares.
+        public static let constraints = "constraints"
+        /// The delegates that evaluate invariants.
+        public static let validationDelegates = "validationDelegates"
+        /// The delegates that evaluate operations.
+        public static let invocationDelegates = "invocationDelegates"
+        /// The delegates that compute derived features.
+        public static let settingDelegates = "settingDelegates"
+        /// The delegates that evaluate operations.
+        public static let conversionDelegates = "conversionDelegates"
+    }
+
+    /// The detail keys of annotations with the ``extendedMetaData`` source.
+    public enum ExtendedMetaDataKey {
+        /// The XML name of an element.
+        public static let name = "name"
+        /// The XML kind of an element, such as an attribute or an element.
+        public static let kind = "kind"
+        /// The XML namespace of an element.
+        public static let namespace = "namespace"
     }
 }
 
@@ -659,6 +732,30 @@ public enum EcoreURI: String, CaseIterable, Sendable {
 
     /// XML Schema instance namespace URI.
     case xsiNamespace = "http://www.w3.org/2001/XMLSchema-instance"
+
+    /// The tail of the location of the Ecore model inside the platform plug-ins of Eclipse.
+    ///
+    /// Documents written by Eclipse tools can name the classifiers of Ecore by this location
+    /// (`platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EString`) as an alternative
+    /// to the namespace URI.
+    public static let platformEcoreDocumentSuffix = "/org.eclipse.emf.ecore/model/Ecore.ecore"
+
+    /// Whether a reference names a classifier of the Ecore metamodel itself.
+    ///
+    /// The document part of the reference must be the Ecore namespace URI or the platform
+    /// location of the Ecore model, and the fragment must start with `//`. A leading type
+    /// qualifier such as `ecore:EDataType` is ignored.
+    ///
+    /// - Parameter reference: A reference such as `http://www.eclipse.org/emf/2002/Ecore#//EInt`.
+    /// - Returns: `true` if the reference names an Ecore classifier.
+    public static func isEcoreMetamodelReference(_ reference: String) -> Bool {
+        guard let separator = reference.range(of: "#//") else { return false }
+        guard let document = reference[..<separator.lowerBound].split(separator: " ").last else {
+            return false
+        }
+        if document == Substring(ecoreNamespace.rawValue) { return true }
+        return document.hasPrefix("platform:/") && document.hasSuffix(platformEcoreDocumentSuffix)
+    }
 
     /// Extracts type name from Ecore built-in type URI.
     ///

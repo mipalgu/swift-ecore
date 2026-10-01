@@ -80,13 +80,22 @@ struct EMFDocumentWriter {
     /// Looks up the resource set and indexes the registered metamodels by class.
     ///
     /// Call once before ``document()`` or ``reference(to:)``.
+    ///
+    ///
+    /// The namespaces come from the metamodels of the resource's set. If the set has been
+    /// released, the metamodels that it held remain available through the resource.
     mutating func prepare() async {
         resourceSet = await resource.resourceSet
-        guard let resourceSet else { return }
-        for uri in await resourceSet.getMetamodelURIs().sorted() {
-            if let package = await resourceSet.getMetamodel(uri: uri) {
-                index(package, inherited: nil)
+        if let resourceSet {
+            for uri in await resourceSet.getMetamodelURIs().sorted() {
+                if let package = await resourceSet.getMetamodel(uri: uri) {
+                    index(package, inherited: nil)
+                }
             }
+        } else if let snapshot = await resource.metamodelSnapshot {
+            for package in snapshot.all { index(package, inherited: nil) }
+        } else {
+            return
         }
         packagesByPrefix[Self.ecorePackage.prefix] = Self.ecorePackage
     }
@@ -142,7 +151,9 @@ struct EMFDocumentWriter {
     ///
     /// - Parameter id: The identifier of the referenced object.
     /// - Returns: The reference text and the referenced object.
-    /// - Throws: ``XMIError/invalidReference(_:)`` if no resource of the set holds the object.
+    /// - Throws: ``XMIError/resourceSetReleased(_:)`` if the object is not in the written
+    ///   resource and the resource set that might hold it has been released;
+    ///   ``XMIError/invalidReference(_:)`` if no resource of the set holds the object.
     func reference(to id: EUUID) async throws -> ResolvedReference {
         if let object = await resource.resolve(id) {
             let fragment = try await fragment(for: object, in: resource)
@@ -154,6 +165,7 @@ struct EMFDocumentWriter {
             let uri = options.relativeURIs ? URIReference.relativise(targetURI, against: documentURI) : targetURI
             return ResolvedReference(href: uri + fragment, target: found.object)
         }
+        if await resource.lostResourceSet { throw XMIError.resourceSetReleased(resource.uri) }
         throw XMIError.invalidReference("Cannot resolve object \(id)")
     }
 
@@ -317,7 +329,9 @@ struct EMFDocumentWriter {
             guard let value = await resource.eGet(objectId: object.id, feature: feature.name) else { continue }
             switch feature {
             case let attribute as EAttribute where !attribute.transient:
-                renderAttribute(attribute, value: value, into: &attributes, children: &children, indentation: childIndentation)
+                renderAttribute(
+                    attribute, value: value, of: object, into: &attributes, children: &children,
+                    indentation: childIndentation)
             case let reference as EReference where !reference.transient:
                 if isContainerOpposite(reference, of: object.eClass) { continue }
                 if reference.containment {
@@ -335,7 +349,7 @@ struct EMFDocumentWriter {
             guard let value = await resource.eGet(objectId: object.id, feature: name),
                 value is String || value is Int || value is Double || value is Bool
             else { continue }
-            attributes += " \(name)=\"\(escapeXML(convertToString(value)))\""
+            attributes += " \(name)=\"\(XMISerializer.escapeAttribute(convertToString(value)))\""
         }
 
         var tag = "\(indentation)<\(elementName)"
@@ -362,30 +376,38 @@ struct EMFDocumentWriter {
 
     /// Writes an attribute value as an XML attribute or, for many-valued attributes, child elements.
     ///
+    /// With the option to omit default values, an attribute whose value equals its default is
+    /// left out unless the attribute is unsettable: an unsettable attribute has a value only
+    /// if it was set, so a value that is present is always written.
+    ///
     /// - Parameters:
     ///   - attribute: The declared attribute.
     ///   - value: The stored value.
+    ///   - object: The object that holds the value.
     ///   - attributes: The attribute text of the element being written.
     ///   - children: The child element text of the element being written.
     ///   - indentation: The indentation for child elements.
     private func renderAttribute(
-        _ attribute: EAttribute, value: any EcoreValue, into attributes: inout String,
-        children: inout String, indentation: String
+        _ attribute: EAttribute, value: any EcoreValue, of object: DynamicEObject,
+        into attributes: inout String, children: inout String, indentation: String
     ) {
-        if let texts = arrayTexts(of: value) {
+        let serialiser = XMISerializer()
+        if let stored = arrayTexts(of: value) {
+            let texts = serialiser.attributeTexts(stored, feature: attribute.name, of: object)
             guard !texts.isEmpty else { return }
             if options.manyValuedAttributesAsElements {
                 for text in texts {
                     children += "\(indentation)<\(attribute.name)>\(escapeXML(text))</\(attribute.name)>\n"
                 }
             } else {
-                attributes += " \(attribute.name)=\"\(escapeXML(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\""
+                attributes += " \(attribute.name)=\"\(XMISerializer.escapeAttribute(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\""
             }
             return
         }
         let text = convertToString(value)
-        if options.omitDefaultValues && isDefault(text, of: attribute) { return }
-        attributes += " \(attribute.name)=\"\(escapeXML(text))\""
+        if options.omitDefaultValues && !attribute.unsettable && isDefault(text, of: attribute) { return }
+        let written = serialiser.attributeText(value, feature: attribute.name, of: object)
+        attributes += " \(attribute.name)=\"\(XMISerializer.escapeAttribute(written))\""
     }
 
     /// Converts an array value into the texts of its elements.
@@ -487,7 +509,7 @@ struct EMFDocumentWriter {
             let texts = entries.map { entry in
                 entry.qualifier.map { "\($0)\(CrossReferenceSyntax.listSeparator)\(entry.href)" } ?? entry.href
             }
-            attributes += " \(reference.name)=\"\(escapeXML(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\""
+            attributes += " \(reference.name)=\"\(XMISerializer.escapeAttribute(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\""
         } else {
             for entry in entries {
                 var tag = "\(indentation)<\(reference.name)"
@@ -495,7 +517,7 @@ struct EMFDocumentWriter {
                     needsXSI = true
                     tag += " \(XMIAttribute.xsiType.rawValue)=\"\(qualifier)\""
                 }
-                children += "\(tag) \(CrossReferenceSyntax.hrefAttribute)=\"\(escapeXML(entry.href))\"/>\n"
+                children += "\(tag) \(CrossReferenceSyntax.hrefAttribute)=\"\(XMISerializer.escapeAttribute(entry.href))\"/>\n"
             }
         }
     }

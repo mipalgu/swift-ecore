@@ -22,6 +22,13 @@ public enum XMIError: Error, Sendable {
     case noRootObject
     case invalidObjectType(String)
     case unsupportedFeature(String)
+
+    /// The resource set that a resource was loaded into no longer exists.
+    ///
+    /// A resource refers to its resource set weakly. Writing a resource needs the metamodels
+    /// that the set holds, so a resource whose set has been released cannot be written
+    /// faithfully. The associated value is the URI of the resource.
+    case resourceSetReleased(String)
 }
 
 /// Parser for XMI (XML Metadata Interchange) files
@@ -78,8 +85,11 @@ public actor XMIParser {
     private var eClassCache: [String: EClass] = [:]  // className → EClass for caching dynamically created classes
     private var builtinTypeCache: [String: DynamicEObject] = [:]  // typeName → EDataType for built-in Ecore types
 
-    /// Raw XML content for attribute order extraction
-    private var rawXMLContent: String = ""
+    /// The lookup tables of the current reference resolution pass, if one is running.
+    private var resolutionIndex: ClassIndex?
+
+    /// The document order of the attributes of the document being parsed
+    private var attributeOrder = XMIAttributeOrder()
 
     /// Debug mode flag for systematic tracing
     private var debug: Bool = false
@@ -153,10 +163,8 @@ public actor XMIParser {
             throw XMIError.invalidEncoding
         }
 
-        // Store raw XML content for attribute order extraction
-        self.rawXMLContent = xmlString
-
         let document = try parseXML(fromText: xmlString)
+        attributeOrder = XMIAttributeOrder(document: document, source: xmlString)
 
         if debug {
             print("[XMI] Root element: '\(String(describing: document.name))'")
@@ -218,11 +226,13 @@ public actor XMIParser {
                 print("[XMI] Processing XMI wrapper with \(Array(rootElement.children).count) child elements")
             }
             // Multiple root objects wrapped in xmi:XMI
+            var rootObjects: [any EObject] = []
             for childElement in rootElement.children {
                 if let rootObject = try await parseElement(childElement, in: resource) {
-                    await resource.add(rootObject)
+                    rootObjects.append(rootObject)
                 }
             }
+            await resource.add(contentsOf: rootObjects)
         } else {
             if debug {
                 print("[XMI] Processing single root element: '\(rootElement.name)'")
@@ -448,6 +458,17 @@ public actor XMIParser {
                 continue
             }
 
+            // Enumerations are written by literal text and held by literal name
+            if let attribute = enhancedEClass.getStructuralFeature(name: attributeName) as? EAttribute,
+                let eEnum = attribute.eType as? EEnum
+            {
+                let texts = attribute.isMany
+                    ? attributeValue.split(whereSeparator: \.isWhitespace).map(String.init) : [attributeValue]
+                let names = texts.map { eEnum.storedValue(forText: $0) }
+                instance.eSet(attributeName, value: attribute.isMany ? names : names[0])
+                continue
+            }
+
             // Use type inference to convert string to appropriate type
             let value = inferType(from: attributeValue)
             instance.eSet(attributeName, value: value)
@@ -536,13 +557,18 @@ public actor XMIParser {
     ///
     /// A single-valued attribute takes its only text; a many-valued attribute becomes an
     /// array whose element type follows the declared type (strings) or the inferred
-    /// type of the values (integers, doubles, booleans, or strings).
+    /// type of the values (integers, doubles, booleans, or strings). The values of an
+    /// enumeration-typed attribute are the names of the literals that the texts denote.
     ///
     /// - Parameters:
     ///   - texts: The text contents of the child elements, in document order.
     ///   - attribute: The declared attribute.
     /// - Returns: The value to store.
     private func attributeValue(from texts: [String], for attribute: EAttribute) -> any EcoreValue {
+        if let eEnum = attribute.eType as? EEnum {
+            let names = texts.map { eEnum.storedValue(forText: $0) }
+            return attribute.isMany ? names : (names.first ?? "")
+        }
         if Self.isStringType(attribute.eType) {
             return attribute.isMany ? texts : (texts.first ?? "")
         }
@@ -555,6 +581,89 @@ public actor XMIParser {
     }
 
     // MARK: - Ecore Metamodel Parsing
+
+    // MARK: Annotations
+
+    /// Parses the annotations of a model element.
+    ///
+    /// Every `eAnnotations` child becomes an `EAnnotation` object with its `source`, its
+    /// `details` entries in document order, its nested annotations, and its `contents`. The
+    /// `references` attribute is resolved with the other references of the document.
+    ///
+    /// - Parameters:
+    ///   - element: The element whose `eAnnotations` children are parsed.
+    ///   - resource: The Resource for object storage.
+    /// - Returns: The identifiers of the registered annotation objects, in document order.
+    /// - Throws: ``XMIError`` if the content of an annotation cannot be parsed.
+    private func parseAnnotations(of element: XElement, in resource: Resource) async throws -> [EUUID] {
+        var identifiers: [EUUID] = []
+        for child in element.children(.eAnnotations) {
+            identifiers.append(try await parseAnnotation(child, in: resource).id)
+        }
+        return identifiers
+    }
+
+    /// Parses one annotation element and registers it with its entries and contents.
+    ///
+    /// - Parameters:
+    ///   - element: The `eAnnotations` element.
+    ///   - resource: The Resource for object storage.
+    /// - Returns: The registered annotation object.
+    /// - Throws: ``XMIError`` if the content of the annotation cannot be parsed.
+    private func parseAnnotation(_ element: XElement, in resource: Resource) async throws -> DynamicEObject {
+        let metaclass = await getOrCreateEClass(EcoreClassifier.eAnnotation.rawValue, in: resource)
+        var annotation = DynamicEObject(eClass: metaclass)
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = annotation.id }
+        if let source = element[EcoreFeatureName.source.rawValue] {
+            annotation.eSet(EcoreFeatureName.source.rawValue, value: source)
+        }
+
+        let entryClass = await getOrCreateEClass(EcoreClassifier.eStringToStringMapEntry.rawValue, in: resource)
+        var entryIdentifiers: [EUUID] = []
+        for entryElement in element.children(EcoreFeatureName.details.rawValue) {
+            var entry = DynamicEObject(eClass: entryClass)
+            entry.eSet(EcoreFeatureName.key.rawValue, value: entryElement[EcoreFeatureName.key.rawValue] ?? "")
+            entry.eSet(EcoreFeatureName.value.rawValue, value: entryElement[EcoreFeatureName.value.rawValue] ?? "")
+            await resource.register(entry)
+            entryIdentifiers.append(entry.id)
+        }
+        if !entryIdentifiers.isEmpty {
+            annotation.eSet(EcoreFeatureName.details.rawValue, value: entryIdentifiers)
+        }
+
+        let nested = try await parseAnnotations(of: element, in: resource)
+        if !nested.isEmpty { annotation.eSet(XMIElement.eAnnotations, nested) }
+
+        var contentIdentifiers: [EUUID] = []
+        for contentElement in element.children(EcoreFeatureName.contents.rawValue) {
+            if let content = try await parseElement(contentElement, in: resource) {
+                contentIdentifiers.append(content.id)
+            }
+        }
+        if !contentIdentifiers.isEmpty {
+            annotation.eSet(EcoreFeatureName.contents.rawValue, value: contentIdentifiers)
+        }
+
+        if let references = element[EcoreFeatureName.references.rawValue], !references.isEmpty {
+            annotation.eSet(EcoreClassifier.XMIParsingConstants.tempReferencesRef, value: references)
+        }
+        await resource.register(annotation)
+        return annotation
+    }
+
+    /// Records the annotations of a model element on its parsed object.
+    ///
+    /// - Parameters:
+    ///   - object: The object being built; its `eAnnotations` feature is set if there are any.
+    ///   - element: The element whose annotations are parsed.
+    ///   - resource: The Resource for object storage.
+    /// - Throws: ``XMIError`` if the content of an annotation cannot be parsed.
+    private func attachAnnotations(
+        to object: inout DynamicEObject, from element: XElement, in resource: Resource
+    ) async throws {
+        let identifiers = try await parseAnnotations(of: element, in: resource)
+        if !identifiers.isEmpty { object.eSet(XMIElement.eAnnotations, identifiers) }
+    }
 
     /// Parse an EPackage element
     ///
@@ -600,6 +709,8 @@ public actor XMIParser {
             let retrievedNSPrefix = pkg.eGet("nsPrefix") as? String
             print("[XMI] Verification: retrieved nsURI='\(retrievedNSURI ?? "nil")', nsPrefix='\(retrievedNSPrefix ?? "nil")'")
         }
+
+        try await attachAnnotations(to: &pkg, from: element, in: resource)
 
         // Parse classifiers (eClassifiers)
         var classifierIds: [EUUID] = []
@@ -687,6 +798,8 @@ public actor XMIParser {
                 print("[XMI DEBUG] parseEClass: Found eSuperTypes='\(superTypeReferences)' for class '\(name)'")
             }
         }
+
+        try await attachAnnotations(to: &eClass, from: element, in: resource)
 
         // Parse structural features
         var featureIds: [EUUID] = []
@@ -787,6 +900,7 @@ public actor XMIParser {
         if !exceptions.isEmpty {
             object.eSet(EcoreClassifier.XMIParsingConstants.tempEExceptionsRef, value: exceptions)
         }
+        try await attachAnnotations(to: &object, from: element, in: resource)
         await resource.register(object)
         return object
     }
@@ -816,6 +930,8 @@ public actor XMIParser {
 
         // Set name before registering
         eEnum.eSet(.name, name)
+
+        try await attachAnnotations(to: &eEnum, from: element, in: resource)
 
         // Parse literals
         var literalIds: [EUUID] = []
@@ -867,6 +983,8 @@ public actor XMIParser {
         let literalStr = element[.literal] ?? name
         literal.eSet(.literal, literalStr)
 
+        try await attachAnnotations(to: &literal, from: element, in: resource)
+
         // Register after all features are set
         await resource.register(literal)
 
@@ -909,6 +1027,8 @@ public actor XMIParser {
         if let isSerializable = element.getBool(.serializable) {
             dataType.eSet(.serializable, isSerializable)
         }
+
+        try await attachAnnotations(to: &dataType, from: element, in: resource)
 
         // Register after features are set
         await resource.register(dataType)
@@ -974,6 +1094,8 @@ public actor XMIParser {
         for flag in [XMIAttribute.ordered, .unique, .unsettable, .derived] {
             if let value = element.getBool(flag) { attribute.eSet(flag.rawValue, value: value) }
         }
+
+        try await attachAnnotations(to: &attribute, from: element, in: resource)
 
         // Default value
         if let defaultValue = element[.defaultValueLiteral] {
@@ -1052,6 +1174,8 @@ public actor XMIParser {
             if let value = element.getBool(flag) { reference.eSet(flag.rawValue, value: value) }
         }
 
+        try await attachAnnotations(to: &reference, from: element, in: resource)
+
         // Register after features are set
         await resource.register(reference)
 
@@ -1068,6 +1192,8 @@ public actor XMIParser {
     /// - Throws: `XMIError.invalidReference` if a reference cannot be resolved
     private func resolveReferences(in resource: Resource) async throws {
         let allObjects = await resource.getAllObjects()
+        resolutionIndex = nil
+        defer { resolutionIndex = nil }
 
 
 
@@ -1112,10 +1238,11 @@ public actor XMIParser {
                 await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempOppositeType, value: nil)
             }
 
-            // Resolve eSuperTypes and eExceptions references (metamodel)
+            // Resolve eSuperTypes, eExceptions, and annotation references (metamodel)
             for (temporary, feature) in [
                 (EcoreClassifier.XMIParsingConstants.tempESuperTypesRef, XMIAttribute.eSuperTypes.rawValue),
                 (EcoreClassifier.XMIParsingConstants.tempEExceptionsRef, EcoreFeatureName.eExceptions.rawValue),
+                (EcoreClassifier.XMIParsingConstants.tempReferencesRef, EcoreFeatureName.references.rawValue),
             ] {
                 guard let references = await resource.eGet(objectId: object.id, feature: temporary) as? String
                 else { continue }
@@ -1232,7 +1359,7 @@ public actor XMIParser {
         _ reference: String, using xpathResolver: XPathResolver? = nil, in resource: Resource
     ) async -> (any EcoreValue)? {
         // Handle Ecore built-in types
-        if reference.contains("http://www.eclipse.org/emf/2002/Ecore#//") {
+        if EcoreURI.isEcoreMetamodelReference(reference) {
             return await resolveEcoreBuiltinType(reference, in: resource)
         }
 
@@ -1340,97 +1467,75 @@ public actor XMIParser {
 
     /// Resolve EMF fragment references like //ClassName/featureName
     ///
+    /// Classes are found by name through an index that is built once per resolution pass, so
+    /// that resolving a document takes time proportional to its size.
+    ///
     /// - Parameters:
     ///   - fragment: The EMF fragment (without leading #) like "//Member/familyMother"
     ///   - resource: The current Resource containing all objects
     /// - Returns: The resolved object ID, or nil if not found
     private func resolveEMFFragmentReference(_ fragment: String, in resource: Resource) async -> (any EcoreValue)? {
-        // Remove leading "//"
-        let path = String(fragment.dropFirst(2))
-        let components = path.split(separator: "/")
-
-        if components.count == 1 {
-            // Format: //ClassName - resolve to the EClass itself
-            let className = String(components[0])
-
-            if debug {
-                print("[XMI DEBUG] Resolving EMF fragment to class: '\(className)'")
-            }
-
-            // Find the EClass with the given name
-            let allObjects = await resource.getAllObjects()
-            for object in allObjects {
-                if let dynamicObj = object as? DynamicEObject,
-                   dynamicObj.eClass.name == "EClass",
-                   let objName = dynamicObj.eGet("name") as? String,
-                   objName == className {
-
-                    if debug {
-                        print("[XMI DEBUG] Found class '\(className)' with ID \(object.id)")
-                    }
-                    return object.id
-                }
-            }
-
-            if debug {
-                print("[XMI DEBUG] Class '\(className)' not found")
-            }
-            return nil
-
-        } else if components.count == 2 {
-            // Format: //ClassName/featureName - resolve to a feature within the class
-            let className = String(components[0])
-            let featureName = String(components[1])
-
-            if debug {
-                print("[XMI DEBUG] Resolving EMF fragment: class='\(className)', feature='\(featureName)'")
-            }
-
-            // Find the EClass with the given name
-            let allObjects = await resource.getAllObjects()
-            for object in allObjects {
-                if let dynamicObj = object as? DynamicEObject,
-                   dynamicObj.eClass.name == "EClass",
-                   let objName = dynamicObj.eGet("name") as? String,
-                   objName == className {
-
-                    if debug {
-                        print("[XMI DEBUG] Found class '\(className)' with ID \(object.id)")
-                    }
-
-                    // Find the feature within this class
-                    if let featureIds = dynamicObj.eGet("eStructuralFeatures") as? [EUUID] {
-                        for featureId in featureIds {
-                            if let featureObj = await resource.resolve(featureId) as? DynamicEObject,
-                               let featureObjName = featureObj.eGet("name") as? String,
-                               featureObjName == featureName {
-
-                                if debug {
-                                    print("[XMI DEBUG] Found feature '\(featureName)' with ID \(featureId)")
-                                }
-                                return featureId
-                            }
-                        }
-                    }
-
-                    if debug {
-                        print("[XMI DEBUG] Feature '\(featureName)' not found in class '\(className)'")
-                    }
-                    return nil
-                }
-            }
-
-            if debug {
-                print("[XMI DEBUG] Class '\(className)' not found")
-            }
-            return nil
-
-        } else {
+        let components = fragment.dropFirst(2).split(separator: "/")
+        guard components.count == 1 || components.count == 2 else {
             if debug {
                 print("[XMI DEBUG] EMF fragment '\(fragment)' has invalid format, expected //ClassName or //ClassName/featureName")
             }
             return nil
         }
+        let className = String(components[0])
+        if debug { print("[XMI DEBUG] Resolving EMF fragment: class='\(className)'") }
+        let index = await classIndex(in: resource)
+        guard let classID = index.classes[className] else {
+            if debug { print("[XMI DEBUG] Class '\(className)' not found") }
+            return nil
+        }
+        guard components.count == 2 else { return classID }
+
+        let featureName = String(components[1])
+        let features = await featureIDs(ofClass: classID, in: resource)
+        if debug && features[featureName] == nil {
+            print("[XMI DEBUG] Feature '\(featureName)' not found in class '\(className)'")
+        }
+        return features[featureName]
+    }
+
+    /// The classes of the resource by name, built on first use in a resolution pass.
+    ///
+    /// The first class of a name in resource order wins, so that nested packages that reuse
+    /// a name resolve as they always have.
+    private func classIndex(in resource: Resource) async -> ClassIndex {
+        if let index = resolutionIndex { return index }
+        var index = ClassIndex()
+        let classMetaclassName = EcoreClassifier.eClass.rawValue
+        for object in await resource.getAllObjects() {
+            guard let dynamicObject = object as? DynamicEObject,
+                dynamicObject.eClass.name == classMetaclassName,
+                let name = dynamicObject.eGet(XMIAttribute.name.rawValue) as? String,
+                index.classes[name] == nil
+            else { continue }
+            index.classes[name] = dynamicObject.id
+        }
+        resolutionIndex = index
+        return index
+    }
+
+    /// The structural features of a class by name, built on first use for that class.
+    private func featureIDs(ofClass classID: EUUID, in resource: Resource) async -> [String: EUUID] {
+        if let cached = resolutionIndex?.features[classID] { return cached }
+        var features: [String: EUUID] = [:]
+        if let owner = await resource.resolve(classID) as? DynamicEObject,
+            let identifiers = owner.eGet(EcoreFeatureName.eStructuralFeatures.rawValue) as? [EUUID]
+        {
+            for identifier in identifiers {
+                guard let feature = await resource.resolve(identifier) as? DynamicEObject,
+                    let name = feature.eGet(XMIAttribute.name.rawValue) as? String,
+                    features[name] == nil
+                else { continue }
+                features[name] = identifier
+            }
+        }
+        resolutionIndex?.features[classID] = features
+        return features
     }
 
     // MARK: - Helper Methods
@@ -1445,81 +1550,7 @@ public actor XMIParser {
     /// - Parameter element: The XElement to extract attribute names from
     /// - Returns: Array of attribute names in document order
     private func getAttributeNamesInDocumentOrder(for element: XElement) -> [String] {
-        // Get the element name (strip namespace prefix for matching)
-        // elementName not needed for current matching approach
-
-        // Create unique signature for this element by using its attribute values
-        // This helps us identify which specific element instance we're parsing
-        var uniqueAttributes: [String: String] = [:]
-        for attrName in element.attributeNames {
-            if let value = element[attrName] {
-                uniqueAttributes[attrName] = value
-            }
-        }
-
-        // Create regex to match all elements with this tag name
-        let elementRegex = /<\s*\w*:?\w+(?:\s+([^>]*?))?\s*\/?>/
-
-        // Find all matches and identify the specific one by attribute values
-        let matches = rawXMLContent.matches(of: elementRegex)
-
-        for match in matches {
-            guard let attributesCapture = match.1,
-                !String(attributesCapture).isEmpty
-            else { continue }
-
-            let attributesString = String(attributesCapture)
-
-            // Skip empty attribute strings
-            if attributesString.trimmingCharacters(in: .whitespaces).isEmpty {
-                continue
-            }
-
-            // Extract all attributes from this element
-            let attrRegex = /(\w+(?::\w+)?)\s*=\s*"([^"]*)"|(\w+(?::\w+)?)\s*=\s*'([^']*)'/
-            var foundAttributes: [String: String] = [:]
-
-            for attrMatch in attributesString.matches(of: attrRegex) {
-                if let name = attrMatch.1, let value = attrMatch.2 {
-                    foundAttributes[String(name)] = String(value)
-                } else if let name = attrMatch.3, let value = attrMatch.4 {
-                    foundAttributes[String(name)] = String(value)
-                }
-            }
-
-            // Check if this matches our target element by comparing attribute values
-            var isMatch = true
-            for (attrName, expectedValue) in uniqueAttributes {
-                // Skip namespace attributes for matching as they might differ in representation
-                if attrName.hasPrefix("xmlns") || attrName.hasPrefix("xmi:") { continue }
-
-                if foundAttributes[attrName] != expectedValue {
-                    isMatch = false
-                    break
-                }
-            }
-
-            if isMatch {
-                // Extract attribute names in document order for this specific element
-                var orderedNames: [String] = []
-                let nameOnlyRegex = /(\w+(?::\w+)?)\s*=\s*(?:"[^"]*"|'[^']*')/
-
-                for nameMatch in attributesString.matches(of: nameOnlyRegex) {
-                    let attributeName = String(nameMatch.1)
-                    // Only include attributes that exist in SwiftXML's list
-                    if element.attributeNames.contains(attributeName) {
-                        orderedNames.append(attributeName)
-                    }
-                }
-
-                if !orderedNames.isEmpty {
-                    return orderedNames
-                }
-            }
-        }
-
-        // Fallback to SwiftXML's alphabetical order
-        return element.attributeNames
+        attributeOrder.names(for: element)
     }
 
     /// Looks up an EClass from registered metamodels, falling back to dynamic creation
@@ -1711,6 +1742,15 @@ public actor XMIParser {
             }
         }
         return nil
+    }
+
+    /// Lookup tables that make name-based fragment resolution linear.
+    private struct ClassIndex {
+        /// The identifier of the first class of each name.
+        var classes: [String: EUUID] = [:]
+
+        /// The structural features of each class by name, filled on demand.
+        var features: [EUUID: [String: EUUID]] = [:]
     }
 
     /// Structure information collected during element analysis

@@ -99,6 +99,29 @@ let borrow = book?.eOperations.first                    // EOperation with EPara
 let supertypes = book?.eSuperTypes.map(\.name)          // every supertype, in order
 ```
 
+### Annotations ✅
+
+- [x] `eAnnotations` on every model element of a `.ecore` file: packages, classifiers, features, operations, parameters, enumeration literals, and annotations nested in annotations
+- [x] `source`, `details` (key and value entries in document order, with multi-line values and XML entities preserved), `references` (same document and other documents), and `contents`
+- [x] Loaded by `EPackage(url:)`, `ResourceSet.loadEcoreResource(uri:)`, and the dynamic loader (`loadXMIResource`), and navigable reflectively (`eAnnotations`, `source`, `details`, `key`, `value`, `references`, `contents`)
+- [x] `getEAnnotation(source:)` and `getEAnnotationDetail(source:key:)` on every model element; the common sources and keys are listed in `AnnotationSource`
+- [x] `XMISerializer.serialize(_:)` writes annotations back, escaping attribute values as EMF does
+
+```swift
+let package = try await EPackage(url: libraryURL)
+let book = package.getEClass("Book")
+let documentation = book?.getEAnnotationDetail(
+    source: AnnotationSource.genModel, key: AnnotationSource.GenModelKey.documentation)
+```
+
+### Writing `.ecore` Documents ✅
+
+- [x] References to classifiers of other documents are written with relative URIs and, as EMF does for abstract declared types, the kind of the classifier: `eSuperTypes="shared.ecore#//Audited"`, `eType="ecore:EEnum shared.ecore#//Colour"`
+- [x] Classifiers of Ecore itself are written with the Ecore namespace URI (`ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString`); loaded built-ins have the identity of the classifiers of `EcorePackage.instance`
+- [x] `XMISerializer.serialize(_:relativeTo:)` and `serialize(_:to:)` compute relative URIs for the target location
+- [x] `XMISerializationOptions(lineWidth: XMISerializationOptions.emfLineWidth)` wraps long attribute lists as EMF's editors do, so documents such as `shared.ecore` and `consumer.ecore` round-trip byte for byte
+- [x] Enumeration-typed attributes of model instances are read by literal text (the literal name is the fallback) and written as literal text, as EMF does; unsettable attributes that are set to their default value are still written
+
 ### In-Memory Model ✅
 
 - [x] Binary tree containment tests (BinTree model)

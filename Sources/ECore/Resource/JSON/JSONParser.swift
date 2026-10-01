@@ -77,11 +77,12 @@ public actor JSONParser {
 
         if let jsonArray = json as? [[String: Any]] {
             // Multiple root objects
+            var rootObjects: [any EObject] = []
             for jsonObject in jsonArray {
                 let objectData = try JSONSerialization.data(withJSONObject: jsonObject, options: [])
-                let dynamicObject = try await parseSingleObject(from: objectData, decoder: decoder, in: resource)
-                await resource.add(dynamicObject)
+                rootObjects.append(try await parseSingleObject(from: objectData, decoder: decoder, in: resource))
             }
+            await resource.add(contentsOf: rootObjects)
         } else {
             // Single root object
             let dynamicObject = try await parseSingleObject(from: data, decoder: decoder, in: resource)

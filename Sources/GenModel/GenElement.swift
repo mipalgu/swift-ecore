@@ -78,16 +78,39 @@ public struct GenElement: Sendable, Hashable {
 
     /// Reads a string-valued attribute of the generator model object.
     ///
+    /// The value of an enumeration-typed attribute is the text of its literal, which is what
+    /// `.genmodel` documents contain (`17.0` rather than the literal name `JDK170`). Use
+    /// ``literalName(_:)`` to read the name of the literal.
+    ///
     /// - Parameter feature: The attribute name.
     /// - Returns: The value, or `nil` if the attribute is not set.
     public func stringValue(_ feature: String) -> String? {
+        let text: String?
         switch object.eGet(feature) {
-        case let string as String: return string
-        case let bool as Bool: return bool ? "true" : "false"
-        case let int as Int: return String(int)
-        case let double as Double: return String(double)
-        default: return nil
+        case let string as String: text = string
+        case let bool as Bool: text = bool ? "true" : "false"
+        case let int as Int: text = String(int)
+        case let double as Double: text = String(double)
+        default: text = nil
         }
+        guard let text, let eEnum = enumeration(of: feature) else { return text }
+        return eEnum.text(forStoredValue: text)
+    }
+
+    /// Reads the name of the literal that an enumeration-typed attribute holds.
+    ///
+    /// - Parameter feature: The attribute name.
+    /// - Returns: The name of the literal, or `nil` if the attribute is not set. A value
+    ///   that names no literal is returned as it is.
+    public func literalName(_ feature: String) -> String? {
+        guard let text = stringValue(feature) else { return nil }
+        guard let eEnum = enumeration(of: feature) else { return text }
+        return eEnum.storedValue(forText: text)
+    }
+
+    /// The enumeration that the type of an attribute names, if it has one.
+    private func enumeration(of feature: String) -> EEnum? {
+        (object.eClass.getStructuralFeature(name: feature) as? EAttribute)?.eType as? EEnum
     }
 
     /// Reads a boolean attribute of the generator model object.

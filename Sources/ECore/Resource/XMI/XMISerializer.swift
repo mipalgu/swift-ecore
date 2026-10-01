@@ -240,7 +240,7 @@ public struct XMISerializer: Sendable {
             }
 
             // Convert value to string and add to attributes in insertion order
-            xml += " \(attributeName)=\"\(escapeXML(convertToString(value)))\""
+            xml += " \(attributeName)=\"\(escapeXML(attributeText(value, feature: attributeName, of: dynamicObject)))\""
         }
 
         if children.isEmpty && references.isEmpty && valueChildren.isEmpty {
@@ -524,7 +524,7 @@ public struct XMISerializer: Sendable {
             }
 
             // Convert value to string and add to attributes in insertion order
-            attributes += " \(featureName)=\"\(escapeXML(convertToString(value)))\""
+            attributes += " \(featureName)=\"\(escapeXML(attributeText(value, feature: featureName, of: dynamicObject)))\""
         }
 
         return attributes
@@ -725,7 +725,7 @@ public struct XMISerializer: Sendable {
             guard let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName),
                 let texts = manyValuedTexts(of: value), !texts.isEmpty
             else { continue }
-            result.append((featureName, texts))
+            result.append((featureName, attributeTexts(texts, feature: featureName, of: dynamicObject)))
         }
         return result
     }
@@ -828,6 +828,70 @@ public struct XMISerializer: Sendable {
         default:
             return "\(value)"
         }
+    }
+
+    /// The enumeration that the type of an attribute of an object names, if it has one.
+    ///
+    /// - Parameters:
+    ///   - featureName: The name of the feature.
+    ///   - object: The object that has the feature.
+    /// - Returns: The enumeration, or `nil` if the feature is not an enumeration-typed attribute.
+    func enumeration(of featureName: String, in object: DynamicEObject) -> EEnum? {
+        (object.eClass.getStructuralFeature(name: featureName) as? EAttribute)?.eType as? EEnum
+    }
+
+    /// The text that a document holds for the value of an attribute.
+    ///
+    /// The value of an enumeration-typed attribute is written as the text of its literal,
+    /// as EMF writes it; any other value is converted to its textual form.
+    ///
+    /// - Parameters:
+    ///   - value: The stored value.
+    ///   - featureName: The name of the attribute.
+    ///   - object: The object that has the attribute.
+    /// - Returns: The text to write.
+    func attributeText(_ value: any EcoreValue, feature featureName: String, of object: DynamicEObject) -> String {
+        let text = convertToString(value)
+        guard let eEnum = enumeration(of: featureName, in: object) else { return text }
+        return eEnum.text(forStoredValue: text)
+    }
+
+    /// The texts that a document holds for the values of a many-valued attribute.
+    ///
+    /// - Parameters:
+    ///   - texts: The textual forms of the stored values.
+    ///   - featureName: The name of the attribute.
+    ///   - object: The object that has the attribute.
+    /// - Returns: The texts to write; literal texts for an enumeration-typed attribute.
+    func attributeTexts(_ texts: [String], feature featureName: String, of object: DynamicEObject) -> [String] {
+        guard let eEnum = enumeration(of: featureName, in: object) else { return texts }
+        return texts.map { eEnum.text(forStoredValue: $0) }
+    }
+
+    /// Escapes text for use in an attribute value the way EMF does.
+    ///
+    /// The ampersand, the less-than sign, and the double quote become entities, and the
+    /// line feed, carriage return, and tab become character references, so that a value
+    /// reads back exactly as it was written. The greater-than sign and the apostrophe are
+    /// written as they are.
+    ///
+    /// - Parameter value: The text to escape.
+    /// - Returns: The escaped text.
+    static func escapeAttribute(_ value: String) -> String {
+        var result = ""
+        result.reserveCapacity(value.utf8.count)
+        for character in value.unicodeScalars {
+            switch character {
+            case "&": result += "&amp;"
+            case "<": result += "&lt;"
+            case "\"": result += "&quot;"
+            case "\n": result += "&#xA;"
+            case "\r": result += "&#xD;"
+            case "\t": result += "&#x9;"
+            default: result.unicodeScalars.append(character)
+            }
+        }
+        return result
     }
 
     /// Escape XML special characters

@@ -7,6 +7,7 @@
 //
 public import EMFBase
 import Foundation
+import OrderedCollections
 
 extension Resource {
     /// Creates a native package from a parsed Ecore package object.
@@ -22,6 +23,14 @@ extension Resource {
     /// document that the resource set can load as a native metamodel, or a built-in of the
     /// Ecore metamodel (see ``EcorePackage``). A type that cannot be resolved becomes the
     /// `EString` data type for an attribute and the `EObject` class for a reference.
+    ///
+    /// The package records the URI of its document and the classifiers of other documents
+    /// that it refers to (see ``EPackageOrigin``).
+    ///
+    /// Annotations are converted for every element, with their sources, details in document
+    /// order, nested annotations, contents, and references. References to elements of the
+    /// document keep the identifiers of those elements; references to other documents are
+    /// kept as proxies.
     ///
     /// A type given by an `eGenericType` child is read as its raw classifier. Type arguments,
     /// type parameters, and generic bounds are not represented, so a reference to a type
@@ -52,7 +61,30 @@ extension Resource {
         var converter = NativeMetamodelConverter(
             objects: parsed, ignoresFailures: shouldIgnoreUnresolvedClassifiers)
         converter.external = await resolveExternalClassifiers(converter.collectProxies(from: root))
-        return try converter.convert(root)
+        converter.localProxies = await resolveLocalAnnotationProxies(converter.annotationProxies())
+        var package = try converter.convert(root)
+        var references: [EUUID: ResourceProxy] = [:]
+        for (proxy, classifier) in converter.external where references[classifier.id] == nil {
+            references[classifier.id] = proxy
+        }
+        package.origin = EPackageOrigin(documentURI: uri, externalReferences: references)
+        return package
+    }
+
+    /// Resolves the annotation references that point back into this document.
+    ///
+    /// A reference list that mixes references to this document and to other documents is
+    /// stored with proxies for all of them; the proxies of this document are resolved here.
+    ///
+    /// - Parameter proxies: The annotation reference proxies.
+    /// - Returns: The identifier of the element for each proxy of this document.
+    private func resolveLocalAnnotationProxies(_ proxies: [ResourceProxy]) async -> [ResourceProxy: EUUID] {
+        var resolved: [ResourceProxy: EUUID] = [:]
+        let navigator = FragmentNavigator(resource: self)
+        for proxy in proxies where proxy.uri == uri {
+            if let target = await navigator.resolve(proxy.fragment) { resolved[proxy] = target.id }
+        }
+        return resolved
     }
 
     /// Resolves the classifiers of other documents that a package refers to.
@@ -97,6 +129,12 @@ struct NativeMetamodelConverter {
 
     /// The classifiers of other documents, by the reference that names them.
     var external: [ResourceProxy: any EClassifier] = [:]
+
+    /// The identifiers of the elements that annotation references of this document name.
+    var localProxies: [ResourceProxy: EUUID] = [:]
+
+    /// The converted annotations of each element, by the identifier of the element.
+    private var annotationMap: [EUUID: [EAnnotation]] = [:]
 
     /// The converted enumerations and data types, by identifier.
     private var dataTypes: [EUUID: any EClassifier] = [:]
@@ -187,6 +225,59 @@ struct NativeMetamodelConverter {
         EcoreFeatureName.eParameters.rawValue,
     ]
 
+    // MARK: Annotations
+
+    /// The references that the annotations of the document hold to other documents.
+    ///
+    /// - Returns: The distinct proxies, in no particular order.
+    func annotationProxies() -> [ResourceProxy] {
+        var result: Set<ResourceProxy> = []
+        for object in objects.values where object.eClass.name == EcoreClassifier.eAnnotation.rawValue {
+            for case .external(let proxy) in targets(object.eGet(EcoreFeatureName.references.rawValue)) {
+                result.insert(proxy)
+            }
+        }
+        return Array(result)
+    }
+
+    /// Converts the annotations of every parsed element.
+    private mutating func convertAnnotations() {
+        for object in objects.values where object.eClass.name != EcoreClassifier.eAnnotation.rawValue {
+            let converted = annotations(of: object)
+            if !converted.isEmpty { annotationMap[object.id] = converted }
+        }
+    }
+
+    /// Converts the annotations that a parsed element holds.
+    private func annotations(of object: DynamicEObject) -> [EAnnotation] {
+        contained(object, EcoreFeatureName.eAnnotations.rawValue).map { annotation($0) }
+    }
+
+    /// Converts one parsed annotation, including everything it holds.
+    private func annotation(_ object: DynamicEObject) -> EAnnotation {
+        var details: OrderedDictionary<String, String> = [:]
+        for entry in contained(object, EcoreFeatureName.details.rawValue) {
+            details[string(entry, EcoreFeatureName.key.rawValue) ?? ""] =
+                string(entry, EcoreFeatureName.value.rawValue) ?? ""
+        }
+        let references = targets(object.eGet(EcoreFeatureName.references.rawValue)).map {
+            target -> EAnnotationReference in
+            switch target {
+            case .local(let identifier): return .local(identifier)
+            case .external(let proxy): return localProxies[proxy].map { .local($0) } ?? .external(proxy)
+            }
+        }
+        return EAnnotation(
+            id: object.id, source: string(object, EcoreFeatureName.source.rawValue) ?? "",
+            orderedDetails: details, eAnnotations: annotations(of: object), references: references,
+            contents: contained(object, EcoreFeatureName.contents.rawValue))
+    }
+
+    /// The converted annotations of an element.
+    private func annotations(forID identifier: EUUID) -> [EAnnotation] {
+        annotationMap[identifier] ?? []
+    }
+
     // MARK: Conversion
 
     /// Converts a parsed package and everything it contains.
@@ -196,6 +287,7 @@ struct NativeMetamodelConverter {
     /// - Returns: The native package.
     /// - Throws: ``XMIError`` if an element cannot be converted and failures are not ignored.
     mutating func convert(_ root: DynamicEObject) throws -> EPackage {
+        convertAnnotations()
         var classObjects: [DynamicEObject] = []
         try convertDataTypes(of: root, classObjects: &classObjects)
         buildClasses(classObjects)
@@ -214,7 +306,8 @@ struct NativeMetamodelConverter {
                 if let name = string(classifier, XMIAttribute.name.rawValue) {
                     dataTypes[classifier.id] = EEnum(
                         id: classifier.id, name: name,
-                        literals: literals(of: classifier))
+                        literals: literals(of: classifier),
+                        eAnnotations: annotations(forID: classifier.id))
                 } else {
                     try failMissingName()
                 }
@@ -223,7 +316,8 @@ struct NativeMetamodelConverter {
                     dataTypes[classifier.id] = EDataType(
                         id: classifier.id, name: name,
                         serialisable: flag(classifier, XMIAttribute.serializable.rawValue, true),
-                        instanceClassName: string(classifier, XMIAttribute.instanceClassName.rawValue))
+                        instanceClassName: string(classifier, XMIAttribute.instanceClassName.rawValue),
+                        eAnnotations: annotations(forID: classifier.id))
                 } else {
                     try failMissingName()
                 }
@@ -248,7 +342,8 @@ struct NativeMetamodelConverter {
             guard let name = string(literal, XMIAttribute.name.rawValue) else { return nil }
             return EEnumLiteral(
                 id: literal.id, name: name, value: number(literal, XMIAttribute.value.rawValue, 0),
-                literal: string(literal, XMIAttribute.literal.rawValue) ?? name)
+                literal: string(literal, XMIAttribute.literal.rawValue) ?? name,
+                eAnnotations: annotations(forID: literal.id))
         }
     }
 
@@ -263,6 +358,7 @@ struct NativeMetamodelConverter {
                 id: object.id, name: name,
                 isAbstract: flag(object, XMIAttribute.abstract.rawValue, false),
                 isInterface: flag(object, XMIAttribute.interface.rawValue, false),
+                eAnnotations: annotations(forID: object.id),
                 instanceClassName: string(object, XMIAttribute.instanceClassName.rawValue))
         }
         let order = supertypesFirst(objects)
@@ -350,7 +446,8 @@ struct NativeMetamodelConverter {
                 lowerBound: lowerBound, upperBound: upperBound, changeable: changeable,
                 volatile: volatile, transient: transient,
                 defaultValueLiteral: string(object, XMIAttribute.defaultValueLiteral.rawValue),
-                isID: flag(object, XMIAttribute.iD.rawValue, false), ordered: ordered,
+                isID: flag(object, XMIAttribute.iD.rawValue, false),
+                eAnnotations: annotations(forID: object.id), ordered: ordered,
                 unique: unique, unsettable: unsettable, derived: derived)
         case EcoreClassifier.eReference.rawValue:
             let opposite = targets(object.eGet(XMIAttribute.eOpposite.rawValue)
@@ -367,6 +464,7 @@ struct NativeMetamodelConverter {
                 containment: flag(object, XMIAttribute.containment.rawValue, false),
                 opposite: opposite,
                 resolveProxies: flag(object, XMIAttribute.resolveProxies.rawValue, true),
+                eAnnotations: annotations(forID: object.id),
                 ordered: ordered, unique: unique, unsettable: unsettable, derived: derived,
                 container: oppositeContains)
         default:
@@ -387,7 +485,8 @@ struct NativeMetamodelConverter {
                     lowerBound: number(parameter, XMIAttribute.lowerBound.rawValue, 0),
                     upperBound: number(parameter, XMIAttribute.upperBound.rawValue, 1),
                     ordered: flag(parameter, XMIAttribute.ordered.rawValue, true),
-                    unique: flag(parameter, XMIAttribute.unique.rawValue, true))
+                    unique: flag(parameter, XMIAttribute.unique.rawValue, true),
+                    eAnnotations: annotations(forID: parameter.id))
             }
         let exceptions = targets(object.eGet(EcoreFeatureName.eExceptions.rawValue)).compactMap {
             target -> (any EClassifier)? in
@@ -406,7 +505,8 @@ struct NativeMetamodelConverter {
             upperBound: number(object, XMIAttribute.upperBound.rawValue, 1),
             ordered: flag(object, XMIAttribute.ordered.rawValue, true),
             unique: flag(object, XMIAttribute.unique.rawValue, true),
-            eParameters: parameters, eExceptions: exceptions)
+            eParameters: parameters, eExceptions: exceptions,
+            eAnnotations: annotations(forID: object.id))
     }
 
     private static var defaultAttributeType: any EClassifier {
@@ -438,6 +538,7 @@ struct NativeMetamodelConverter {
             id: package.id, name: name,
             nsURI: string(package, EcoreFeatureName.nsURI.rawValue) ?? "http://\(name.lowercased())",
             nsPrefix: string(package, EcoreFeatureName.nsPrefix.rawValue) ?? name.lowercased(),
-            eClassifiers: classifiers, eSubpackages: subpackages)
+            eClassifiers: classifiers, eSubpackages: subpackages,
+            eAnnotations: annotations(forID: package.id))
     }
 }

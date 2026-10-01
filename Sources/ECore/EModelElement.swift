@@ -7,8 +7,42 @@
 //
 public import EMFBase
 import Foundation
+public import OrderedCollections
 
 // MARK: - EAnnotation
+
+/// A reference held by an annotation to a model element.
+///
+/// An annotation's `references` are the model elements that the annotation concerns. An
+/// element of the same document is identified by its identifier; an element of another
+/// document is identified by a ``ResourceProxy`` that names the document and the fragment.
+public enum EAnnotationReference: Sendable, Hashable {
+    /// An element of the document that holds the annotation.
+    case local(EUUID)
+
+    /// An element of another document.
+    case external(ResourceProxy)
+
+    /// The reference as a reflective value: an identifier or a proxy.
+    public var value: any EcoreValue {
+        switch self {
+        case .local(let identifier): return identifier
+        case .external(let proxy): return proxy
+        }
+    }
+
+    /// Creates a reference from a reflective value.
+    ///
+    /// - Parameter value: An identifier or a ``ResourceProxy``.
+    /// - Returns: The reference, or `nil` for any other kind of value.
+    public init?(value: any EcoreValue) {
+        switch value {
+        case let identifier as EUUID: self = .local(identifier)
+        case let proxy as ResourceProxy: self = .external(proxy)
+        default: return nil
+        }
+    }
+}
 
 /// An annotation on a model element.
 ///
@@ -20,8 +54,11 @@ import Foundation
 /// - Generation hints
 /// - Validation constraints
 ///
-/// Each annotation has a source URI that identifies its purpose and a dictionary
-/// of key-value details containing the actual metadata.
+/// Each annotation has a source URI that identifies its purpose and key and value
+/// details that hold the actual metadata. The details keep the order in which they were added
+/// (the order of the document for a loaded annotation).
+/// An annotation can also refer to other model elements (``references``), contain
+/// arbitrary objects (``contents``), and carry annotations of its own (``eAnnotations``).
 ///
 /// ## Example
 ///
@@ -31,7 +68,7 @@ import Foundation
 ///     details: ["documentation": "This class represents a person"]
 /// )
 /// ```
-public struct EAnnotation: EObject, EMetaObject {
+public struct EAnnotation: EObject, EMetaObject, EModelElement {
     /// The metaclass of annotations is the `EAnnotation` class of ``EcorePackage``.
     public typealias Classifier = EClass
 
@@ -52,48 +89,95 @@ public struct EAnnotation: EObject, EMetaObject {
     /// The source URI identifying the annotation's purpose.
     ///
     /// This URI typically identifies the tool or framework that created the annotation
-    /// and interprets its details. Common examples include:
-    ///
-    /// - `http://www.eclipse.org/emf/2002/GenModel` - EMF code generation settings
-    /// - `http://www.eclipse.org/emf/2002/Ecore` - Ecore-specific metadata
+    /// and interprets its details. Common examples are listed in ``AnnotationSource``.
     ///
     /// The source should be unique within the containing model element's annotations.
     public var source: String
 
-    /// Key-value pairs of annotation details.
+    /// Key-value pairs of annotation details, in the order in which they were added.
     ///
-    /// The details dictionary contains the actual metadata associated with this annotation.
+    /// The details contain the actual metadata associated with this annotation.
     /// Keys and values are both strings, allowing flexible representation of various
-    /// metadata types.
-    public var details: [String: String]
+    /// metadata types. Assigning to an existing key keeps its position.
+    public var details: OrderedDictionary<String, String>
 
-    /// Creates a new annotation.
+    /// The annotations that this annotation carries.
+    public var eAnnotations: [EAnnotation] {
+        didSet { ContainerStamp.stamp(&eAnnotations, container: id) }
+    }
+
+    /// The model elements that this annotation refers to, in order.
+    public var references: [EAnnotationReference]
+
+    /// The objects that this annotation contains, in order.
+    public var contents: [any EObject]
+
+    /// Creates a new annotation whose details keep the given order.
     ///
     /// - Parameters:
     ///   - id: Unique identifier (generates a new UUID if not provided).
     ///   - source: The source URI identifying the annotation's purpose.
-    ///   - details: Key-value pairs of annotation metadata (empty by default).
+    ///   - orderedDetails: Key-value pairs of annotation metadata in the order in which they
+    ///     are kept and written (empty by default).
+    ///   - eAnnotations: Annotations carried by this annotation (none by default).
+    ///   - references: Model elements that this annotation refers to (none by default).
+    ///   - contents: Objects that this annotation contains (none by default).
     public init(
         id: EUUID = EUUID(),
         source: String,
-        details: [String: String] = [:]
+        orderedDetails: OrderedDictionary<String, String> = [:],
+        eAnnotations: [EAnnotation] = [],
+        references: [EAnnotationReference] = [],
+        contents: [any EObject] = []
     ) {
         self.id = id
         self.source = source
-        self.details = details
+        self.details = orderedDetails
+        self.eAnnotations = eAnnotations
+        self.references = references
+        self.contents = contents
+        ContainerStamp.stamp(&self.eAnnotations, container: id)
+    }
+
+    /// Creates a new annotation from an unordered dictionary of details.
+    ///
+    /// A dictionary has no order of its own, so the details are kept in the order of their
+    /// keys. Use ``init(id:source:orderedDetails:eAnnotations:references:contents:)`` to
+    /// keep a particular order.
+    ///
+    /// - Parameters:
+    ///   - id: Unique identifier (generates a new UUID if not provided).
+    ///   - source: The source URI identifying the annotation's purpose.
+    ///   - details: Key-value pairs of annotation metadata.
+    ///   - eAnnotations: Annotations carried by this annotation (none by default).
+    ///   - references: Model elements that this annotation refers to (none by default).
+    ///   - contents: Objects that this annotation contains (none by default).
+    public init(
+        id: EUUID = EUUID(),
+        source: String,
+        details: [String: String],
+        eAnnotations: [EAnnotation] = [],
+        references: [EAnnotationReference] = [],
+        contents: [any EObject] = []
+    ) {
+        var ordered: OrderedDictionary<String, String> = [:]
+        for key in details.keys.sorted() { ordered[key] = details[key] }
+        self.init(
+            id: id, source: source, orderedDetails: ordered, eAnnotations: eAnnotations,
+            references: references, contents: contents)
     }
 
     /// The details of this annotation as metamodel objects.
     ///
     /// Each entry is an ``EStringToStringMapEntry`` whose identifier is derived from the
     /// annotation and the entry key, so repeated reads answer entries with the same identity.
-    /// Entries are ordered by key.
+    /// Entries are in the order of ``details``.
     public var detailEntries: [EStringToStringMapEntry] {
-        details.keys.sorted().map { key in
+        details.map { key, value in
             EStringToStringMapEntry(
                 id: ReflectiveValues.derivedID(from: id, key: key),
                 key: key,
-                value: details[key] ?? "",
+                value: value,
                 eContainerID: id)
         }
     }
@@ -141,7 +225,8 @@ public struct EAnnotation: EObject, EMetaObject {
 
     /// Compares two annotations for equality.
     ///
-    /// Annotations are equal if they have the same identifier, source, and details.
+    /// Annotations are equal if they have the same identifier, source, details (including
+    /// their order), nested annotations, references, and contents.
     ///
     /// - Parameters:
     ///   - lhs: The first annotation to compare.
@@ -149,6 +234,8 @@ public struct EAnnotation: EObject, EMetaObject {
     /// - Returns: `true` if the annotations are equal, `false` otherwise.
     public static func == (lhs: EAnnotation, rhs: EAnnotation) -> Bool {
         lhs.id == rhs.id && lhs.source == rhs.source && lhs.details == rhs.details
+            && lhs.eAnnotations == rhs.eAnnotations && lhs.references == rhs.references
+            && lhs.contents.map(\.id) == rhs.contents.map(\.id)
     }
 
     /// Hashes the essential components of this annotation.
@@ -158,6 +245,9 @@ public struct EAnnotation: EObject, EMetaObject {
         hasher.combine(id)
         hasher.combine(source)
         hasher.combine(details)
+        hasher.combine(eAnnotations)
+        hasher.combine(references)
+        for object in contents { hasher.combine(object.id) }
     }
 }
 
@@ -209,6 +299,14 @@ public protocol EModelElement: EObject {
     /// - Parameter source: The source URI to search for.
     /// - Returns: The first annotation matching the source, or `nil` if not found.
     func getEAnnotation(source: String) -> EAnnotation?
+
+    /// Retrieves the value of a detail of the annotation with the given source.
+    ///
+    /// - Parameters:
+    ///   - source: The source URI of the annotation.
+    ///   - key: The key of the detail.
+    /// - Returns: The value of the detail, or `nil` if there is no such annotation or detail.
+    func getEAnnotationDetail(source: String, key: String) -> String?
 }
 
 // Default implementation
@@ -222,6 +320,18 @@ extension EModelElement {
     /// - Returns: The first matching annotation, or `nil` if not found.
     public func getEAnnotation(source: String) -> EAnnotation? {
         return eAnnotations.first { $0.source == source }
+    }
+
+    /// Default implementation of detail lookup.
+    ///
+    /// Looks the detail up in the first annotation matching the given source URI.
+    ///
+    /// - Parameters:
+    ///   - source: The source URI of the annotation.
+    ///   - key: The key of the detail.
+    /// - Returns: The value of the detail, or `nil` if there is no such annotation or detail.
+    public func getEAnnotationDetail(source: String, key: String) -> String? {
+        getEAnnotation(source: source)?.details[key]
     }
 }
 

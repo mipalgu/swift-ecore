@@ -77,7 +77,26 @@ public actor Resource {
     ///
     /// Resources can be managed independently or as part of a resource set
     /// for cross-resource reference resolution.
-    public weak var resourceSet: ResourceSet?
+    public weak var resourceSet: ResourceSet? {
+        didSet {
+            if let resourceSet {
+                metamodelSnapshot = resourceSet.metamodelSnapshot
+            }
+        }
+    }
+
+    /// The metamodels of the resource set that this resource belongs to, or belonged to.
+    ///
+    /// The reference to the resource set is weak. The snapshot lets serialisation keep the
+    /// namespaces of the metaclasses of the resource's objects after the set is released.
+    var metamodelSnapshot: MetamodelSnapshot?
+
+    /// Whether this resource belonged to a resource set that has since been released.
+    ///
+    /// The metamodels of the set remain available to the resource, but objects that the
+    /// resource refers to in other resources of the set can no longer be found, so
+    /// serialising such references reports ``XMIError/resourceSetReleased(_:)``.
+    public var lostResourceSet: Bool { metamodelSnapshot != nil && resourceSet == nil }
 
     /// Enable debug output.
     public var debug = false
@@ -161,6 +180,56 @@ public actor Resource {
         }
 
         return isNew
+    }
+
+    /// Adds several objects to this resource at once.
+    ///
+    /// Each object is stored and indexed as with ``add(_:)``, and each object that no object of
+    /// the resource contains becomes a root object, in the given order. Containment is
+    /// examined once for the whole batch, so adding many roots takes time proportional to the
+    /// size of the resource rather than to its square.
+    ///
+    /// - Parameter newObjects: The objects to add.
+    /// - Returns: The number of objects that were not yet part of the resource.
+    @discardableResult
+    public func add(contentsOf newObjects: [any EObject]) -> Int {
+        var added = 0
+        for object in newObjects {
+            if objects[object.id] == nil { added += 1 }
+            objects[object.id] = object
+            indexNativeContents(of: object)
+        }
+        let contained = containedIdentifiers()
+        var known = Set(rootObjects)
+        for object in newObjects where !contained.contains(object.id) && known.insert(object.id).inserted {
+            rootObjects.append(object.id)
+        }
+        return added
+    }
+
+    /// The identifiers of all objects that another object of the resource contains.
+    private func containedIdentifiers() -> Set<EUUID> {
+        var result = Set<EUUID>()
+        var containmentReferences: [EUUID: [EReference]] = [:]
+        for container in objects.values {
+            guard let eClass = container.eClass as? EClass else { continue }
+            let references: [EReference]
+            if let known = containmentReferences[eClass.id] {
+                references = known
+            } else {
+                references = eClass.allReferences.filter(\.containment)
+                containmentReferences[eClass.id] = references
+            }
+            for reference in references {
+                switch container.eGet(reference) {
+                case let identifier as EUUID: result.insert(identifier)
+                case let identifiers as [EUUID]: result.formUnion(identifiers)
+                case let values as [Any]: result.formUnion(values.compactMap { $0 as? EUUID })
+                default: break
+                }
+            }
+        }
+        return result
     }
 
     /// Removes an object from this resource.

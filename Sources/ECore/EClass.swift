@@ -389,7 +389,11 @@ public struct EClass: EClassifier, ENamedElement {
     /// - Parameter name: The name of the feature to find.
     /// - Returns: The matching feature, or `nil` if not found.
     public func getStructuralFeature(name: String) -> (any EStructuralFeature)? {
-        return allStructuralFeatures.first { $0.name == name }
+        if let own = eStructuralFeatures.first(where: { $0.name == name }) { return own }
+        for superType in eSuperTypes {
+            if let inherited = superType.getStructuralFeature(name: name) { return inherited }
+        }
+        return nil
     }
 
     /// Retrieve an attribute by name.
