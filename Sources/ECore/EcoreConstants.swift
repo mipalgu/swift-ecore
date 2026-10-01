@@ -686,6 +686,27 @@ public enum CrossReferenceSyntax {
     }
 }
 
+// MARK: - XMI Document Layout
+
+/// Layout and fallback constants for serialised XMI documents.
+public enum XMIDocumentSyntax {
+    /// One level of indentation in the EMF-style document layout.
+    public static let indentUnit = "  "
+
+    /// The namespace URI base used for classes that belong to no registered metamodel.
+    ///
+    /// The lower-cased class name is appended to form a namespace URI.
+    public static let fallbackNamespaceBase = "http://swift-modelling.org/test/"
+
+    /// The name of the wrapper element for documents with more than one root object.
+    public static let multipleRootElement = "XMI"
+
+    /// The name of the stored feature that holds the class reference of an object.
+    ///
+    /// It is bookkeeping rather than model data, so serialisers skip it.
+    public static let classFeatureName = "eClass"
+}
+
 // MARK: - Error Message Constants
 
 /// Standardised error messages for Ecore operations.

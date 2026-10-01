@@ -1153,14 +1153,14 @@ public actor XMIParser {
             }
             if let identifier = resolved as? EUUID {
                 identifiers.append(identifier)
-                proxies.append(ResourceProxy(uri: resource.uri, fragment: reference.fragment))
+                proxies.append(ResourceProxy(uri: resource.uri, fragment: reference.fragment, qualifier: reference.qualifier))
                 kinds.append(true)
             } else if let proxy = resolved as? ResourceProxy {
-                proxies.append(proxy)
+                proxies.append(ResourceProxy(uri: proxy.uri, fragment: proxy.fragment, qualifier: reference.qualifier))
                 kinds.append(false)
             } else if let target = resolved as? any EObject {
                 identifiers.append(target.id)
-                proxies.append(ResourceProxy(uri: resource.uri, fragment: reference.fragment))
+                proxies.append(ResourceProxy(uri: resource.uri, fragment: reference.fragment, qualifier: reference.qualifier))
                 kinds.append(true)
             }
         }

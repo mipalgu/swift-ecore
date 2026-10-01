@@ -32,14 +32,23 @@ public struct ResourceProxy: EcoreValue, Sendable, Equatable, Hashable {
     /// The fragment identifier within the external resource (e.g., "/" or "//@members.0")
     public let fragment: String
 
+    /// The type qualifier that accompanied the reference in the document (for example `ecore:EAttribute`).
+    ///
+    /// The qualifier names the class of the referenced object. It does not take part in
+    /// equality and is written back by the serialiser so that unresolved references
+    /// survive a round trip unchanged.
+    public let qualifier: String?
+
     /// Creates a new resource proxy
     ///
     /// - Parameters:
     ///   - uri: The URI of the external resource
     ///   - fragment: The fragment identifier within the resource
-    public init(uri: String, fragment: String) {
+    ///   - qualifier: The optional type qualifier of the reference
+    public init(uri: String, fragment: String, qualifier: String? = nil) {
         self.uri = uri
         self.fragment = fragment
+        self.qualifier = qualifier
     }
 
     /// Resolve the proxy to an actual object
