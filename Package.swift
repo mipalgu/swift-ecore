@@ -19,6 +19,10 @@ let package = Package(
             name: "OCL",
             targets: ["OCL"]
         ),
+        .library(
+            name: "GenModel",
+            targets: ["GenModel"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser", from: "1.6.2"),
@@ -51,6 +55,32 @@ let package = Package(
         .target(
             name: "OCL",
             dependencies: ["EMFBase"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .target(
+            name: "GenModel",
+            dependencies: [
+                "ECore",
+                .product(name: "SwiftXML", package: "SwiftXML"),
+            ],
+            resources: [
+                .copy("Resources")
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "GenModelTests",
+            dependencies: [
+                "GenModel",
+                .product(name: "SwiftXML", package: "SwiftXML"),
+            ],
+            resources: [
+                .copy("Resources")
+            ],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]
