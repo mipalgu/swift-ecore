@@ -40,8 +40,8 @@ import Foundation
 public struct EAttribute: EStructuralFeature, ENamedElement {
     /// The type of classifier for this attribute.
     ///
-    /// All instances of `EAttribute` use ``EAttributeClassifier`` as their metaclass.
-    public typealias Classifier = EAttributeClassifier
+    /// The metaclass of every attribute is the `EAttribute` class of ``EcorePackage``.
+    public typealias Classifier = EClass
 
     /// Unique identifier for this attribute.
     ///
@@ -49,7 +49,30 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
     public let id: EUUID
 
     /// The metaclass describing this attribute.
-    public let eClass: Classifier
+    public var eClass: EClass { EcorePackage.metaClass(.eAttribute) }
+
+    /// The identifier of the class that contains this feature, if any.
+    public internal(set) var eContainerID: EUUID?
+
+    /// Whether the values of this feature are ordered.
+    ///
+    /// Defaults to `true`.
+    public var ordered: Bool
+
+    /// Whether the values of this feature are unique.
+    ///
+    /// Defaults to `true`.
+    public var unique: Bool
+
+    /// Whether this feature distinguishes the unset state from its default value.
+    ///
+    /// Defaults to `false`.
+    public var unsettable: Bool
+
+    /// Whether this feature is derived from other features.
+    ///
+    /// Defaults to `false`.
+    public var derived: Bool
 
     /// The name of this attribute.
     ///
@@ -58,7 +81,9 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
     public var name: String
 
     /// Annotations attached to this attribute.
-    public var eAnnotations: [EAnnotation]
+    public var eAnnotations: [EAnnotation] {
+        didSet { ContainerStamp.stamp(&eAnnotations, container: id) }
+    }
 
     /// The data type of this attribute.
     ///
@@ -123,6 +148,10 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
     ///   - defaultValueLiteral: Default value as string (optional).
     ///   - isID: Whether this is an ID attribute (default: false).
     ///   - eAnnotations: Annotations (empty by default).
+    ///   - ordered: Whether values are ordered (default: true).
+    ///   - unique: Whether values are unique (default: true).
+    ///   - unsettable: Whether the unset state is distinguished (default: false).
+    ///   - derived: Whether the feature is derived (default: false).
     public init(
         id: EUUID = EUUID(),
         name: String,
@@ -134,10 +163,13 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
         transient: Bool = false,
         defaultValueLiteral: String? = nil,
         isID: Bool = false,
-        eAnnotations: [EAnnotation] = []
+        eAnnotations: [EAnnotation] = [],
+        ordered: Bool = true,
+        unique: Bool = true,
+        unsettable: Bool = false,
+        derived: Bool = false
     ) {
         self.id = id
-        self.eClass = EAttributeClassifier()
         self.name = name
         self.eType = eType
         self.lowerBound = lowerBound
@@ -148,7 +180,12 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
         self.defaultValueLiteral = defaultValueLiteral
         self.isID = isID
         self.eAnnotations = eAnnotations
+        self.ordered = ordered
+        self.unique = unique
+        self.unsettable = unsettable
+        self.derived = derived
         self.storage = EObjectStorage()
+        ContainerStamp.stamp(&self.eAnnotations, container: id)
     }
 
     // MARK: - Computed Properties
@@ -174,6 +211,7 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
     /// - Parameter feature: The structural feature whose value to retrieve.
     /// - Returns: The feature's current value, or `nil` if not set.
     public func eGet(_ feature: some EStructuralFeature) -> (any EcoreValue)? {
+        if case .value(let value) = reflectiveEGet(feature) { return value }
         return storage.get(feature: feature.id)
     }
 
@@ -183,6 +221,7 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
     ///   - feature: The structural feature to modify.
     ///   - value: The new value, or `nil` to unset.
     public mutating func eSet(_ feature: some EStructuralFeature, _ value: (any EcoreValue)?) {
+        if reflectiveESet(feature, value) { return }
         storage.set(feature: feature.id, value: value)
     }
 
@@ -191,6 +230,7 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
     /// - Parameter feature: The structural feature to check.
     /// - Returns: `true` if the feature has been set, `false` otherwise.
     public func eIsSet(_ feature: some EStructuralFeature) -> Bool {
+        if let isSet = reflectiveEIsSet(feature) { return isSet }
         return storage.isSet(feature: feature.id)
     }
 
@@ -198,7 +238,15 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
     ///
     /// - Parameter feature: The structural feature to unset.
     public mutating func eUnset(_ feature: some EStructuralFeature) {
+        if reflectiveEUnset(feature) { return }
         storage.unset(feature: feature.id)
+    }
+
+    // MARK: - Containment
+
+    /// The annotations contained directly by this feature.
+    public var eContents: [any EObject] {
+        containedObjects.map { $0.object }
     }
 
     // MARK: - Equatable & Hashable
@@ -278,8 +326,8 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
 public struct EReference: EStructuralFeature, ENamedElement {
     /// The type of classifier for this reference.
     ///
-    /// All instances of `EReference` use ``EReferenceClassifier`` as their metaclass.
-    public typealias Classifier = EReferenceClassifier
+    /// The metaclass of every reference is the `EReference` class of ``EcorePackage``.
+    public typealias Classifier = EClass
 
     /// Unique identifier for this reference.
     ///
@@ -287,7 +335,30 @@ public struct EReference: EStructuralFeature, ENamedElement {
     public let id: EUUID
 
     /// The metaclass describing this reference.
-    public let eClass: Classifier
+    public var eClass: EClass { EcorePackage.metaClass(.eReference) }
+
+    /// The identifier of the class that contains this feature, if any.
+    public internal(set) var eContainerID: EUUID?
+
+    /// Whether the values of this feature are ordered.
+    ///
+    /// Defaults to `true`.
+    public var ordered: Bool
+
+    /// Whether the values of this feature are unique.
+    ///
+    /// Defaults to `true`.
+    public var unique: Bool
+
+    /// Whether this feature distinguishes the unset state from its default value.
+    ///
+    /// Defaults to `false`.
+    public var unsettable: Bool
+
+    /// Whether this feature is derived from other features.
+    ///
+    /// Defaults to `false`.
+    public var derived: Bool
 
     /// The name of this reference.
     ///
@@ -296,7 +367,9 @@ public struct EReference: EStructuralFeature, ENamedElement {
     public var name: String
 
     /// Annotations attached to this reference.
-    public var eAnnotations: [EAnnotation]
+    public var eAnnotations: [EAnnotation] {
+        didSet { ContainerStamp.stamp(&eAnnotations, container: id) }
+    }
 
     /// The type of objects this reference points to.
     ///
@@ -355,6 +428,12 @@ public struct EReference: EStructuralFeature, ENamedElement {
     /// accessed. This enables lazy loading across resource boundaries.
     public var resolveProxies: Bool
 
+    /// The default value of this reference as a literal, if any.
+    ///
+    /// References normally have no default value; the property exists so that all
+    /// structural features answer the `defaultValueLiteral` feature of the Ecore metamodel.
+    public var defaultValueLiteral: String?
+
     /// Internal storage for feature values.
     private var storage: EObjectStorage
 
@@ -373,6 +452,10 @@ public struct EReference: EStructuralFeature, ENamedElement {
     ///   - opposite: ID of the opposite reference for bidirectional relationships (optional).
     ///   - resolveProxies: Whether to resolve proxy objects (default: true).
     ///   - eAnnotations: Annotations (empty by default).
+    ///   - ordered: Whether values are ordered (default: true).
+    ///   - unique: Whether values are unique (default: true).
+    ///   - unsettable: Whether the unset state is distinguished (default: false).
+    ///   - derived: Whether the feature is derived (default: false).
     public init(
         id: EUUID = EUUID(),
         name: String,
@@ -385,10 +468,13 @@ public struct EReference: EStructuralFeature, ENamedElement {
         containment: Bool = false,
         opposite: EUUID? = nil,
         resolveProxies: Bool = true,
-        eAnnotations: [EAnnotation] = []
+        eAnnotations: [EAnnotation] = [],
+        ordered: Bool = true,
+        unique: Bool = true,
+        unsettable: Bool = false,
+        derived: Bool = false
     ) {
         self.id = id
-        self.eClass = EReferenceClassifier()
         self.name = name
         self.eType = eType
         self.lowerBound = lowerBound
@@ -400,7 +486,12 @@ public struct EReference: EStructuralFeature, ENamedElement {
         self.opposite = opposite
         self.resolveProxies = resolveProxies
         self.eAnnotations = eAnnotations
+        self.ordered = ordered
+        self.unique = unique
+        self.unsettable = unsettable
+        self.derived = derived
         self.storage = EObjectStorage()
+        ContainerStamp.stamp(&self.eAnnotations, container: id)
     }
 
     // MARK: - Computed Properties
@@ -426,6 +517,7 @@ public struct EReference: EStructuralFeature, ENamedElement {
     /// - Parameter feature: The structural feature whose value to retrieve.
     /// - Returns: The feature's current value, or `nil` if not set.
     public func eGet(_ feature: some EStructuralFeature) -> (any EcoreValue)? {
+        if case .value(let value) = reflectiveEGet(feature) { return value }
         return storage.get(feature: feature.id)
     }
 
@@ -435,6 +527,7 @@ public struct EReference: EStructuralFeature, ENamedElement {
     ///   - feature: The structural feature to modify.
     ///   - value: The new value, or `nil` to unset.
     public mutating func eSet(_ feature: some EStructuralFeature, _ value: (any EcoreValue)?) {
+        if reflectiveESet(feature, value) { return }
         storage.set(feature: feature.id, value: value)
     }
 
@@ -443,6 +536,7 @@ public struct EReference: EStructuralFeature, ENamedElement {
     /// - Parameter feature: The structural feature to check.
     /// - Returns: `true` if the feature has been set, `false` otherwise.
     public func eIsSet(_ feature: some EStructuralFeature) -> Bool {
+        if let isSet = reflectiveEIsSet(feature) { return isSet }
         return storage.isSet(feature: feature.id)
     }
 
@@ -450,7 +544,15 @@ public struct EReference: EStructuralFeature, ENamedElement {
     ///
     /// - Parameter feature: The structural feature to unset.
     public mutating func eUnset(_ feature: some EStructuralFeature) {
+        if reflectiveEUnset(feature) { return }
         storage.unset(feature: feature.id)
+    }
+
+    // MARK: - Containment
+
+    /// The annotations contained directly by this feature.
+    public var eContents: [any EObject] {
+        containedObjects.map { $0.object }
     }
 
     // MARK: - Equatable & Hashable
@@ -475,38 +577,6 @@ public struct EReference: EStructuralFeature, ENamedElement {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
-}
-
-// MARK: - Classifier Types
-
-/// Metaclass for `EAttribute`.
-///
-/// Describes the structure of `EAttribute` itself within the metamodel hierarchy.
-public struct EAttributeClassifier: EClassifier {
-    /// Unique identifier for this metaclass.
-    ///
-    /// Each instance creates its own unique identifier.
-    public let id: EUUID = EUUID()
-
-    /// The name of this classifier.
-    ///
-    /// Always returns `"EAttribute"` to identify this as the metaclass for attributes.
-    public var name: String { EcoreClassifier.eAttribute.rawValue }
-}
-
-/// Metaclass for `EReference`.
-///
-/// Describes the structure of `EReference` itself within the metamodel hierarchy.
-public struct EReferenceClassifier: EClassifier {
-    /// Unique identifier for this metaclass.
-    ///
-    /// Each instance creates its own unique identifier.
-    public let id: EUUID = EUUID()
-
-    /// The name of this classifier.
-    ///
-    /// Always returns `"EReference"` to identify this as the metaclass for references.
-    public var name: String { EcoreClassifier.eReference.rawValue }
 }
 
 // MARK: - EStructuralFeature Type Resolution

@@ -118,7 +118,7 @@ public struct EcoreModel: IModel, Sendable, Equatable, Hashable {
     }
 
     public func getElementsByType(_ metaElement: EClass) async -> OrderedSet<EUUID> {
-        let allObjects = await resource.getAllObjects()
+        let allObjects = await resource.getAllObjectsIncludingContents()
         return OrderedSet(
             allObjects.compactMap { obj in
                 guard let objClass = obj.eClass as? EClass else { return nil }
@@ -329,7 +329,7 @@ public struct ResourceModelWrapper: IModel, Sendable {
     /// - Parameter metaElement: The EClass to match against.
     /// - Returns: An ordered set of matching element IDs.
     public func getElementsByType(_ metaElement: EClass) async -> OrderedSet<EUUID> {
-        let allObjects = await resource.getAllObjects()
+        let allObjects = await resource.getAllObjectsIncludingContents()
         return OrderedSet(
             allObjects.compactMap { obj in
                 guard let objClass = obj.eClass as? EClass else { return nil }

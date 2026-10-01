@@ -137,6 +137,20 @@ public enum XMIAttribute: String, CaseIterable, Sendable {
     /// The enumeration value for EEnumLiteral elements.
     case value = "value"
 
+    // MARK: - Feature Flags
+
+    /// The ordered flag for structural features.
+    case ordered = "ordered"
+
+    /// The unique flag for structural features.
+    case unique = "unique"
+
+    /// The unsettable flag for structural features.
+    case unsettable = "unsettable"
+
+    /// The derived flag for structural features.
+    case derived = "derived"
+
     // MARK: - Documentation
 
     /// Brief description of the attribute's purpose.
@@ -169,6 +183,10 @@ public enum XMIAttribute: String, CaseIterable, Sendable {
         case .xmiVersion: return "XMI specification version"
         case .xmiUuid: return "XMI universally unique identifier"
         case .literal: return "Enumeration literal name"
+        case .ordered: return "Ordered values flag"
+        case .unique: return "Unique values flag"
+        case .unsettable: return "Unsettable feature flag"
+        case .derived: return "Derived feature flag"
         case .value: return "Enumeration literal ordinal"
         }
     }
@@ -253,6 +271,21 @@ public enum XMIElement: String, CaseIterable, Sendable {
 /// let eClassClass = getOrCreateEClass(EcoreClassifier.eClass.rawValue, in: resource)
 /// ```
 public enum EcoreClassifier: String, CaseIterable, Sendable {
+    /// The EModelElement metaclass name.
+    case eModelElement = "EModelElement"
+
+    /// The ENamedElement metaclass name.
+    case eNamedElement = "ENamedElement"
+
+    /// The ETypedElement metaclass name.
+    case eTypedElement = "ETypedElement"
+
+    /// The EClassifier metaclass name.
+    case eClassifier = "EClassifier"
+
+    /// The EStructuralFeature metaclass name.
+    case eStructuralFeature = "EStructuralFeature"
+
     /// The EClass metaclass name.
     case eClass = "EClass"
 
@@ -304,6 +337,11 @@ public enum EcoreClassifier: String, CaseIterable, Sendable {
     /// in the metamodel.
     public var description: String {
         switch self {
+        case .eModelElement: return "Annotatable model element metaclass"
+        case .eNamedElement: return "Named model element metaclass"
+        case .eTypedElement: return "Typed model element metaclass"
+        case .eClassifier: return "Classifier metaclass"
+        case .eStructuralFeature: return "Structural feature metaclass"
         case .eClass: return "Class definition metaclass"
         case .eAttribute: return "Attribute definition metaclass"
         case .eReference: return "Reference definition metaclass"
@@ -458,6 +496,23 @@ public enum EcoreDataType: String, CaseIterable, Sendable {
     /// Java Object type.
     case eJavaObject = "EJavaObject"
 
+    // MARK: - Further Standard Types
+
+    /// Byte array type.
+    case eByteArray = "EByteArray"
+
+    /// Diagnostic chain type.
+    case eDiagnosticChain = "EDiagnosticChain"
+
+    /// Enumerator type.
+    case eEnumerator = "EEnumerator"
+
+    /// Invocation target exception type.
+    case eInvocationTargetException = "EInvocationTargetException"
+
+    /// Map type.
+    case eMap = "EMap"
+
     /// Corresponding Swift type for this data type.
     ///
     /// Maps Ecore data types to their equivalent Swift types for type-safe
@@ -516,6 +571,11 @@ public enum EcoreDataType: String, CaseIterable, Sendable {
         case .eResourceSet: return "Resource collection interface"
         case .eJavaClass: return "Java class reflection type"
         case .eJavaObject: return "Java object base type"
+        case .eByteArray: return "Byte array type"
+        case .eDiagnosticChain: return "Diagnostic chain type"
+        case .eEnumerator: return "Enumerator type"
+        case .eInvocationTargetException: return "Invocation target exception type"
+        case .eMap: return "Map type"
         }
     }
 }
