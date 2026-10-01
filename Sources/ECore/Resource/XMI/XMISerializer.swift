@@ -830,6 +830,32 @@ public struct XMISerializer: Sendable {
         }
     }
 
+    /// Escapes text for use in an attribute value the way EMF does.
+    ///
+    /// The ampersand, the less-than sign, and the double quote become entities, and the
+    /// line feed, carriage return, and tab become character references, so that a value
+    /// reads back exactly as it was written. The greater-than sign and the apostrophe are
+    /// written as they are.
+    ///
+    /// - Parameter value: The text to escape.
+    /// - Returns: The escaped text.
+    static func escapeAttribute(_ value: String) -> String {
+        var result = ""
+        result.reserveCapacity(value.utf8.count)
+        for character in value.unicodeScalars {
+            switch character {
+            case "&": result += "&amp;"
+            case "<": result += "&lt;"
+            case "\"": result += "&quot;"
+            case "\n": result += "&#xA;"
+            case "\r": result += "&#xD;"
+            case "\t": result += "&#x9;"
+            default: result.unicodeScalars.append(character)
+            }
+        }
+        return result
+    }
+
     /// Escape XML special characters
     ///
     /// - Parameter string: The string to escape

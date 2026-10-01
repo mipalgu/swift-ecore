@@ -38,6 +38,17 @@ public struct XMISerializationOptions: Sendable, Equatable {
     /// space-separated attribute.
     public var manyValuedAttributesAsElements: Bool
 
+    /// The width, in characters, after which an element's attributes continue on a new line.
+    ///
+    /// A value of `nil` writes all attributes of an element on one line. EMF's editors
+    /// wrap lines at ``emfLineWidth``: an attribute that starts after the line has grown
+    /// beyond the width begins a new line, indented four spaces further than the element.
+    /// The width applies to metamodel (`.ecore`) documents.
+    public var lineWidth: Int?
+
+    /// The line width that EMF's editors use when they write `.ecore` documents.
+    public static let emfLineWidth = 80
+
     /// Creates a set of options.
     ///
     /// - Parameters:
@@ -47,13 +58,15 @@ public struct XMISerializationOptions: Sendable, Equatable {
     ///   - relativeURIs: Whether URIs are written relative to the document.
     ///   - omitDefaultValues: Whether default values are left out.
     ///   - manyValuedAttributesAsElements: Whether many-valued attributes become child elements.
+    ///   - lineWidth: The width after which attributes continue on a new line, or `nil` for none.
     public init(
         attributeStyleReferences: Bool = false,
         typeQualifiers: Bool = false,
         nameBasedFragments: Bool = false,
         relativeURIs: Bool = false,
         omitDefaultValues: Bool = false,
-        manyValuedAttributesAsElements: Bool = false
+        manyValuedAttributesAsElements: Bool = false,
+        lineWidth: Int? = nil
     ) {
         self.attributeStyleReferences = attributeStyleReferences
         self.typeQualifiers = typeQualifiers
@@ -61,6 +74,7 @@ public struct XMISerializationOptions: Sendable, Equatable {
         self.relativeURIs = relativeURIs
         self.omitDefaultValues = omitDefaultValues
         self.manyValuedAttributesAsElements = manyValuedAttributesAsElements
+        self.lineWidth = lineWidth
     }
 
     /// The layout this package has always written (all switches off).

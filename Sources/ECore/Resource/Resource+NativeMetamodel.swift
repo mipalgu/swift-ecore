@@ -24,6 +24,9 @@ extension Resource {
     /// Ecore metamodel (see ``EcorePackage``). A type that cannot be resolved becomes the
     /// `EString` data type for an attribute and the `EObject` class for a reference.
     ///
+    /// The package records the URI of its document and the classifiers of other documents
+    /// that it refers to (see ``EPackageOrigin``).
+    ///
     /// Annotations are converted for every element, with their sources, details in document
     /// order, nested annotations, contents, and references. References to elements of the
     /// document keep the identifiers of those elements; references to other documents are
@@ -59,7 +62,13 @@ extension Resource {
             objects: parsed, ignoresFailures: shouldIgnoreUnresolvedClassifiers)
         converter.external = await resolveExternalClassifiers(converter.collectProxies(from: root))
         converter.localProxies = await resolveLocalAnnotationProxies(converter.annotationProxies())
-        return try converter.convert(root)
+        var package = try converter.convert(root)
+        var references: [EUUID: ResourceProxy] = [:]
+        for (proxy, classifier) in converter.external where references[classifier.id] == nil {
+            references[classifier.id] = proxy
+        }
+        package.origin = EPackageOrigin(documentURI: uri, externalReferences: references)
+        return package
     }
 
     /// Resolves the annotation references that point back into this document.

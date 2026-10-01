@@ -122,6 +122,13 @@ public struct EPackage: ENamedElement {
         return EFactory(ePackage: self)
     }
 
+    /// The document that this package was loaded from, if it was loaded from one.
+    ///
+    /// The origin records the URI of the document and the classifiers of other documents that
+    /// the package refers to, so that serialising the package writes references to them with
+    /// the correct URIs. It is `nil` for a package that was built in code.
+    public internal(set) var origin: EPackageOrigin?
+
     /// Internal storage for feature values.
     private var storage: EObjectStorage
 
