@@ -62,6 +62,9 @@ public actor ResourceSet {
     /// to handle their specific serialisation formats.
     private var resourceFactories: [String: ResourceFactory]
 
+    /// The URIs of the Ecore documents that are currently being loaded natively.
+    private var ecoreLoadsInProgress: Set<String> = []
+
     /// Fragment segment naming rules, keyed by metaclass name (see ``FragmentSegmentRule``).
     var fragmentSegmentRules: [String: FragmentSegmentRule] = [:]
 
@@ -458,31 +461,71 @@ public actor ResourceSet {
     /// Loads an Ecore document as native metamodel objects.
     ///
     /// The document is parsed and converted into an ``EPackage`` with its native
-    /// classifiers and features. The package and every element it contains are
-    /// registered in the new resource, so name-based fragments such as `#//Book/title`
-    /// resolve to the native objects. The package is also registered as a metamodel
-    /// under its namespace URI unless one is already registered.
+    /// classifiers, features, operations, and parameters. The package and every element it
+    /// contains are registered in the new resource, so name-based fragments such as
+    /// `#//Book/title` and `#//Book/borrow/days` resolve to the native objects. The package
+    /// is also registered as a metamodel under its namespace URI unless one is already
+    /// registered.
     ///
-    /// Operations and parameters have no native representation and are therefore not
-    /// part of the resource; use ``loadReferencedResource(uri:)`` to reach them.
+    /// Types that refer to other documents (for example `other.ecore#//Name`) are resolved
+    /// by loading those documents as native metamodels into this set, relative to the
+    /// document that refers to them. Documents that refer to each other in a cycle resolve
+    /// the references that close the cycle to stand-ins.
     ///
     /// - Parameter uri: The absolute URI of the `.ecore` document.
     /// - Returns: The resource holding the native package as its root object.
     /// - Throws: ``XMIError`` if the document cannot be read or has no root package.
     public func loadEcoreResource(uri: String) async throws -> Resource {
+        try await loadEcoreResource(uri: uri, enableDebugging: false)
+    }
+
+    /// Loads an Ecore document as native metamodel objects, optionally tracing the parse.
+    ///
+    /// - Parameters:
+    ///   - uri: The absolute URI of the `.ecore` document.
+    ///   - enableDebugging: Whether the parser prints a trace.
+    /// - Returns: The resource holding the native package as its root object.
+    /// - Throws: ``XMIError`` if the document cannot be read or has no root package.
+    func loadEcoreResource(uri: String, enableDebugging: Bool) async throws -> Resource {
         if let existing = resources[uri] {
             return existing
         }
         guard let url = URL(string: uri) else {
             throw XMIError.invalidXML("Invalid URI: \(uri)")
         }
-        let package = try await EPackage(url: url)
+        ecoreLoadsInProgress.insert(uri)
+        defer { ecoreLoadsInProgress.remove(uri) }
+
+        let parser = XMIParser(enableDebugging: enableDebugging)
+        let parsed = try await parser.parse(url)
+        await parsed.enableDebugging(enableDebugging)
+        await parsed.setResourceSet(self)
+        guard let root = await parsed.getRootObjects().first else {
+            throw XMIError.noRootObject
+        }
+        let package = try await parsed.createEPackage(from: root)
         let resource = await createResource(uri: uri)
         await resource.registerNativePackage(package)
         if metamodelRegistry[package.nsURI] == nil {
             registerMetamodel(package, uri: package.nsURI)
         }
         return resource
+    }
+
+    /// The resource of a document as native metamodel objects, if it can be provided.
+    ///
+    /// A resource that is already loaded is returned only if its root object is a native
+    /// package. Otherwise the document is loaded with ``loadEcoreResource(uri:)``, unless
+    /// it is currently being loaded (a cyclic reference), in which case `nil` is returned.
+    ///
+    /// - Parameter uri: The absolute URI of the document.
+    /// - Returns: The native resource, or `nil` if the document cannot be provided natively.
+    func nativeResource(uri: String) async -> Resource? {
+        if let existing = resources[uri] {
+            return await existing.getRootObjects().first is EPackage ? existing : nil
+        }
+        guard !ecoreLoadsInProgress.contains(uri) else { return nil }
+        return try? await loadEcoreResource(uri: uri)
     }
 
     /// Resolves the cross-resource proxies of every resource in the set.

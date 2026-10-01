@@ -74,6 +74,15 @@ public enum EcorePackage {
         return registry.dataTypes[name]
     }
 
+    /// Retrieves a class or built-in data type of the Ecore package by identifier.
+    ///
+    /// - Parameter id: The identifier of a descriptor class or built-in data type.
+    /// - Returns: The classifier, or `nil` if the identifier belongs to no Ecore classifier.
+    static func classifier(id: EUUID) -> (any EClassifier)? {
+        if let descriptor = registry.classByID[id] { return descriptor }
+        return registry.dataTypeByID[id]
+    }
+
     /// Retrieves a structural feature of an Ecore class, including inherited ones.
     ///
     /// - Parameters:
@@ -133,6 +142,7 @@ public enum EcorePackage {
         let classes: [EcoreClassifier: EClass]
         let classByID: [EUUID: EClass]
         let dataTypes: [String: EDataType]
+        let dataTypeByID: [EUUID: EDataType]
         let featureNames: [EUUID: EcoreFeatureName]
 
         init() {
@@ -141,6 +151,7 @@ public enum EcorePackage {
             var classes: [EcoreClassifier: EClass] = [:]
             var classByID: [EUUID: EClass] = [:]
             var dataTypes: [String: EDataType] = [:]
+            var dataTypeByID: [EUUID: EDataType] = [:]
             var featureNames: [EUUID: EcoreFeatureName] = [:]
             for classifier in package.eClassifiers {
                 if let eClass = classifier as? EClass {
@@ -155,12 +166,14 @@ public enum EcorePackage {
                     }
                 } else if let dataType = classifier as? EDataType {
                     dataTypes[dataType.name] = dataType
+                    dataTypeByID[dataType.id] = dataType
                 }
             }
             self.package = package
             self.classes = classes
             self.classByID = classByID
             self.dataTypes = dataTypes
+            self.dataTypeByID = dataTypeByID
             self.featureNames = featureNames
         }
     }
