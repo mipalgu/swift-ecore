@@ -1069,7 +1069,7 @@ public actor Resource {
         // PHASE 5: Update EClass.eStructuralFeatures with updated EReference instances
         eClassifiers = await updateEClassFeatures(eClassifiers)
 
-        // PHASE 6: Final consistency pass — resolve all EReference.eType to canonical classifiers.
+        // PHASE 6: Final consistency pass: resolve all EReference.eType to canonical classifiers.
         // Because EClass is a value type, earlier phases may leave stale copies in nested
         // EReference.eType fields. This pass builds a canonical name→EClass map from the
         // final classifiers array and rewrites all EReference.eType fields to use it.

@@ -461,7 +461,7 @@ public actor ECoreExecutionEngine: Sendable {
             return nil
         }
 
-        // Array of UUIDs — resolve each element
+        // Array of UUIDs: resolve each element
         if let uuidArray = value as? [EUUID] {
             if debug {
                 print("[ECORE]   Resolving array of \(uuidArray.count) UUIDs")
