@@ -1078,11 +1078,9 @@ public actor XMIParser {
             if let eTypeRef = await resource.eGet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempETypeRef)
                 as? String
             {
-                if let resolved = await resolveReference(
-                    eTypeRef, using: xpathResolver, in: resource)
-                {
-                    await resource.eSet(objectId: object.id, feature: XMIAttribute.eType.rawValue, value: resolved)
-                }
+                await resolveDeclaredReference(
+                    CrossReference.parseList(eTypeRef), feature: XMIAttribute.eType.rawValue,
+                    of: object, using: xpathResolver, in: resource)
                 // Clear temporary reference
                 await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempETypeRef, value: nil)
             }
