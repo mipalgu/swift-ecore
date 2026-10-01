@@ -505,4 +505,45 @@ struct GenElementTests {
         #expect(model.colour.genEnumLiterals[1].ecoreEnumLiteral?.value == 1)
         #expect(model.package.ecorePackage?.nsURI == "http://example.org/shapes")
     }
+
+    @Test("label feature falls back to a name infix over a plain attribute")
+    func labelFeatureInfix() async throws {
+        var sample = try await SampleModel()
+        let eClass = EClass(
+            name: "Thing",
+            eStructuralFeatures: [SampleModel.attribute("x"), SampleModel.attribute("nameTag")])
+        let ecore = EPackage(name: "t", nsURI: "http://example.org/t", nsPrefix: "t", eClassifiers: [eClass])
+        sample.addPackage(ecore)
+        let generated = try sample.genClass(eClass)
+        let package = try sample.genPackage(ecore, prefix: "T", classes: [generated.genClass])
+        _ = try sample.genModel(packages: [package])
+        let element = try #require(sample.context.element(id: generated.genClass.id))
+        #expect(element.labelFeature?.name == "nameTag")
+    }
+
+    @Test("used packages, type parameters and annotations are navigable")
+    func otherContainments() async throws {
+        var sample = try await SampleModel()
+        let ecore = EPackage(name: "u", nsURI: "http://example.org/u", nsPrefix: "u")
+        sample.addPackage(ecore)
+        let used = try sample.genPackage(ecore, prefix: "Used")
+        var annotation = try sample.make("GenAnnotation")
+        annotation.eSet("source", value: "doc")
+        sample.add(annotation)
+        var typeParameter = try sample.make("GenTypeParameter")
+        sample.add(typeParameter)
+        var owner = try sample.genPackage(ecore, prefix: "Owner")
+        owner.eSet("genAnnotations", value: [annotation.id])
+        sample.add(owner)
+        var model = try sample.genModel(packages: [owner])
+        model.eSet("usedGenPackages", value: [used.id])
+        sample.add(model)
+        typeParameter.eSet("documentation", value: "t")
+        let context = sample.context
+        let ownerElement = try #require(context.element(id: owner.id))
+        let modelElement = try #require(context.element(id: model.id))
+        #expect(ownerElement.genAnnotations.map { $0.stringValue("source") } == ["doc"])
+        #expect(ownerElement.genTypeParameters.isEmpty)
+        #expect(modelElement.usedGenPackages.map(\.object.id) == [used.id])
+    }
 }

@@ -104,6 +104,32 @@ provides comprehensive Eclipse Modelling Framework functionality for Swift.
 - [x] PyEcore compatibility validation - minimal.json and intfloat.json patterns
 - [x] Comprehensive error handling
 
+## GenModel
+
+The `GenModel` library product provides the generator model (`.genmodel`) metamodel,
+a loader, and a language-neutral facade for code generators.
+
+- `GenModelPackage.load()` returns the bundled generator metamodel (`GenModel.ecore`),
+  namespace `http://www.eclipse.org/emf/2002/GenModel`. It is authored for this package and is
+  structurally compatible with the published generator metamodel (class, feature and enumeration
+  names, multiplicities, containment, defaults), so `.genmodel` files interoperate in both directions.
+- `GenModelResource.load(url:resourceSet:resolution:)` loads a `.genmodel`, registers the
+  metamodel, and loads the source models named by `foreignModel` relative to the file.
+- `GenModelContext` snapshots the loaded models, and `GenElement` offers navigation, inherited
+  feature order, feature and classifier numbering, label features, feature shortcuts and
+  name formatting (`capName`, `uncapName`, `upperName`). Nothing in the target depends on a
+  target language; language knowledge belongs in templates.
+
+```swift
+let resourceSet = ResourceSet()
+_ = try await GenModelResource.load(
+    url: genModelURL, resourceSet: resourceSet, resolution: .nameFragments)
+let context = await GenModelContext.snapshot(of: resourceSet)
+for genClass in context.genModels[0].genPackages[0].genClasses {
+    print(genClass.name, genClass.featureCount)
+}
+```
+
 ## Licence
 
 See the details in the LICENCE file.
