@@ -688,23 +688,39 @@ public actor Resource {
     /// Gets all objects in this resource, including the contents of native metamodel objects.
     ///
     /// Native metamodel objects such as an ``EPackage`` hold their classifiers, features,
-    /// literals, and annotations inline. This method lists each registered object followed by
-    /// everything it contains, depth first, so that for a resource holding an `.ecore`
-    /// metamodel every class, attribute, and reference is enumerated. Objects are listed once.
+    /// literals, and annotations inline. This method lists the objects in document order:
+    /// each root object (in the order the roots were loaded or added) is followed by
+    /// everything it contains, depth first, in the order of its containment references.
+    /// Objects that no root contains follow in the order they were registered. For a
+    /// resource holding an `.ecore` metamodel every class, attribute, and reference is
+    /// enumerated. Objects are listed once, and the order is the same on every load of the
+    /// same document.
     ///
     /// - Returns: The registered objects and the contents of native metamodel objects.
     public func getAllObjectsIncludingContents() -> [any EObject] {
         var result: [any EObject] = []
         var seen = Set<EUUID>()
-        for object in objects.values {
-            if seen.insert(object.id).inserted { result.append(object) }
-            for id in nativeOwned[object.id] ?? [] {
-                if let content = nativeContents[id], seen.insert(id).inserted {
-                    result.append(content)
-                }
+        for identifier in rootObjects {
+            if let root = objects[identifier] { collectInDocumentOrder(root, into: &result, seen: &seen) }
+        }
+        for object in objects.values { collectInDocumentOrder(object, into: &result, seen: &seen) }
+        return result
+    }
+
+    /// Appends an object, its native contents, and its contained objects in document order.
+    private func collectInDocumentOrder(
+        _ object: any EObject, into result: inout [any EObject], seen: inout Set<EUUID>
+    ) {
+        guard seen.insert(object.id).inserted else { return }
+        result.append(object)
+        for id in nativeOwned[object.id] ?? [] {
+            if let content = nativeContents[id], seen.insert(id).inserted {
+                result.append(content)
             }
         }
-        return result
+        for child in eContents(of: object) {
+            collectInDocumentOrder(child, into: &result, seen: &seen)
+        }
     }
 
     /// Checks if one EClass is a subclass of another.

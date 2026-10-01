@@ -7,6 +7,7 @@
 //
 import EMFBase
 import Foundation
+import OrderedCollections
 import SwiftXML
 
 /// Errors that can occur during XMI parsing
@@ -72,8 +73,8 @@ public actor XMIParser {
     /// Maps of parsed objects for reference resolution
     private var xmiIdMap: [String: EUUID] = [:]
     private var fragmentMap: [String: EUUID] = [:]
-    private var referenceMap: [EUUID: [String: String]] = [:]  // object ID → (feature name → href)
-    private var declaredReferenceMap: [EUUID: [String: [CrossReference]]] = [:]  // object ID → (declared reference name → references)
+    private var referenceMap: [EUUID: OrderedDictionary<String, String>] = [:]  // object ID → (feature name → href)
+    private var declaredReferenceMap: [EUUID: OrderedDictionary<String, [CrossReference]>] = [:]  // object ID → (declared reference name → references)
     private var eClassCache: [String: EClass] = [:]  // className → EClass for caching dynamically created classes
     private var builtinTypeCache: [String: DynamicEObject] = [:]  // typeName → EDataType for built-in Ecore types
 
@@ -453,8 +454,8 @@ public actor XMIParser {
         }
 
         // Parse child elements (may be attributes or references)
-        var childReferences: [String: [EUUID]] = [:]
-        var childAttributeValues: [String: [String]] = [:]
+        var childReferences: OrderedDictionary<String, [EUUID]> = [:]
+        var childAttributeValues: OrderedDictionary<String, [String]> = [:]
 
         for child in element.children {
             let childName = child.name
@@ -1715,8 +1716,8 @@ public actor XMIParser {
     /// Structure information collected during element analysis
     private struct ElementStructureInfo {
         let className: String
-        let attributes: [String: String]  // name -> value
-        let containmentRefs: [String: Bool]  // name -> isMultiValued
+        let attributes: OrderedDictionary<String, String>  // name -> value
+        let containmentRefs: OrderedDictionary<String, Bool>  // name -> isMultiValued
         let crossRefs: [String]  // feature names
     }
 
@@ -1739,8 +1740,8 @@ public actor XMIParser {
             className = element.name
         }
 
-        var attributes: [String: String] = [:]
-        var containmentRefs: [String: Bool] = [:]
+        var attributes: OrderedDictionary<String, String> = [:]
+        var containmentRefs: OrderedDictionary<String, Bool> = [:]
         var crossRefs: [String] = []
 
         // Collect attributes
@@ -1757,7 +1758,7 @@ public actor XMIParser {
         }
 
         // Collect child elements
-        var childCounts: [String: Int] = [:]
+        var childCounts: OrderedDictionary<String, Int> = [:]
         for child in element.children {
             let childName = child.name
             childCounts[childName, default: 0] += 1

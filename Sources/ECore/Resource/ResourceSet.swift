@@ -7,6 +7,7 @@
 //
 public import EMFBase
 import Foundation
+import OrderedCollections
 
 /// A resource set manages multiple resources and enables cross-resource reference resolution.
 ///
@@ -42,25 +43,25 @@ public actor ResourceSet {
     ///
     /// Each resource in the set has a unique URI that serves as its identifier
     /// within the resource set.
-    private var resources: [String: Resource]
+    private var resources: OrderedDictionary<String, Resource>
 
     /// Metamodel registry mapping namespace URIs to their root packages.
     ///
     /// This registry provides namespace-based metamodel resolution without
     /// relying on global variables, as requested.
-    private var metamodelRegistry: [String: EPackage]
+    private var metamodelRegistry: OrderedDictionary<String, EPackage>
 
     /// URI converter for transforming logical URIs to physical URIs.
     ///
     /// Maps logical model URIs to their actual storage locations or
     /// provides URI normalisation services.
-    private var uriConverter: [String: String]
+    private var uriConverter: OrderedDictionary<String, String>
 
     /// Factory registry for creating resources based on file extensions or URI patterns.
     ///
     /// Different resource types (XMI, JSON, etc.) can register factories
     /// to handle their specific serialisation formats.
-    private var resourceFactories: [String: ResourceFactory]
+    private var resourceFactories: OrderedDictionary<String, ResourceFactory>
 
     /// The URIs of the Ecore documents that are currently being loaded natively.
     private var ecoreLoadsInProgress: Set<String> = []
