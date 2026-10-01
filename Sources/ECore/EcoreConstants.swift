@@ -381,6 +381,79 @@ public enum EcoreClassifier: String, CaseIterable, Sendable {
 
         /// Temporary storage key for eExceptions references during XMI parsing.
         public static let tempEExceptionsRef = "_eExceptions_ref"
+
+        /// Temporary storage key for annotation references during XMI parsing.
+        public static let tempReferencesRef = "_references_ref"
+    }
+}
+
+// MARK: - Annotation Sources and Keys
+
+/// The source URIs of the annotations that tools commonly attach to Ecore models.
+///
+/// An annotation's ``EAnnotation/source`` says which tool interprets its details. The
+/// nested enumerations list the detail keys that those tools read, so that no other file
+/// needs to spell them.
+///
+/// ## Usage
+///
+/// ```swift
+/// let text = eClass.getEAnnotationDetail(
+///     source: AnnotationSource.genModel, key: AnnotationSource.GenModelKey.documentation)
+/// ```
+public enum AnnotationSource {
+    /// The source of code generation settings and documentation.
+    public static let genModel = "http://www.eclipse.org/emf/2002/GenModel"
+
+    /// The source of constraints and delegates that the Ecore metamodel itself defines.
+    public static let ecore = EcoreURI.ecoreNamespace.rawValue
+
+    /// The source of the extended metadata that controls the XML form of a model.
+    public static let extendedMetaData = "http:///org/eclipse/emf/ecore/util/ExtendedMetaData"
+
+    /// The source of Object Constraint Language definitions.
+    public static let ocl = "http://www.eclipse.org/emf/2002/Ecore/OCL"
+
+    /// The detail keys of annotations with the ``genModel`` source.
+    public enum GenModelKey {
+        /// The documentation text of an element.
+        public static let documentation = "documentation"
+        /// The body of an operation or derived feature.
+        public static let body = "body"
+        /// The body of the getter of a derived feature.
+        public static let get = "get"
+        /// The visibility of a suppressed getter.
+        public static let suppressedGetVisibility = "suppressedGetVisibility"
+        /// The visibility of a suppressed setter.
+        public static let suppressedSetVisibility = "suppressedSetVisibility"
+        /// The visibility of a suppressed `isSet` operation.
+        public static let suppressedIsSetVisibility = "suppressedIsSetVisibility"
+        /// The visibility of a suppressed `unset` operation.
+        public static let suppressedUnsetVisibility = "suppressedUnsetVisibility"
+    }
+
+    /// The detail keys of annotations with the ``ecore`` source.
+    public enum EcoreKey {
+        /// The names of the constraints that a classifier declares.
+        public static let constraints = "constraints"
+        /// The delegates that evaluate invariants.
+        public static let validationDelegates = "validationDelegates"
+        /// The delegates that evaluate operations.
+        public static let invocationDelegates = "invocationDelegates"
+        /// The delegates that compute derived features.
+        public static let settingDelegates = "settingDelegates"
+        /// The delegates that evaluate operations.
+        public static let conversionDelegates = "conversionDelegates"
+    }
+
+    /// The detail keys of annotations with the ``extendedMetaData`` source.
+    public enum ExtendedMetaDataKey {
+        /// The XML name of an element.
+        public static let name = "name"
+        /// The XML kind of an element, such as an attribute or an element.
+        public static let kind = "kind"
+        /// The XML namespace of an element.
+        public static let namespace = "namespace"
     }
 }
 

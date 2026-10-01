@@ -7,6 +7,7 @@
 //
 import EMFBase
 import Foundation
+import OrderedCollections
 
 // MARK: - Conversion Helpers
 
@@ -472,7 +473,9 @@ extension EAnnotation: EcoreReflective {
         case .source: return .value(source)
         case .details: return Reflect.objects(detailEntries)
         case .eModelElement: return .value(eContainerID)
-        case .contents, .references, .eAnnotations: return Reflect.empty
+        case .eAnnotations: return Reflect.objects(eAnnotations)
+        case .contents: return Reflect.objects(contents.compactMap { $0 as? any EcoreValue })
+        case .references: return Reflect.objects(references.map(\.value))
         default: return .unsupported
         }
     }
@@ -481,17 +484,25 @@ extension EAnnotation: EcoreReflective {
         switch feature {
         case .source: source = value as? String ?? ""
         case .details:
-            var updated: [String: String] = [:]
+            var updated: OrderedDictionary<String, String> = [:]
             for entry in ReflectiveValues.elements(value, as: EStringToStringMapEntry.self) ?? [] {
                 updated[entry.key] = entry.value
             }
             details = updated
+        case .eAnnotations:
+            eAnnotations = ReflectiveValues.elements(value, as: EAnnotation.self) ?? []
+        case .contents:
+            contents = ReflectiveValues.elements(value, as: (any EObject).self) ?? []
+        case .references:
+            let values = ReflectiveValues.elements(value, as: (any EcoreValue).self) ?? []
+            references = values.compactMap { EAnnotationReference(value: $0) }
         default: return false
         }
         return true
     }
 
     var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
-        Reflect.contained(.details, detailEntries)
+        Reflect.contained(.eAnnotations, eAnnotations) + Reflect.contained(.details, detailEntries)
+            + contents.map { (feature: .contents, object: $0) }
     }
 }

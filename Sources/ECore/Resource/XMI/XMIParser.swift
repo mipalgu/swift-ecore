@@ -557,6 +557,89 @@ public actor XMIParser {
 
     // MARK: - Ecore Metamodel Parsing
 
+    // MARK: Annotations
+
+    /// Parses the annotations of a model element.
+    ///
+    /// Every `eAnnotations` child becomes an `EAnnotation` object with its `source`, its
+    /// `details` entries in document order, its nested annotations, and its `contents`. The
+    /// `references` attribute is resolved with the other references of the document.
+    ///
+    /// - Parameters:
+    ///   - element: The element whose `eAnnotations` children are parsed.
+    ///   - resource: The Resource for object storage.
+    /// - Returns: The identifiers of the registered annotation objects, in document order.
+    /// - Throws: ``XMIError`` if the content of an annotation cannot be parsed.
+    private func parseAnnotations(of element: XElement, in resource: Resource) async throws -> [EUUID] {
+        var identifiers: [EUUID] = []
+        for child in element.children(.eAnnotations) {
+            identifiers.append(try await parseAnnotation(child, in: resource).id)
+        }
+        return identifiers
+    }
+
+    /// Parses one annotation element and registers it with its entries and contents.
+    ///
+    /// - Parameters:
+    ///   - element: The `eAnnotations` element.
+    ///   - resource: The Resource for object storage.
+    /// - Returns: The registered annotation object.
+    /// - Throws: ``XMIError`` if the content of the annotation cannot be parsed.
+    private func parseAnnotation(_ element: XElement, in resource: Resource) async throws -> DynamicEObject {
+        let metaclass = await getOrCreateEClass(EcoreClassifier.eAnnotation.rawValue, in: resource)
+        var annotation = DynamicEObject(eClass: metaclass)
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = annotation.id }
+        if let source = element[EcoreFeatureName.source.rawValue] {
+            annotation.eSet(EcoreFeatureName.source.rawValue, value: source)
+        }
+
+        let entryClass = await getOrCreateEClass(EcoreClassifier.eStringToStringMapEntry.rawValue, in: resource)
+        var entryIdentifiers: [EUUID] = []
+        for entryElement in element.children(EcoreFeatureName.details.rawValue) {
+            var entry = DynamicEObject(eClass: entryClass)
+            entry.eSet(EcoreFeatureName.key.rawValue, value: entryElement[EcoreFeatureName.key.rawValue] ?? "")
+            entry.eSet(EcoreFeatureName.value.rawValue, value: entryElement[EcoreFeatureName.value.rawValue] ?? "")
+            await resource.register(entry)
+            entryIdentifiers.append(entry.id)
+        }
+        if !entryIdentifiers.isEmpty {
+            annotation.eSet(EcoreFeatureName.details.rawValue, value: entryIdentifiers)
+        }
+
+        let nested = try await parseAnnotations(of: element, in: resource)
+        if !nested.isEmpty { annotation.eSet(XMIElement.eAnnotations, nested) }
+
+        var contentIdentifiers: [EUUID] = []
+        for contentElement in element.children(EcoreFeatureName.contents.rawValue) {
+            if let content = try await parseElement(contentElement, in: resource) {
+                contentIdentifiers.append(content.id)
+            }
+        }
+        if !contentIdentifiers.isEmpty {
+            annotation.eSet(EcoreFeatureName.contents.rawValue, value: contentIdentifiers)
+        }
+
+        if let references = element[EcoreFeatureName.references.rawValue], !references.isEmpty {
+            annotation.eSet(EcoreClassifier.XMIParsingConstants.tempReferencesRef, value: references)
+        }
+        await resource.register(annotation)
+        return annotation
+    }
+
+    /// Records the annotations of a model element on its parsed object.
+    ///
+    /// - Parameters:
+    ///   - object: The object being built; its `eAnnotations` feature is set if there are any.
+    ///   - element: The element whose annotations are parsed.
+    ///   - resource: The Resource for object storage.
+    /// - Throws: ``XMIError`` if the content of an annotation cannot be parsed.
+    private func attachAnnotations(
+        to object: inout DynamicEObject, from element: XElement, in resource: Resource
+    ) async throws {
+        let identifiers = try await parseAnnotations(of: element, in: resource)
+        if !identifiers.isEmpty { object.eSet(XMIElement.eAnnotations, identifiers) }
+    }
+
     /// Parse an EPackage element
     ///
     /// Parses an Ecore package with its classifiers and nested packages.
@@ -601,6 +684,8 @@ public actor XMIParser {
             let retrievedNSPrefix = pkg.eGet("nsPrefix") as? String
             print("[XMI] Verification: retrieved nsURI='\(retrievedNSURI ?? "nil")', nsPrefix='\(retrievedNSPrefix ?? "nil")'")
         }
+
+        try await attachAnnotations(to: &pkg, from: element, in: resource)
 
         // Parse classifiers (eClassifiers)
         var classifierIds: [EUUID] = []
@@ -688,6 +773,8 @@ public actor XMIParser {
                 print("[XMI DEBUG] parseEClass: Found eSuperTypes='\(superTypeReferences)' for class '\(name)'")
             }
         }
+
+        try await attachAnnotations(to: &eClass, from: element, in: resource)
 
         // Parse structural features
         var featureIds: [EUUID] = []
@@ -788,6 +875,7 @@ public actor XMIParser {
         if !exceptions.isEmpty {
             object.eSet(EcoreClassifier.XMIParsingConstants.tempEExceptionsRef, value: exceptions)
         }
+        try await attachAnnotations(to: &object, from: element, in: resource)
         await resource.register(object)
         return object
     }
@@ -817,6 +905,8 @@ public actor XMIParser {
 
         // Set name before registering
         eEnum.eSet(.name, name)
+
+        try await attachAnnotations(to: &eEnum, from: element, in: resource)
 
         // Parse literals
         var literalIds: [EUUID] = []
@@ -868,6 +958,8 @@ public actor XMIParser {
         let literalStr = element[.literal] ?? name
         literal.eSet(.literal, literalStr)
 
+        try await attachAnnotations(to: &literal, from: element, in: resource)
+
         // Register after all features are set
         await resource.register(literal)
 
@@ -910,6 +1002,8 @@ public actor XMIParser {
         if let isSerializable = element.getBool(.serializable) {
             dataType.eSet(.serializable, isSerializable)
         }
+
+        try await attachAnnotations(to: &dataType, from: element, in: resource)
 
         // Register after features are set
         await resource.register(dataType)
@@ -975,6 +1069,8 @@ public actor XMIParser {
         for flag in [XMIAttribute.ordered, .unique, .unsettable, .derived] {
             if let value = element.getBool(flag) { attribute.eSet(flag.rawValue, value: value) }
         }
+
+        try await attachAnnotations(to: &attribute, from: element, in: resource)
 
         // Default value
         if let defaultValue = element[.defaultValueLiteral] {
@@ -1053,6 +1149,8 @@ public actor XMIParser {
             if let value = element.getBool(flag) { reference.eSet(flag.rawValue, value: value) }
         }
 
+        try await attachAnnotations(to: &reference, from: element, in: resource)
+
         // Register after features are set
         await resource.register(reference)
 
@@ -1115,10 +1213,11 @@ public actor XMIParser {
                 await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempOppositeType, value: nil)
             }
 
-            // Resolve eSuperTypes and eExceptions references (metamodel)
+            // Resolve eSuperTypes, eExceptions, and annotation references (metamodel)
             for (temporary, feature) in [
                 (EcoreClassifier.XMIParsingConstants.tempESuperTypesRef, XMIAttribute.eSuperTypes.rawValue),
                 (EcoreClassifier.XMIParsingConstants.tempEExceptionsRef, EcoreFeatureName.eExceptions.rawValue),
+                (EcoreClassifier.XMIParsingConstants.tempReferencesRef, EcoreFeatureName.references.rawValue),
             ] {
                 guard let references = await resource.eGet(objectId: object.id, feature: temporary) as? String
                 else { continue }

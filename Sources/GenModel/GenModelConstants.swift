@@ -4,6 +4,7 @@
 //
 //  Copyright © 2026 Rene Hexel. All rights reserved.
 //
+import ECore
 
 /// The single authoritative source of names used by the generator model code.
 ///
@@ -24,10 +25,10 @@ public enum GenModelConstants {
     public static let packageName = "genmodel"
 
     /// The annotation source used for documentation annotations of the generator metamodel.
-    public static let documentationSource = "http://www.eclipse.org/emf/2002/GenModel"
+    public static let documentationSource = AnnotationSource.genModel
 
     /// The annotation detail key holding documentation text.
-    public static let documentationKey = "documentation"
+    public static let documentationKey = AnnotationSource.GenModelKey.documentation
 
     /// The file extension of generator model files.
     public static let genModelFileExtension = "genmodel"
