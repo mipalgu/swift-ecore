@@ -238,10 +238,24 @@ public actor ResourceSet {
 
     /// Gets a metamodel package by its namespace URI.
     ///
+    /// The reflective Ecore package is built in: looking up its namespace URI
+    /// (``EcorePackage/nsURI``) finds ``EcorePackage/instance`` unless a different
+    /// package has been registered under that URI. The built-in package is not listed
+    /// by ``getMetamodelURIs()``, which reports explicit registrations only.
+    ///
     /// - Parameter uri: The namespace URI of the metamodel to retrieve.
     /// - Returns: The metamodel package, or `nil` if not registered.
     public func getMetamodel(uri: String) -> EPackage? {
-        return metamodelRegistry[uri]
+        if let registered = metamodelRegistry[uri] { return registered }
+        return uri == EcorePackage.nsURI ? EcorePackage.instance : nil
+    }
+
+    /// The reflective Ecore package that every resource set provides.
+    ///
+    /// Returns the package registered under the Ecore namespace URI if there is one,
+    /// otherwise ``EcorePackage/instance``.
+    public var ecorePackage: EPackage {
+        return metamodelRegistry[EcorePackage.nsURI] ?? EcorePackage.instance
     }
 
     /// Gets all registered metamodel URIs.

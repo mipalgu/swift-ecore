@@ -32,13 +32,16 @@ import Foundation
 /// ```
 public struct EDataType: EClassifier, ENamedElement {
     /// The type of classifier for this data type.
-    public typealias Classifier = EDataTypeClassifier
+    public typealias Classifier = EClass
 
     /// Unique identifier for this data type.
     public let id: EUUID
 
     /// The metaclass describing this data type.
-    public let eClass: Classifier
+    public var eClass: EClass { EcorePackage.metaClass(.eDataType) }
+
+    /// The identifier of the package that contains this data type, if any.
+    public internal(set) var eContainerID: EUUID?
 
     /// The name of this data type.
     ///
@@ -48,7 +51,9 @@ public struct EDataType: EClassifier, ENamedElement {
     /// Annotations attached to this data type.
     ///
     /// Can be used for generation hints, documentation, or validation constraints.
-    public var eAnnotations: [EAnnotation]
+    public var eAnnotations: [EAnnotation] {
+        didSet { ContainerStamp.stamp(&eAnnotations, container: id) }
+    }
 
     /// Whether this data type can be serialised to/from strings.
     ///
@@ -88,8 +93,7 @@ public struct EDataType: EClassifier, ENamedElement {
         eAnnotations: [EAnnotation] = []
     ) {
         self.id = id
-        self.eClass = EDataTypeClassifier()
-        self.name = name
+                self.name = name
         self.serialisable = serialisable
 
         // Auto-set instanceClassName for built-in Ecore types
@@ -115,6 +119,7 @@ public struct EDataType: EClassifier, ENamedElement {
         self.defaultValueLiteral = defaultValueLiteral
         self.eAnnotations = eAnnotations
         self.storage = EObjectStorage()
+        ContainerStamp.stamp(&self.eAnnotations, container: id)
     }
 
     // MARK: - EObject Protocol Implementation
@@ -124,6 +129,7 @@ public struct EDataType: EClassifier, ENamedElement {
     /// - Parameter feature: The structural feature whose value to retrieve.
     /// - Returns: The feature's current value, or `nil` if not set.
     public func eGet(_ feature: some EStructuralFeature) -> (any EcoreValue)? {
+        if case .value(let value) = reflectiveEGet(feature) { return value }
         return storage.get(feature: feature.id)
     }
 
@@ -133,6 +139,7 @@ public struct EDataType: EClassifier, ENamedElement {
     ///   - feature: The structural feature to modify.
     ///   - value: The new value, or `nil` to unset.
     public mutating func eSet(_ feature: some EStructuralFeature, _ value: (any EcoreValue)?) {
+        if reflectiveESet(feature, value) { return }
         storage.set(feature: feature.id, value: value)
     }
 
@@ -141,6 +148,7 @@ public struct EDataType: EClassifier, ENamedElement {
     /// - Parameter feature: The structural feature to check.
     /// - Returns: `true` if the feature has been set, `false` otherwise.
     public func eIsSet(_ feature: some EStructuralFeature) -> Bool {
+        if let isSet = reflectiveEIsSet(feature) { return isSet }
         return storage.isSet(feature: feature.id)
     }
 
@@ -148,7 +156,17 @@ public struct EDataType: EClassifier, ENamedElement {
     ///
     /// - Parameter feature: The structural feature to unset.
     public mutating func eUnset(_ feature: some EStructuralFeature) {
+        if reflectiveEUnset(feature) { return }
         storage.unset(feature: feature.id)
+    }
+
+    // MARK: - Containment
+
+    /// The objects contained directly by this element.
+    ///
+    /// Objects are listed in the order of the containment features of the element's metaclass.
+    public var eContents: [any EObject] {
+        containedObjects.map { $0.object }
     }
 
     // MARK: - Equatable & Hashable
@@ -193,13 +211,16 @@ public struct EDataType: EClassifier, ENamedElement {
 /// ```
 public struct EEnumLiteral: ENamedElement {
     /// The type of classifier for this enum literal.
-    public typealias Classifier = EEnumLiteralClassifier
+    public typealias Classifier = EClass
 
     /// Unique identifier for this literal.
     public let id: EUUID
 
     /// The metaclass describing this enum literal.
-    public let eClass: Classifier
+    public var eClass: EClass { EcorePackage.metaClass(.eEnumLiteral) }
+
+    /// The identifier of the enumeration that contains this enum literal, if any.
+    public internal(set) var eContainerID: EUUID?
 
     /// The name of this literal.
     ///
@@ -207,7 +228,9 @@ public struct EEnumLiteral: ENamedElement {
     public var name: String
 
     /// Annotations attached to this literal.
-    public var eAnnotations: [EAnnotation]
+    public var eAnnotations: [EAnnotation] {
+        didSet { ContainerStamp.stamp(&eAnnotations, container: id) }
+    }
 
     /// The integer value of this literal.
     ///
@@ -238,12 +261,12 @@ public struct EEnumLiteral: ENamedElement {
         eAnnotations: [EAnnotation] = []
     ) {
         self.id = id
-        self.eClass = EEnumLiteralClassifier()
-        self.name = name
+                self.name = name
         self.value = value
         self.literal = literal
         self.eAnnotations = eAnnotations
         self.storage = EObjectStorage()
+        ContainerStamp.stamp(&self.eAnnotations, container: id)
     }
 
     // MARK: - EObject Protocol Implementation
@@ -253,6 +276,7 @@ public struct EEnumLiteral: ENamedElement {
     /// - Parameter feature: The structural feature whose value to retrieve.
     /// - Returns: The feature's current value, or `nil` if not set.
     public func eGet(_ feature: some EStructuralFeature) -> (any EcoreValue)? {
+        if case .value(let value) = reflectiveEGet(feature) { return value }
         return storage.get(feature: feature.id)
     }
 
@@ -262,6 +286,7 @@ public struct EEnumLiteral: ENamedElement {
     ///   - feature: The structural feature to modify.
     ///   - value: The new value, or `nil` to unset.
     public mutating func eSet(_ feature: some EStructuralFeature, _ value: (any EcoreValue)?) {
+        if reflectiveESet(feature, value) { return }
         storage.set(feature: feature.id, value: value)
     }
 
@@ -270,6 +295,7 @@ public struct EEnumLiteral: ENamedElement {
     /// - Parameter feature: The structural feature to check.
     /// - Returns: `true` if the feature has been set, `false` otherwise.
     public func eIsSet(_ feature: some EStructuralFeature) -> Bool {
+        if let isSet = reflectiveEIsSet(feature) { return isSet }
         return storage.isSet(feature: feature.id)
     }
 
@@ -277,7 +303,17 @@ public struct EEnumLiteral: ENamedElement {
     ///
     /// - Parameter feature: The structural feature to unset.
     public mutating func eUnset(_ feature: some EStructuralFeature) {
+        if reflectiveEUnset(feature) { return }
         storage.unset(feature: feature.id)
+    }
+
+    // MARK: - Containment
+
+    /// The objects contained directly by this element.
+    ///
+    /// Objects are listed in the order of the containment features of the element's metaclass.
+    public var eContents: [any EObject] {
+        containedObjects.map { $0.object }
     }
 
     // MARK: - Equatable & Hashable
@@ -332,13 +368,16 @@ public struct EEnumLiteral: ENamedElement {
 /// ```
 public struct EEnum: EClassifier, ENamedElement {
     /// The type of classifier for this enum.
-    public typealias Classifier = EEnumClassifier
+    public typealias Classifier = EClass
 
     /// Unique identifier for this enum.
     public let id: EUUID
 
     /// The metaclass describing this enum.
-    public let eClass: Classifier
+    public var eClass: EClass { EcorePackage.metaClass(.eEnum) }
+
+    /// The identifier of the package that contains this enum, if any.
+    public internal(set) var eContainerID: EUUID?
 
     /// The name of this enum.
     ///
@@ -346,12 +385,16 @@ public struct EEnum: EClassifier, ENamedElement {
     public var name: String
 
     /// Annotations attached to this enum.
-    public var eAnnotations: [EAnnotation]
+    public var eAnnotations: [EAnnotation] {
+        didSet { ContainerStamp.stamp(&eAnnotations, container: id) }
+    }
 
     /// The literals (named values) in this enum.
     ///
     /// Each literal has a unique name and integer value within the enum.
-    public var literals: [EEnumLiteral]
+    public var literals: [EEnumLiteral] {
+        didSet { ContainerStamp.stamp(&literals, container: id) }
+    }
 
     /// Internal storage for feature values.
     private var storage: EObjectStorage
@@ -370,11 +413,12 @@ public struct EEnum: EClassifier, ENamedElement {
         eAnnotations: [EAnnotation] = []
     ) {
         self.id = id
-        self.eClass = EEnumClassifier()
-        self.name = name
+                self.name = name
         self.literals = literals
         self.eAnnotations = eAnnotations
         self.storage = EObjectStorage()
+        ContainerStamp.stamp(&self.eAnnotations, container: id)
+        ContainerStamp.stamp(&self.literals, container: id)
     }
 
     /// Retrieves a literal by its name.
@@ -400,6 +444,7 @@ public struct EEnum: EClassifier, ENamedElement {
     /// - Parameter feature: The structural feature whose value to retrieve.
     /// - Returns: The feature's current value, or `nil` if not set.
     public func eGet(_ feature: some EStructuralFeature) -> (any EcoreValue)? {
+        if case .value(let value) = reflectiveEGet(feature) { return value }
         return storage.get(feature: feature.id)
     }
 
@@ -409,6 +454,7 @@ public struct EEnum: EClassifier, ENamedElement {
     ///   - feature: The structural feature to modify.
     ///   - value: The new value, or `nil` to unset.
     public mutating func eSet(_ feature: some EStructuralFeature, _ value: (any EcoreValue)?) {
+        if reflectiveESet(feature, value) { return }
         storage.set(feature: feature.id, value: value)
     }
 
@@ -417,6 +463,7 @@ public struct EEnum: EClassifier, ENamedElement {
     /// - Parameter feature: The structural feature to check.
     /// - Returns: `true` if the feature has been set, `false` otherwise.
     public func eIsSet(_ feature: some EStructuralFeature) -> Bool {
+        if let isSet = reflectiveEIsSet(feature) { return isSet }
         return storage.isSet(feature: feature.id)
     }
 
@@ -424,7 +471,17 @@ public struct EEnum: EClassifier, ENamedElement {
     ///
     /// - Parameter feature: The structural feature to unset.
     public mutating func eUnset(_ feature: some EStructuralFeature) {
+        if reflectiveEUnset(feature) { return }
         storage.unset(feature: feature.id)
+    }
+
+    // MARK: - Containment
+
+    /// The objects contained directly by this element.
+    ///
+    /// Objects are listed in the order of the containment features of the element's metaclass.
+    public var eContents: [any EObject] {
+        containedObjects.map { $0.object }
     }
 
     // MARK: - Equatable & Hashable
@@ -449,56 +506,6 @@ public struct EEnum: EClassifier, ENamedElement {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
-}
-
-// MARK: - Classifier Types
-
-/// Metaclass for `EDataType`.
-///
-/// Describes the structure of `EDataType` itself within the metamodel hierarchy.
-/// This is the classifier that describes all `EDataType` instances.
-public struct EDataTypeClassifier: EClassifier {
-    /// Unique identifier for this metaclass.
-    ///
-    /// Each instance creates its own unique identifier.
-    public let id: EUUID = EUUID()
-
-    /// The name of this classifier.
-    ///
-    /// Always returns `"EDataType"` to identify this as the metaclass for data types.
-    public var name: String { EcoreClassifier.eDataType.rawValue }
-}
-
-/// Metaclass for `EEnumLiteral`.
-///
-/// Describes the structure of `EEnumLiteral` itself within the metamodel hierarchy.
-/// This is the classifier that describes all `EEnumLiteral` instances.
-public struct EEnumLiteralClassifier: EClassifier {
-    /// Unique identifier for this metaclass.
-    ///
-    /// Each instance creates its own unique identifier.
-    public let id: EUUID = EUUID()
-
-    /// The name of this classifier.
-    ///
-    /// Always returns `"EEnumLiteral"` to identify this as the metaclass for enum literals.
-    public var name: String { EcoreClassifier.eEnumLiteral.rawValue }
-}
-
-/// Metaclass for `EEnum`.
-///
-/// Describes the structure of `EEnum` itself within the metamodel hierarchy.
-/// This is the classifier that describes all `EEnum` instances.
-public struct EEnumClassifier: EClassifier {
-    /// Unique identifier for this metaclass.
-    ///
-    /// Each instance creates its own unique identifier.
-    public let id: EUUID = EUUID()
-
-    /// The name of this classifier.
-    ///
-    /// Always returns `"EEnum"` to identify this as the metaclass for enumerations.
-    public var name: String { EcoreClassifier.eEnum.rawValue }
 }
 
 // MARK: - EClassifier Type Resolution

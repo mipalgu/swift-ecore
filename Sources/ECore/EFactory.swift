@@ -55,8 +55,8 @@ import BigInt
 public struct EFactory: ENamedElement {
     /// The type of classifier for this factory.
     ///
-    /// All instances of `EFactory` use ``EFactoryClassifier`` as their metaclass.
-    public typealias Classifier = EFactoryClassifier
+    /// The metaclass of every factory is the `EFactory` class of ``EcorePackage``.
+    public typealias Classifier = EClass
 
     /// Unique identifier for this factory.
     ///
@@ -64,7 +64,7 @@ public struct EFactory: ENamedElement {
     public let id: EUUID
 
     /// The metaclass describing this factory.
-    public let eClass: Classifier
+    public var eClass: EClass { EcorePackage.metaClass(.eFactory) }
 
     /// The name of this factory.
     ///
@@ -96,7 +96,6 @@ public struct EFactory: ENamedElement {
         eAnnotations: [EAnnotation] = []
     ) {
         self.id = id
-        self.eClass = EFactoryClassifier()
         self.name =
             name ?? "\(ePackage.name.prefix(1).uppercased())\(ePackage.name.dropFirst())Factory"
         self.ePackage = ePackage
@@ -292,19 +291,4 @@ public struct EFactory: ENamedElement {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
-}
-
-// MARK: - Classifier Type
-
-/// Metaclass for `EFactory`.
-///
-/// Describes the structure of `EFactory` itself within the metamodel hierarchy.
-public struct EFactoryClassifier: EClassifier {
-    /// Unique identifier for this metaclass.
-    public let id: EUUID = EUUID()
-
-    /// The name of this classifier.
-    ///
-    /// Always returns `"EFactory"` to identify this as the metaclass for factories.
-    public var name: String { "EFactory" }
 }

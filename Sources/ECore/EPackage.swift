@@ -57,8 +57,8 @@ import Foundation
 public struct EPackage: ENamedElement {
     /// The type of classifier for this package.
     ///
-    /// All instances of `EPackage` use ``EPackageClassifier`` as their metaclass.
-    public typealias Classifier = EPackageClassifier
+    /// The metaclass of every package is the `EPackage` class of ``EcorePackage``.
+    public typealias Classifier = EClass
 
     /// Unique identifier for this package.
     ///
@@ -66,7 +66,12 @@ public struct EPackage: ENamedElement {
     public let id: EUUID
 
     /// The metaclass describing this package.
-    public let eClass: Classifier
+    ///
+    /// This is the `EPackage` descriptor of the reflective Ecore metamodel ``EcorePackage``.
+    public var eClass: EClass { EcorePackage.metaClass(.ePackage) }
+
+    /// The identifier of the package that contains this package, if any.
+    public internal(set) var eContainerID: EUUID?
 
     /// The name of this package.
     ///
@@ -77,7 +82,9 @@ public struct EPackage: ENamedElement {
     /// Annotations attached to this package.
     ///
     /// Commonly used for code generation hints, documentation, or tooling metadata.
-    public var eAnnotations: [EAnnotation]
+    public var eAnnotations: [EAnnotation] {
+        didSet { ContainerStamp.stamp(&eAnnotations, container: id) }
+    }
 
     /// The namespace URI for this package.
     ///
@@ -95,13 +102,17 @@ public struct EPackage: ENamedElement {
     ///
     /// Includes classes (``EClass``), data types (``EDataType``), and enumerations (``EEnum``).
     /// Classifiers in a package should have unique names.
-    public var eClassifiers: [any EClassifier]
+    public var eClassifiers: [any EClassifier] {
+        didSet { ContainerStamp.stamp(&eClassifiers, container: id) }
+    }
 
     /// Nested subpackages within this package.
     ///
     /// Allows hierarchical organisation of metamodel elements. For example, a
     /// "company" package might have "hr" and "finance" subpackages.
-    public var eSubpackages: [EPackage]
+    public var eSubpackages: [EPackage] {
+        didSet { ContainerStamp.stamp(&eSubpackages, container: id) }
+    }
 
     /// The factory instance for creating objects of this package's classes.
     ///
@@ -134,7 +145,6 @@ public struct EPackage: ENamedElement {
         eAnnotations: [EAnnotation] = []
     ) {
         self.id = id
-        self.eClass = EPackageClassifier()
         self.name = name
         self.nsURI = nsURI
         self.nsPrefix = nsPrefix
@@ -142,6 +152,9 @@ public struct EPackage: ENamedElement {
         self.eSubpackages = eSubpackages
         self.eAnnotations = eAnnotations
         self.storage = EObjectStorage()
+        ContainerStamp.stamp(&self.eAnnotations, container: id)
+        ContainerStamp.stamp(&self.eClassifiers, container: id)
+        ContainerStamp.stamp(&self.eSubpackages, container: id)
     }
 
     /// Loads an EPackage from a .ecore file.
@@ -315,6 +328,7 @@ public struct EPackage: ENamedElement {
     /// - Parameter feature: The structural feature whose value to retrieve.
     /// - Returns: The feature's current value, or `nil` if not set.
     public func eGet(_ feature: some EStructuralFeature) -> (any EcoreValue)? {
+        if case .value(let value) = reflectiveEGet(feature) { return value }
         return storage.get(feature: feature.id)
     }
 
@@ -327,6 +341,7 @@ public struct EPackage: ENamedElement {
     ///   - feature: The structural feature to modify.
     ///   - value: The new value, or `nil` to unset.
     public mutating func eSet(_ feature: some EStructuralFeature, _ value: (any EcoreValue)?) {
+        if reflectiveESet(feature, value) { return }
         storage.set(feature: feature.id, value: value)
     }
 
@@ -338,6 +353,7 @@ public struct EPackage: ENamedElement {
     /// - Parameter feature: The structural feature to check.
     /// - Returns: `true` if the feature has been set, `false` otherwise.
     public func eIsSet(_ feature: some EStructuralFeature) -> Bool {
+        if let isSet = reflectiveEIsSet(feature) { return isSet }
         return storage.isSet(feature: feature.id)
     }
 
@@ -348,7 +364,18 @@ public struct EPackage: ENamedElement {
     ///
     /// - Parameter feature: The structural feature to unset.
     public mutating func eUnset(_ feature: some EStructuralFeature) {
+        if reflectiveEUnset(feature) { return }
         storage.unset(feature: feature.id)
+    }
+
+    // MARK: - Containment
+
+    /// The annotations, classifiers, and subpackages contained directly by this package.
+    ///
+    /// Objects are listed in the order of the containment features `eAnnotations`,
+    /// `eClassifiers`, and `eSubpackages`.
+    public var eContents: [any EObject] {
+        containedObjects.map { $0.object }
     }
 
     // MARK: - Equatable & Hashable
@@ -373,22 +400,4 @@ public struct EPackage: ENamedElement {
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
     }
-}
-
-// MARK: - Classifier Type
-
-/// Metaclass for `EPackage`.
-///
-/// Describes the structure of `EPackage` itself within the metamodel hierarchy.
-/// This is the classifier that describes all `EPackage` instances.
-public struct EPackageClassifier: EClassifier {
-    /// Unique identifier for this metaclass.
-    ///
-    /// Each instance creates its own unique identifier.
-    public let id: EUUID = EUUID()
-
-    /// The name of this classifier.
-    ///
-    /// Always returns `"EPackage"` to identify this as the metaclass for packages.
-    public var name: String { EcoreClassifier.ePackage.rawValue }
 }
