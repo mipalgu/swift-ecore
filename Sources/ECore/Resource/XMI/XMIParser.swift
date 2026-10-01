@@ -226,11 +226,13 @@ public actor XMIParser {
                 print("[XMI] Processing XMI wrapper with \(Array(rootElement.children).count) child elements")
             }
             // Multiple root objects wrapped in xmi:XMI
+            var rootObjects: [any EObject] = []
             for childElement in rootElement.children {
                 if let rootObject = try await parseElement(childElement, in: resource) {
-                    await resource.add(rootObject)
+                    rootObjects.append(rootObject)
                 }
             }
+            await resource.add(contentsOf: rootObjects)
         } else {
             if debug {
                 print("[XMI] Processing single root element: '\(rootElement.name)'")
@@ -1357,7 +1359,7 @@ public actor XMIParser {
         _ reference: String, using xpathResolver: XPathResolver? = nil, in resource: Resource
     ) async -> (any EcoreValue)? {
         // Handle Ecore built-in types
-        if reference.contains("http://www.eclipse.org/emf/2002/Ecore#//") {
+        if EcoreURI.isEcoreMetamodelReference(reference) {
             return await resolveEcoreBuiltinType(reference, in: resource)
         }
 

@@ -733,6 +733,30 @@ public enum EcoreURI: String, CaseIterable, Sendable {
     /// XML Schema instance namespace URI.
     case xsiNamespace = "http://www.w3.org/2001/XMLSchema-instance"
 
+    /// The tail of the location of the Ecore model inside the platform plug-ins of Eclipse.
+    ///
+    /// Documents written by Eclipse tools can name the classifiers of Ecore by this location
+    /// (`platform:/plugin/org.eclipse.emf.ecore/model/Ecore.ecore#//EString`) as an alternative
+    /// to the namespace URI.
+    public static let platformEcoreDocumentSuffix = "/org.eclipse.emf.ecore/model/Ecore.ecore"
+
+    /// Whether a reference names a classifier of the Ecore metamodel itself.
+    ///
+    /// The document part of the reference must be the Ecore namespace URI or the platform
+    /// location of the Ecore model, and the fragment must start with `//`. A leading type
+    /// qualifier such as `ecore:EDataType` is ignored.
+    ///
+    /// - Parameter reference: A reference such as `http://www.eclipse.org/emf/2002/Ecore#//EInt`.
+    /// - Returns: `true` if the reference names an Ecore classifier.
+    public static func isEcoreMetamodelReference(_ reference: String) -> Bool {
+        guard let separator = reference.range(of: "#//") else { return false }
+        guard let document = reference[..<separator.lowerBound].split(separator: " ").last else {
+            return false
+        }
+        if document == Substring(ecoreNamespace.rawValue) { return true }
+        return document.hasPrefix("platform:/") && document.hasSuffix(platformEcoreDocumentSuffix)
+    }
+
     /// Extracts type name from Ecore built-in type URI.
     ///
     /// Parses an Ecore built-in type URI to extract the type name

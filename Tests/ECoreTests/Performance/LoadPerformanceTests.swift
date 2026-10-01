@@ -103,7 +103,7 @@ struct LoadPerformanceTests {
             resource = try await set.loadXMIResource(uri: url.absoluteString)
         }
         let loaded = try #require(resource)
-        #expect(await loaded.count() >= Self.classCount * 7)
+        #expect(await loaded.count() >= Self.classCount * SyntheticDocuments.elementsPerClass)
         #expect(elapsed < Self.loadBound)
     }
 
@@ -145,5 +145,81 @@ struct LoadPerformanceTests {
         let loaded = try #require(resource)
         #expect(await loaded.count() >= fixture.names.count)
         #expect(elapsed < Self.loadBound)
+    }
+
+    @Test("a wrapper document with 2,000 roots loads in bounded time and keeps the root order")
+    func manyRoots() async throws {
+        let fixture = try TreeFixture(roots: 2_000, depth: 1, branching: 1)
+        defer { fixture.remove() }
+        var resource: Resource?
+        let elapsed = try await ContinuousClock().measure {
+            resource = try await fixture.load().resource
+        }
+        let loaded = try #require(resource)
+        let roots = TreeFixture.names(await loaded.getRootObjects())
+        #expect(roots == (0..<2_000).map { "root\($0)" })
+        #expect(elapsed < Self.loadBound)
+    }
+}
+
+@Suite("Batch Add Tests")
+struct BatchAddTests {
+    private func makeTree() -> (parent: DynamicEObject, child: DynamicEObject, loose: DynamicEObject) {
+        let node = EClass(name: "Node")
+        let children = EReference(name: "children", eType: node, upperBound: -1, containment: true)
+        let nodeClass = EClass(name: "Node", eStructuralFeatures: [children])
+        var parent = DynamicEObject(eClass: nodeClass)
+        let child = DynamicEObject(eClass: nodeClass)
+        let loose = DynamicEObject(eClass: nodeClass)
+        parent.eSet("children", value: [child.id])
+        return (parent, child, loose)
+    }
+
+    @Test("contained objects do not become roots and the order of roots is kept")
+    func roots() async {
+        let (parent, child, loose) = makeTree()
+        let resource = Resource(uri: "memory://batch")
+        let added = await resource.add(contentsOf: [loose, child, parent])
+        #expect(added == 3)
+        #expect(await resource.getRootObjects().map(\.id) == [loose.id, parent.id])
+        #expect(await resource.resolve(child.id) != nil)
+    }
+
+    @Test("adding again counts only new objects and does not duplicate roots")
+    func repeated() async {
+        let (parent, child, loose) = makeTree()
+        let resource = Resource(uri: "memory://batch")
+        await resource.add(contentsOf: [parent, child])
+        let added = await resource.add(contentsOf: [parent, child, loose])
+        #expect(added == 1)
+        #expect(await resource.getRootObjects().map(\.id) == [parent.id, loose.id])
+    }
+
+    @Test("an empty batch changes nothing")
+    func empty() async {
+        let resource = Resource(uri: "memory://batch")
+        #expect(await resource.add(contentsOf: []) == 0)
+        #expect(await resource.getRootObjects().isEmpty)
+    }
+}
+
+@Suite("Large Enumeration Order Tests")
+struct LargeEnumerationOrderTests {
+    private static let repetitions = 2
+
+    @Test("thousands of instances are listed in document order, identically on every load")
+    func largeDocumentOrder() async throws {
+        let fixture = try TreeFixture(depth: 5, branching: 3)
+        defer { fixture.remove() }
+        #expect(fixture.names.count > 3_000)
+        for _ in 0..<Self.repetitions {
+            let (set, resource) = try await fixture.load()
+            let node = try #require(
+                await set.getMetamodel(uri: "http://example.org/tree")?.getEClass("Node"))
+            let instances = await resource.getAllInstancesOf(node)
+            #expect(TreeFixture.names(instances) == fixture.names)
+            let all = await resource.getAllObjectsIncludingContents()
+            #expect(TreeFixture.names(all) == fixture.names)
+        }
     }
 }

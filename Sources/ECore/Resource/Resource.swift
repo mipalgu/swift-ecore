@@ -182,6 +182,56 @@ public actor Resource {
         return isNew
     }
 
+    /// Adds several objects to this resource at once.
+    ///
+    /// Each object is stored and indexed as with ``add(_:)``, and each object that no object of
+    /// the resource contains becomes a root object, in the given order. Containment is
+    /// examined once for the whole batch, so adding many roots takes time proportional to the
+    /// size of the resource rather than to its square.
+    ///
+    /// - Parameter newObjects: The objects to add.
+    /// - Returns: The number of objects that were not yet part of the resource.
+    @discardableResult
+    public func add(contentsOf newObjects: [any EObject]) -> Int {
+        var added = 0
+        for object in newObjects {
+            if objects[object.id] == nil { added += 1 }
+            objects[object.id] = object
+            indexNativeContents(of: object)
+        }
+        let contained = containedIdentifiers()
+        var known = Set(rootObjects)
+        for object in newObjects where !contained.contains(object.id) && known.insert(object.id).inserted {
+            rootObjects.append(object.id)
+        }
+        return added
+    }
+
+    /// The identifiers of all objects that another object of the resource contains.
+    private func containedIdentifiers() -> Set<EUUID> {
+        var result = Set<EUUID>()
+        var containmentReferences: [EUUID: [EReference]] = [:]
+        for container in objects.values {
+            guard let eClass = container.eClass as? EClass else { continue }
+            let references: [EReference]
+            if let known = containmentReferences[eClass.id] {
+                references = known
+            } else {
+                references = eClass.allReferences.filter(\.containment)
+                containmentReferences[eClass.id] = references
+            }
+            for reference in references {
+                switch container.eGet(reference) {
+                case let identifier as EUUID: result.insert(identifier)
+                case let identifiers as [EUUID]: result.formUnion(identifiers)
+                case let values as [Any]: result.formUnion(values.compactMap { $0 as? EUUID })
+                default: break
+                }
+            }
+        }
+        return result
+    }
+
     /// Removes an object from this resource.
     ///
     /// - Parameter object: The object to remove from this resource.
