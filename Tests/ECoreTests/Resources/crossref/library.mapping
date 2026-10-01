@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map:Mapping xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" xmlns:map="http://swift-modelling.org/test/mapping" name="Library" priority="3" ecorePackage="library.ecore#/" usedPackages="library.ecore#//archive other/Other.ecore#/">
+  <notes>first note</notes>
+  <notes>second &amp; last note</notes>
+  <entries label="book" ecoreClass="library.ecore#//Book" ecoreFeature="ecore:EAttribute library.ecore#//Book/title" related="//@entries.1"/>
+  <entries label="author" ecoreClass="library.ecore#//Writer" ecoreFeature="ecore:EReference library.ecore#//Book/author" ecoreEnum="library.ecore#//BookCategory" ecoreLiteral="library.ecore#//BookCategory/Mystery" ecoreOperation="library.ecore#//Book/borrow" ecoreParameter="library.ecore#//Book/borrow/days" related="//@entries.0 //@entries.1"/>
+</map:Mapping>

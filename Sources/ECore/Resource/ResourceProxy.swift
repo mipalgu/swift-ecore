@@ -46,27 +46,13 @@ public struct ResourceProxy: EcoreValue, Sendable, Equatable, Hashable {
     ///
     /// This method attempts to load the target resource and resolve the fragment
     /// to an actual object ID. If the resource is not loaded, it will attempt to
-    /// load it using loadXMIResource.
+    /// load it using ``ResourceSet/loadReferencedResource(uri:)``. Fragments may be
+    /// name based (`//Book/title`) or positional (`//@features.0`).
     ///
     /// - Parameter resourceSet: The ResourceSet to use for resolution
     /// - Returns: The resolved object ID, or nil if resolution fails
     public func resolve(in resourceSet: ResourceSet) async -> EUUID? {
-        // Get the target resource URI
-        let targetURI = uri
-
-        // Try to get the resource, loading it if necessary
-        var targetResource = await resourceSet.getResource(uri: targetURI)
-
-        // If not found, try to load it as an XMI resource
-        if targetResource == nil {
-            do {
-                targetResource = try await resourceSet.loadXMIResource(uri: targetURI)
-            } catch {
-                return nil
-            }
-        }
-
-        guard let resource = targetResource else {
+        guard let resource = await targetResource(in: resourceSet) else {
             return nil
         }
 
@@ -82,14 +68,28 @@ public struct ResourceProxy: EcoreValue, Sendable, Equatable, Hashable {
         return await resolver.resolve(xpath)
     }
 
+    /// Finds the resource that the proxy refers to, loading it on demand.
+    ///
+    /// The resource is taken from the resource set if it is already loaded; otherwise it
+    /// is loaded through ``ResourceSet/loadReferencedResource(uri:)``.
+    ///
+    /// - Parameter resourceSet: The resource set that owns or loads the target resource.
+    /// - Returns: The target resource, or `nil` if it cannot be loaded.
+    public func targetResource(in resourceSet: ResourceSet) async -> Resource? {
+        if let loaded = await resourceSet.getResource(uri: uri) {
+            return loaded
+        }
+        return try? await resourceSet.loadReferencedResource(uri: uri)
+    }
+
     /// Resolve the proxy to an actual object (convenience method)
     ///
     /// - Parameter resourceSet: The ResourceSet to use for resolution
     /// - Returns: The resolved object, or nil if resolution fails
     public func resolveObject(in resourceSet: ResourceSet) async -> (any EObject)? {
+        guard let resource = await targetResource(in: resourceSet) else { return nil }
         guard let id = await resolve(in: resourceSet) else { return nil }
-        guard let targetResource = await resourceSet.getResource(uri: uri) else { return nil }
-        return await targetResource.resolve(id)
+        return await resource.resolve(id)
     }
 
     // MARK: - Equatable
