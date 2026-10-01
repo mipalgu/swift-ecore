@@ -428,6 +428,13 @@ public struct EReference: EStructuralFeature, ENamedElement {
     /// accessed. This enables lazy loading across resource boundaries.
     public var resolveProxies: Bool
 
+    /// Whether this reference is the container side of a containment relationship.
+    ///
+    /// A reference is a container reference if its opposite is a containment reference.
+    /// Loaders set the flag once the opposite is known; it is `false` for references
+    /// created by hand unless it is specified.
+    public var container: Bool
+
     /// The default value of this reference as a literal, if any.
     ///
     /// References normally have no default value; the property exists so that all
@@ -456,6 +463,7 @@ public struct EReference: EStructuralFeature, ENamedElement {
     ///   - unique: Whether values are unique (default: true).
     ///   - unsettable: Whether the unset state is distinguished (default: false).
     ///   - derived: Whether the feature is derived (default: false).
+    ///   - container: Whether the opposite is a containment reference (default: false).
     public init(
         id: EUUID = EUUID(),
         name: String,
@@ -472,7 +480,8 @@ public struct EReference: EStructuralFeature, ENamedElement {
         ordered: Bool = true,
         unique: Bool = true,
         unsettable: Bool = false,
-        derived: Bool = false
+        derived: Bool = false,
+        container: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -490,6 +499,7 @@ public struct EReference: EStructuralFeature, ENamedElement {
         self.unique = unique
         self.unsettable = unsettable
         self.derived = derived
+        self.container = container
         self.storage = EObjectStorage()
         ContainerStamp.stamp(&self.eAnnotations, container: id)
     }

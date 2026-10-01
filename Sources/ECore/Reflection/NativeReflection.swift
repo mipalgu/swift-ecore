@@ -175,10 +175,12 @@ extension EClass: EcoreReflective {
         case .eAllReferences: return Reflect.objects(eAllReferences)
         case .eAllContainments: return Reflect.objects(eAllContainments)
         case .eIDAttribute: return .value(eIDAttribute)
-        case .eOperations, .eAllOperations, .eTypeParameters, .eGenericSuperTypes,
-            .eAllGenericSuperTypes:
+        case .eOperations: return Reflect.objects(eOperations)
+        case .eAllOperations: return Reflect.objects(eAllOperations)
+        case .eTypeParameters, .eGenericSuperTypes, .eAllGenericSuperTypes:
             return Reflect.empty
         case .ePackage: return .value(eContainerID)
+        case .instanceClassName: return .value(instanceClassName)
         case .instanceClass, .defaultValue: return .value(nil)
         default: return .unsupported
         }
@@ -193,6 +195,9 @@ extension EClass: EcoreReflective {
             eAnnotations = ReflectiveValues.elements(value, as: EAnnotation.self) ?? []
         case .eSuperTypes:
             eSuperTypes = ReflectiveValues.elements(value, as: EClass.self) ?? []
+        case .eOperations:
+            eOperations = ReflectiveValues.elements(value, as: EOperation.self) ?? []
+        case .instanceClassName: instanceClassName = value as? String
         case .eStructuralFeatures:
             eStructuralFeatures =
                 ReflectiveValues.elements(value, as: (any EStructuralFeature).self) ?? []
@@ -203,6 +208,7 @@ extension EClass: EcoreReflective {
 
     var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
         Reflect.contained(.eAnnotations, eAnnotations)
+            + Reflect.contained(.eOperations, eOperations)
             + Reflect.contained(
                 .eStructuralFeatures, eStructuralFeatures.compactMap { $0 as? any EcoreValue })
     }
@@ -239,7 +245,7 @@ extension EReference {
     func reflectiveGet(_ feature: EcoreFeatureName) -> ReflectiveValue {
         switch feature {
         case .containment: return .value(containment)
-        case .container: return .value(false)
+        case .container: return .value(container)
         case .resolveProxies: return .value(resolveProxies)
         case .eOpposite: return .value(opposite)
         case .eReferenceType:
@@ -265,6 +271,98 @@ extension EReference {
         default: return commonSet(feature, value)
         }
         return true
+    }
+
+    var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
+        Reflect.contained(.eAnnotations, eAnnotations)
+    }
+}
+
+// MARK: - EOperation and EParameter
+
+/// Reflective behaviour shared by operations and parameters.
+private protocol ReflectiveTypedElement: EcoreReflective, ETypedElement {
+    var name: String { get set }
+    var eAnnotations: [EAnnotation] { get set }
+    var isMany: Bool { get }
+    var isRequired: Bool { get }
+}
+
+extension ReflectiveTypedElement {
+    fileprivate func typedGet(_ feature: EcoreFeatureName) -> ReflectiveValue {
+        switch feature {
+        case .name: return .value(name)
+        case .eAnnotations: return Reflect.objects(eAnnotations)
+        case .ordered: return .value(ordered)
+        case .unique: return .value(unique)
+        case .lowerBound: return .value(lowerBound)
+        case .upperBound: return .value(upperBound)
+        case .many: return .value(isMany)
+        case .required: return .value(isRequired)
+        case .eType: return .value(eType.flatMap { EcorePackage.canonical($0) as? any EcoreValue })
+        case .eGenericType: return .value(nil)
+        default: return .unsupported
+        }
+    }
+
+    fileprivate mutating func typedSet(_ feature: EcoreFeatureName, _ value: (any EcoreValue)?)
+        -> Bool
+    {
+        switch feature {
+        case .name: name = value as? String ?? ""
+        case .eAnnotations:
+            eAnnotations = ReflectiveValues.elements(value, as: EAnnotation.self) ?? []
+        case .ordered: ordered = value as? Bool ?? true
+        case .unique: unique = value as? Bool ?? true
+        case .lowerBound: lowerBound = value as? Int ?? 0
+        case .upperBound: upperBound = value as? Int ?? 1
+        case .eType: eType = value as? any EClassifier
+        default: return false
+        }
+        return true
+    }
+}
+
+extension EOperation: ReflectiveTypedElement {
+    func reflectiveGet(_ feature: EcoreFeatureName) -> ReflectiveValue {
+        switch feature {
+        case .eContainingClass: return .value(eContainerID)
+        case .eParameters: return Reflect.objects(eParameters)
+        case .eExceptions:
+            return Reflect.classifiers(eExceptions.map { EcorePackage.canonical($0) })
+        case .eTypeParameters, .eGenericExceptions: return Reflect.empty
+        default: return typedGet(feature)
+        }
+    }
+
+    mutating func reflectiveSet(_ feature: EcoreFeatureName, _ value: (any EcoreValue)?) -> Bool {
+        switch feature {
+        case .eParameters:
+            eParameters = ReflectiveValues.elements(value, as: EParameter.self) ?? []
+            return true
+        case .eExceptions:
+            eExceptions = ReflectiveValues.elements(value, as: (any EClassifier).self) ?? []
+            return true
+        default: return typedSet(feature, value)
+        }
+    }
+
+    var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
+        Reflect.contained(.eAnnotations, eAnnotations)
+            + Reflect.contained(.eParameters, eParameters)
+    }
+}
+
+extension EParameter: ReflectiveTypedElement {
+    func reflectiveGet(_ feature: EcoreFeatureName) -> ReflectiveValue {
+        switch feature {
+        case .eOperation: return .value(eContainerID)
+        default: return typedGet(feature)
+        }
+    }
+
+    mutating func reflectiveSet(_ feature: EcoreFeatureName, _ value: (any EcoreValue)?) -> Bool {
+        typedSet(feature, value)
     }
 
     var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {

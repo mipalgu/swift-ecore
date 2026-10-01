@@ -222,6 +222,20 @@ enum ContainerStamp {
         }
     }
 
+    /// Records `container` as the container of every operation in the collection.
+    static func stamp(_ operations: inout [EOperation], container: EUUID) {
+        for index in operations.indices where operations[index].eContainerID != container {
+            operations[index].eContainerID = container
+        }
+    }
+
+    /// Records `container` as the container of every parameter in the collection.
+    static func stamp(_ parameters: inout [EParameter], container: EUUID) {
+        for index in parameters.indices where parameters[index].eContainerID != container {
+            parameters[index].eContainerID = container
+        }
+    }
+
     /// Records `container` as the container of every package in the collection.
     static func stamp(_ packages: inout [EPackage], container: EUUID) {
         for index in packages.indices where packages[index].eContainerID != container {

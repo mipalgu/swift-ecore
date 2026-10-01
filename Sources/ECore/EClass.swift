@@ -112,7 +112,16 @@ public struct EClass: EClassifier, ENamedElement {
     /// The operations (methods) defined on this class.
     ///
     /// Contains operations defined directly on this class, excluding inherited operations.
-    public var eOperations: [any EOperation]
+    public var eOperations: [EOperation] {
+        didSet { ContainerStamp.stamp(&eOperations, container: id) }
+    }
+
+    /// The fully qualified name of the class that implements this class, if any.
+    ///
+    /// Models use the instance class name to map a class to an existing type; Ecore uses
+    /// it, for example, for the map entry classes that hold the entries of a map-valued
+    /// reference. The value is `nil` when the class has no specified instance class.
+    public var instanceClassName: String?
 
     /// Internal storage for feature values.
     private var storage: EObjectStorage
@@ -131,6 +140,7 @@ public struct EClass: EClassifier, ENamedElement {
     ///   - eStructuralFeatures: The structural features; defaults to an empty array.
     ///   - eOperations: The operations; defaults to an empty array.
     ///   - eAnnotations: Annotations; defaults to an empty array.
+    ///   - instanceClassName: The name of the implementing class; defaults to `nil`.
     public init(
         id: EUUID = EUUID(),
         name: String,
@@ -138,8 +148,9 @@ public struct EClass: EClassifier, ENamedElement {
         isInterface: Bool = false,
         eSuperTypes: [EClass] = [],
         eStructuralFeatures: [any EStructuralFeature] = [],
-        eOperations: [any EOperation] = [],
-        eAnnotations: [EAnnotation] = []
+        eOperations: [EOperation] = [],
+        eAnnotations: [EAnnotation] = [],
+        instanceClassName: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -149,9 +160,11 @@ public struct EClass: EClassifier, ENamedElement {
         self.eStructuralFeatures = eStructuralFeatures
         self.eOperations = eOperations
         self.eAnnotations = eAnnotations
+        self.instanceClassName = instanceClassName
         self.storage = EObjectStorage()
         ContainerStamp.stamp(&self.eAnnotations, container: id)
         ContainerStamp.stamp(&self.eStructuralFeatures, container: id)
+        ContainerStamp.stamp(&self.eOperations, container: id)
     }
 
     /// Initialise an EClass from a DynamicEObject.
@@ -324,6 +337,33 @@ public struct EClass: EClassifier, ENamedElement {
         eStructuralFeatures.compactMap { $0 as? EReference }
     }
 
+    /// All operations of this class, including inherited ones, in EMF order.
+    ///
+    /// The operations of each direct supertype (in declaration order, themselves ordered
+    /// the same way) come first, followed by the operations declared by this class. Each
+    /// operation appears once, at its first position.
+    public var eAllOperations: [EOperation] {
+        var result: [EOperation] = []
+        var seen: Set<EUUID> = []
+        for superType in eAllSuperTypes {
+            for operation in superType.eOperations where seen.insert(operation.id).inserted {
+                result.append(operation)
+            }
+        }
+        for operation in eOperations where seen.insert(operation.id).inserted {
+            result.append(operation)
+        }
+        return result
+    }
+
+    /// Retrieve an operation declared by this class or inherited from a supertype.
+    ///
+    /// - Parameter name: The name of the operation to find.
+    /// - Returns: The first operation with that name, or `nil` if there is none.
+    public func getOperation(name: String) -> EOperation? {
+        eOperations.first { $0.name == name } ?? eAllOperations.first { $0.name == name }
+    }
+
     /// The first identifying attribute of this class, including inherited ones.
     public var eIDAttribute: EAttribute? {
         eAllAttributes.first { $0.isID }
@@ -331,10 +371,10 @@ public struct EClass: EClassifier, ENamedElement {
 
     // MARK: - Containment
 
-    /// The annotations and structural features contained directly by this class.
+    /// The annotations, operations, and structural features contained directly by this class.
     ///
-    /// Objects are listed in the order of the containment features `eAnnotations` and
-    /// `eStructuralFeatures`.
+    /// Objects are listed in the order of the containment features `eAnnotations`,
+    /// `eOperations`, and `eStructuralFeatures`.
     public var eContents: [any EObject] {
         containedObjects.map { $0.object }
     }
