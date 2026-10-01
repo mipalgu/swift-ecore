@@ -59,6 +59,9 @@ public actor ECoreExecutionEngine: Sendable {
     /// Debug mode flag for systematic tracing.
     private var debug: Bool = false
 
+    /// Whether unset features read as their defaults during navigation.
+    private var readsDefaults: Bool = false
+
     // MARK: - Initialisation
 
     /// Creates a new execution engine with the specified models.
@@ -82,6 +85,20 @@ public actor ECoreExecutionEngine: Sendable {
     /// - Parameter enabled: Whether to enable debug output
     public func enableDebugging(_ enabled: Bool = true) {
         debug = enabled
+    }
+
+    /// Chooses whether navigation reads unset features as their defaults.
+    ///
+    /// By default, navigating to an unset attribute yields `nil`. When enabled, it yields what the
+    /// Eclipse Modeling Framework yields: the default value of the attribute, such as `false`, zero,
+    /// or the converted default value literal, and an empty list for a many-valued feature (see
+    /// ``DynamicEObject/eGetWithDefault(_:)-(String)``). Previously navigated values are discarded
+    /// so that the change takes effect immediately.
+    ///
+    /// - Parameter enabled: Whether unset features read as their defaults.
+    public func enableDefaultValues(_ enabled: Bool = true) {
+        readsDefaults = enabled
+        navigationCache.removeAll()
     }
 
     /// Registers a model with the execution engine.
@@ -153,7 +170,13 @@ public actor ECoreExecutionEngine: Sendable {
         }
 
         let feature = try findStructuralFeature(for: currentObject, named: property)
-        let rawResult = currentObject.eGet(feature)
+        var rawResult = currentObject.eGet(feature)
+        if rawResult == nil, let computed = await derivedValue(of: currentObject, feature: feature.name) {
+            rawResult = computed
+        }
+        if rawResult == nil, readsDefaults, let dynamic = currentObject as? DynamicEObject {
+            rawResult = dynamic.eGetWithDefault(feature)
+        }
 
         if debug {
             print("[ECORE]   Value: \(String(describing: rawResult))")
@@ -519,6 +542,17 @@ public actor ECoreExecutionEngine: Sendable {
         navigationCache.keys
             .filter { $0.hasPrefix(objectId) }
             .forEach { navigationCache.removeValue(forKey: $0) }
+    }
+
+    /// Computes a feature that is derived or held by the container, using the model's resource.
+    private func derivedValue(of object: any EObject, feature featureName: String) async
+        -> (any EcoreValue)?
+    {
+        guard object is DynamicEObject else { return nil }
+        for model in models.values where await model.resource.contains(id: object.id) {
+            return await model.resource.eGetComputed(objectId: object.id, feature: featureName)
+        }
+        return nil
     }
 
     private func getLatestObject(_ object: any EObject) async -> (any EObject)? {
