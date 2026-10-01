@@ -77,7 +77,26 @@ public actor Resource {
     ///
     /// Resources can be managed independently or as part of a resource set
     /// for cross-resource reference resolution.
-    public weak var resourceSet: ResourceSet?
+    public weak var resourceSet: ResourceSet? {
+        didSet {
+            if let resourceSet {
+                metamodelSnapshot = resourceSet.metamodelSnapshot
+            }
+        }
+    }
+
+    /// The metamodels of the resource set that this resource belongs to, or belonged to.
+    ///
+    /// The reference to the resource set is weak. The snapshot lets serialisation keep the
+    /// namespaces of the metaclasses of the resource's objects after the set is released.
+    var metamodelSnapshot: MetamodelSnapshot?
+
+    /// Whether this resource belonged to a resource set that has since been released.
+    ///
+    /// The metamodels of the set remain available to the resource, but objects that the
+    /// resource refers to in other resources of the set can no longer be found, so
+    /// serialising such references reports ``XMIError/resourceSetReleased(_:)``.
+    public var lostResourceSet: Bool { metamodelSnapshot != nil && resourceSet == nil }
 
     /// Enable debug output.
     public var debug = false

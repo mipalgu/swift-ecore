@@ -51,6 +51,10 @@ public actor ResourceSet {
     /// relying on global variables, as requested.
     private var metamodelRegistry: OrderedDictionary<String, EPackage>
 
+    /// The registered metamodels, shared with the resources of the set so that they remain
+    /// available to the resources after the set has been released.
+    nonisolated let metamodelSnapshot = MetamodelSnapshot()
+
     /// URI converter for transforming logical URIs to physical URIs.
     ///
     /// Maps logical model URIs to their actual storage locations or
@@ -237,6 +241,7 @@ public actor ResourceSet {
     ///   - uri: The namespace URI identifying this metamodel.
     public func registerMetamodel(_ package: EPackage, uri: String) {
         metamodelRegistry[uri] = package
+        metamodelSnapshot.register(package, uri: uri)
     }
 
     /// Unregisters a metamodel by its namespace URI.
@@ -245,6 +250,7 @@ public actor ResourceSet {
     /// - Returns: The unregistered package, or `nil` if not found.
     @discardableResult
     public func unregisterMetamodel(uri: String) -> EPackage? {
+        metamodelSnapshot.unregister(uri: uri)
         return metamodelRegistry.removeValue(forKey: uri)
     }
 

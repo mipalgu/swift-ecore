@@ -437,6 +437,42 @@ public struct EEnum: EClassifier, ENamedElement {
         return literals.first { $0.value == value }
     }
 
+    /// Retrieves a literal by its literal text.
+    ///
+    /// The literal text is what documents contain (`17.0`), which can differ from the name of
+    /// the literal (`JDK170`). A literal without text of its own has its name as text.
+    ///
+    /// - Parameter text: The literal text to find.
+    /// - Returns: The first literal with that text, or `nil` if not found.
+    public func getLiteral(text: String) -> EEnumLiteral? {
+        return literals.first { ($0.literal ?? $0.name) == text }
+    }
+
+    /// The value that an attribute holds for text read from a document.
+    ///
+    /// The text is matched against the literal texts first and against the literal names
+    /// second, as EMF reads enumeration values by their literal. Models hold the name of
+    /// the literal. Text that matches no literal is returned unchanged.
+    ///
+    /// - Parameter text: The text of a document.
+    /// - Returns: The name of the matching literal, or the text itself if none matches.
+    public func storedValue(forText text: String) -> String {
+        return (getLiteral(text: text) ?? getLiteral(name: text))?.name ?? text
+    }
+
+    /// The text that a document holds for the value of an attribute.
+    ///
+    /// A stored literal name becomes the literal text, as EMF writes enumeration values by
+    /// their literal. Text that is already a literal text, or that matches no literal, is
+    /// returned unchanged.
+    ///
+    /// - Parameter value: The stored value, normally a literal name.
+    /// - Returns: The literal text of the literal with that name, or the value itself.
+    public func text(forStoredValue value: String) -> String {
+        if let literal = getLiteral(name: value) { return literal.literal ?? literal.name }
+        return value
+    }
+
     // MARK: - EObject Protocol Implementation
 
     /// Reflectively retrieves the value of a feature.

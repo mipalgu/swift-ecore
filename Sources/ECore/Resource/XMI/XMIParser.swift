@@ -22,6 +22,13 @@ public enum XMIError: Error, Sendable {
     case noRootObject
     case invalidObjectType(String)
     case unsupportedFeature(String)
+
+    /// The resource set that a resource was loaded into no longer exists.
+    ///
+    /// A resource refers to its resource set weakly. Writing a resource needs the metamodels
+    /// that the set holds, so a resource whose set has been released cannot be written
+    /// faithfully. The associated value is the URI of the resource.
+    case resourceSetReleased(String)
 }
 
 /// Parser for XMI (XML Metadata Interchange) files
@@ -449,6 +456,17 @@ public actor XMIParser {
                 continue
             }
 
+            // Enumerations are written by literal text and held by literal name
+            if let attribute = enhancedEClass.getStructuralFeature(name: attributeName) as? EAttribute,
+                let eEnum = attribute.eType as? EEnum
+            {
+                let texts = attribute.isMany
+                    ? attributeValue.split(whereSeparator: \.isWhitespace).map(String.init) : [attributeValue]
+                let names = texts.map { eEnum.storedValue(forText: $0) }
+                instance.eSet(attributeName, value: attribute.isMany ? names : names[0])
+                continue
+            }
+
             // Use type inference to convert string to appropriate type
             let value = inferType(from: attributeValue)
             instance.eSet(attributeName, value: value)
@@ -537,13 +555,18 @@ public actor XMIParser {
     ///
     /// A single-valued attribute takes its only text; a many-valued attribute becomes an
     /// array whose element type follows the declared type (strings) or the inferred
-    /// type of the values (integers, doubles, booleans, or strings).
+    /// type of the values (integers, doubles, booleans, or strings). The values of an
+    /// enumeration-typed attribute are the names of the literals that the texts denote.
     ///
     /// - Parameters:
     ///   - texts: The text contents of the child elements, in document order.
     ///   - attribute: The declared attribute.
     /// - Returns: The value to store.
     private func attributeValue(from texts: [String], for attribute: EAttribute) -> any EcoreValue {
+        if let eEnum = attribute.eType as? EEnum {
+            let names = texts.map { eEnum.storedValue(forText: $0) }
+            return attribute.isMany ? names : (names.first ?? "")
+        }
         if Self.isStringType(attribute.eType) {
             return attribute.isMany ? texts : (texts.first ?? "")
         }
