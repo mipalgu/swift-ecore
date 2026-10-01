@@ -160,7 +160,8 @@ public struct EPackage: ENamedElement {
     /// Loads an EPackage from a .ecore file.
     ///
     /// Parses the .ecore file and constructs a fully-formed EPackage with all classifiers
-    /// and subpackages.
+    /// and subpackages. Types that refer to other documents are resolved relative to the
+    /// file.
     ///
     /// - Parameters:
     ///   - url: URL to the .ecore file.
@@ -175,18 +176,13 @@ public struct EPackage: ENamedElement {
     /// print("Loaded package: \(package.name)")
     /// ```
     public init(url: URL, enableDebugging: Bool = false) async throws {
-        let parser = XMIParser(enableDebugging: enableDebugging)
-        let resource = try await parser.parse(url)
-
-        // Enable debugging on the resource as well
-        await resource.enableDebugging(enableDebugging)
-
-        let rootObjects = await resource.getRootObjects()
-        guard let dynamicPackage = rootObjects.first else {
+        let resourceSet = ResourceSet()
+        let resource = try await resourceSet.loadEcoreResource(
+            uri: url.absoluteString, enableDebugging: enableDebugging)
+        guard let package = await resource.getRootObjects().first as? EPackage else {
             throw XMIError.noRootObject
         }
-
-        self = try await resource.createEPackage(from: dynamicPackage)
+        self = package
     }
 
     /// Initialise an EPackage from a DynamicEObject (without resource context).

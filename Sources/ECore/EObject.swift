@@ -33,16 +33,6 @@ public protocol EStructuralFeature: Sendable, Identifiable, Hashable where ID ==
     var name: String { get }
 }
 
-/// An operation in the Ecore metamodel.
-///
-/// Operations represent the behavioural methods that can be invoked on instances of a class.
-public protocol EOperation: Sendable, Identifiable, Hashable where ID == EUUID {
-    /// The name of this operation.
-    ///
-    /// Must be unique within the containing class.
-    var name: String { get }
-}
-
 // MARK: - EObject Protocol
 
 /// Base protocol for all Ecore model elements.

@@ -378,6 +378,9 @@ public enum EcoreClassifier: String, CaseIterable, Sendable {
 
         /// Temporary storage key for eSuperTypes references during XMI parsing.
         public static let tempESuperTypesRef = "_eSuperTypes_ref"
+
+        /// Temporary storage key for eExceptions references during XMI parsing.
+        public static let tempEExceptionsRef = "_eExceptions_ref"
     }
 }
 

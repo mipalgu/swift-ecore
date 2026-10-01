@@ -135,9 +135,7 @@ struct GenModelResourceTests {
         #expect(try #require(package.getEClass("Named")).isAbstract)
     }
 
-    @Test(
-        "a class with several supertypes keeps all of them once loaded",
-        .disabled("requires multi-valued eSuperTypes in the Ecore loader"))
+    @Test("a class with several supertypes keeps all of them once loaded")
     func multipleSupertypesLoaded() async throws {
         let document = try await GenModelResource.loadDocument(url: Self.genModelURL)
         let package = try #require(document.foreignPackages.values.first)
@@ -278,9 +276,7 @@ struct GenModelResourceTests {
         #expect(package.genClasses[1].isInterface)
     }
 
-    @Test(
-        "multiple inheritance of a loaded class orders features by supertype",
-        .disabled("requires multi-valued eSuperTypes in the Ecore loader"))
+    @Test("multiple inheritance of a loaded class orders features by supertype")
     func loadedMultipleInheritance() async throws {
         let (_, package) = try await resolvedContext()
         let book = package.genClasses[2]

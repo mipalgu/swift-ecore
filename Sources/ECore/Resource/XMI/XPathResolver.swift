@@ -193,7 +193,7 @@ public struct XPathResolver: Sendable {
 
         // Handle different value types
         if let id = value as? EUUID {
-            // Single-valued reference — also accept index 0 for XPath
+            // Single-valued reference: also accept index 0 for XPath
             // compatibility (e.g., //@feature.0 when only one element)
             return (index == nil || index == 0) ? id : nil
         } else if let ids = value as? [EUUID] {

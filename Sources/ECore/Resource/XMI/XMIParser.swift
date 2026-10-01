@@ -7,6 +7,7 @@
 //
 import EMFBase
 import Foundation
+import OrderedCollections
 import SwiftXML
 
 /// Errors that can occur during XMI parsing
@@ -72,8 +73,8 @@ public actor XMIParser {
     /// Maps of parsed objects for reference resolution
     private var xmiIdMap: [String: EUUID] = [:]
     private var fragmentMap: [String: EUUID] = [:]
-    private var referenceMap: [EUUID: [String: String]] = [:]  // object ID → (feature name → href)
-    private var declaredReferenceMap: [EUUID: [String: [CrossReference]]] = [:]  // object ID → (declared reference name → references)
+    private var referenceMap: [EUUID: OrderedDictionary<String, String>] = [:]  // object ID → (feature name → href)
+    private var declaredReferenceMap: [EUUID: OrderedDictionary<String, [CrossReference]>] = [:]  // object ID → (declared reference name → references)
     private var eClassCache: [String: EClass] = [:]  // className → EClass for caching dynamically created classes
     private var builtinTypeCache: [String: DynamicEObject] = [:]  // typeName → EDataType for built-in Ecore types
 
@@ -453,8 +454,8 @@ public actor XMIParser {
         }
 
         // Parse child elements (may be attributes or references)
-        var childReferences: [String: [EUUID]] = [:]
-        var childAttributeValues: [String: [String]] = [:]
+        var childReferences: OrderedDictionary<String, [EUUID]> = [:]
+        var childAttributeValues: OrderedDictionary<String, [String]> = [:]
 
         for child in element.children {
             let childName = child.name
@@ -671,11 +672,19 @@ public actor XMIParser {
             eClass.eSet(.interface, isInterface)
         }
 
+        if let instanceClassName = element[.instanceClassName] {
+            eClass.eSet(.instanceClassName, instanceClassName)
+        }
+
         // Parse eSuperTypes - will be resolved in second pass
-        if let eSuperTypesAttr = element[.eSuperTypes] {
-            eClass.eSet(EcoreClassifier.XMIParsingConstants.tempESuperTypesRef, value: eSuperTypesAttr)
+        let genericSuperTypes = element.children(EcoreFeatureName.eGenericSuperTypes.rawValue)
+            .compactMap { $0[EcoreFeatureName.eClassifier.rawValue] }
+        let superTypeReferences = ([element[.eSuperTypes]].compactMap { $0 } + genericSuperTypes)
+            .joined(separator: " ")
+        if !superTypeReferences.isEmpty {
+            eClass.eSet(EcoreClassifier.XMIParsingConstants.tempESuperTypesRef, value: superTypeReferences)
             if debug {
-                print("[XMI DEBUG] parseEClass: Found eSuperTypes='\(eSuperTypesAttr)' for class '\(name)'")
+                print("[XMI DEBUG] parseEClass: Found eSuperTypes='\(superTypeReferences)' for class '\(name)'")
             }
         }
 
@@ -705,6 +714,20 @@ public actor XMIParser {
         await resource.register(eClass)
 
         return eClass
+    }
+
+    /// The type reference of a typed element.
+    ///
+    /// The type is the `eType` attribute. If the element has none, the classifier of its
+    /// `eGenericType` child is used, which is how Ecore writes a type that has type
+    /// arguments; the raw classifier is the type, and type arguments are not represented.
+    ///
+    /// - Parameter element: The attribute, reference, operation, or parameter element.
+    /// - Returns: The reference text, or `nil` if the element has no type.
+    private func typeReference(of element: XElement) -> String? {
+        if let eType = element[.eType] { return eType }
+        return element.children(EcoreFeatureName.eGenericType.rawValue).first?[
+            EcoreFeatureName.eClassifier.rawValue]
     }
 
     /// Parse an EOperation element together with its parameters.
@@ -749,11 +772,21 @@ public actor XMIParser {
             xmiIdMap[xmiId] = object.id
         }
         object.eSet(.name, name)
-        if let eType = element[.eType] {
+        if let eType = typeReference(of: element) {
             object.eSet(EcoreClassifier.XMIParsingConstants.tempETypeRef, value: eType)
         }
         if let lowerBound = element.getInt(.lowerBound) { object.eSet(.lowerBound, lowerBound) }
         if let upperBound = element.getInt(.upperBound) { object.eSet(.upperBound, upperBound) }
+        for flag in [XMIAttribute.ordered, .unique] {
+            if let value = element.getBool(flag) { object.eSet(flag.rawValue, value: value) }
+        }
+        let genericExceptions = element.children(EcoreFeatureName.eGenericExceptions.rawValue)
+            .compactMap { $0[EcoreFeatureName.eClassifier.rawValue] }
+        let exceptions = ([element[EcoreFeatureName.eExceptions.rawValue]].compactMap { $0 }
+            + genericExceptions).joined(separator: " ")
+        if !exceptions.isEmpty {
+            object.eSet(EcoreClassifier.XMIParsingConstants.tempEExceptionsRef, value: exceptions)
+        }
         await resource.register(object)
         return object
     }
@@ -907,7 +940,7 @@ public actor XMIParser {
         attribute.eSet(.name, name)
 
         // eType will be resolved in second pass
-        if let eType = element[.eType] {
+        if let eType = typeReference(of: element) {
             // Store for later resolution
             attribute.eSet(EcoreClassifier.XMIParsingConstants.tempETypeRef, value: eType)
         }
@@ -977,7 +1010,7 @@ public actor XMIParser {
         reference.eSet(.name, name)
 
         // eType will be resolved in second pass
-        if let eType = element[.eType] {
+        if let eType = typeReference(of: element) {
             reference.eSet(EcoreClassifier.XMIParsingConstants.tempETypeRef, value: eType)
         }
 
@@ -1046,11 +1079,9 @@ public actor XMIParser {
             if let eTypeRef = await resource.eGet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempETypeRef)
                 as? String
             {
-                if let resolved = await resolveReference(
-                    eTypeRef, using: xpathResolver, in: resource)
-                {
-                    await resource.eSet(objectId: object.id, feature: XMIAttribute.eType.rawValue, value: resolved)
-                }
+                await resolveDeclaredReference(
+                    CrossReference.parseList(eTypeRef), feature: XMIAttribute.eType.rawValue,
+                    of: object, using: xpathResolver, in: resource)
                 // Clear temporary reference
                 await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempETypeRef, value: nil)
             }
@@ -1081,44 +1112,20 @@ public actor XMIParser {
                 await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempOppositeType, value: nil)
             }
 
-            // Resolve eSuperTypes references (metamodel)
-            if let eSuperTypesRef = await resource.eGet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempESuperTypesRef)
-                as? String
-            {
+            // Resolve eSuperTypes and eExceptions references (metamodel)
+            for (temporary, feature) in [
+                (EcoreClassifier.XMIParsingConstants.tempESuperTypesRef, XMIAttribute.eSuperTypes.rawValue),
+                (EcoreClassifier.XMIParsingConstants.tempEExceptionsRef, EcoreFeatureName.eExceptions.rawValue),
+            ] {
+                guard let references = await resource.eGet(objectId: object.id, feature: temporary) as? String
+                else { continue }
                 if debug {
-                    print("[XMI DEBUG] resolveReferences: Resolving eSuperTypes reference '\(eSuperTypesRef)' for object \(object.id)")
+                    print("[XMI DEBUG] resolveReferences: Resolving \(feature) '\(references)' for object \(object.id)")
                 }
-
-                // eSuperTypes can be a space-separated list of references
-                let superTypeRefs = eSuperTypesRef.split(separator: " ").map(String.init)
-                var resolvedSuperTypes: [EUUID] = []
-
-                for superTypeRef in superTypeRefs {
-                    if let resolved = await resolveReference(
-                        superTypeRef, using: xpathResolver, in: resource),
-                       let uuid = resolved as? EUUID
-                    {
-                        resolvedSuperTypes.append(uuid)
-                        if debug {
-                            print("[XMI DEBUG] resolveReferences: Successfully resolved superType '\(superTypeRef)' to \(uuid)")
-                        }
-                    } else if debug {
-                        print("[XMI DEBUG] resolveReferences: Failed to resolve superType '\(superTypeRef)'")
-                    }
-                }
-
-                // Set the resolved eSuperTypes
-                if !resolvedSuperTypes.isEmpty {
-                    // For single supertype, set it directly; for multiple, set as array
-                    if resolvedSuperTypes.count == 1 {
-                        await resource.eSet(objectId: object.id, feature: XMIAttribute.eSuperTypes.rawValue, value: resolvedSuperTypes[0])
-                    } else {
-                        await resource.eSet(objectId: object.id, feature: XMIAttribute.eSuperTypes.rawValue, value: resolvedSuperTypes)
-                    }
-                }
-
-                // Clear temporary reference
-                await resource.eSet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempESuperTypesRef, value: nil)
+                await resolveDeclaredReference(
+                    CrossReference.parseList(references), feature: feature, of: object,
+                    using: xpathResolver, in: resource)
+                await resource.eSet(objectId: object.id, feature: temporary, value: nil)
             }
 
             // Resolve references declared by the metamodel
@@ -1281,18 +1288,19 @@ public actor XMIParser {
         }
     }
 
-    /// Resolve Ecore built-in types from URIs like `ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt`.
+    /// Resolve references to the classifiers of the Ecore metamodel itself.
     ///
-    /// This helper extracts the built-in type name from the URI fragment, reuses
-    /// any cached instance, and otherwise creates a dynamic `EDataType`
-    /// representation in the current resource. Registration happens synchronously
-    /// within the parser actor so the resource and cache stay consistent under
-    /// Swift strict concurrency.
+    /// URIs such as `ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt` and
+    /// `ecore:EClass http://www.eclipse.org/emf/2002/Ecore#//EClass` name a built-in data
+    /// type or a class of the Ecore metamodel. They resolve to the identifier of the real
+    /// classifier of ``EcorePackage``, which a resource resolves back to that classifier.
+    /// A name that Ecore does not define is represented by a data type of that name in the
+    /// current resource.
     ///
     /// - Parameters:
     ///   - reference: The Ecore type URI reference.
-    ///   - resource: The current resource used to register the built-in type.
-    /// - Returns: A dynamic object representing the built-in type, or `nil` if the reference is not recognised.
+    ///   - resource: The current resource used to register an unknown type.
+    /// - Returns: The identifier of the classifier, or `nil` if the reference is not recognised.
     private func resolveEcoreBuiltinType(_ reference: String, in resource: Resource) async -> (
         any EcoreValue
     )? {
@@ -1300,20 +1308,20 @@ public actor XMIParser {
         guard let fragmentStart = reference.range(of: "#//") else { return nil }
         let typeName = String(reference[fragmentStart.upperBound...])
 
+        if let classifier = EcorePackage.classifier(named: typeName) {
+            return classifier.id
+        }
+
         // Return cached type if available
         if let cachedType = builtinTypeCache[typeName] {
             return cachedType
         }
 
-        // Create appropriate built-in type
+        // Represent a type that Ecore does not define by a data type of that name
         let eDataTypeClass = await getOrCreateEClass(
             EcoreClassifier.eDataType.rawValue, in: resource)
         var dataType = DynamicEObject(eClass: eDataTypeClass)
-
-        // Set the name based on the fragment
         dataType.eSet(.name, typeName)
-
-        // Register with resource and cache
         await resource.register(dataType)
         builtinTypeCache[typeName] = dataType
 
@@ -1708,17 +1716,17 @@ public actor XMIParser {
     /// Structure information collected during element analysis
     private struct ElementStructureInfo {
         let className: String
-        let attributes: [String: String]  // name -> value
-        let containmentRefs: [String: Bool]  // name -> isMultiValued
+        let attributes: OrderedDictionary<String, String>  // name -> value
+        let containmentRefs: OrderedDictionary<String, Bool>  // name -> isMultiValued
         let crossRefs: [String]  // feature names
     }
 
     /// Collect structural information from an XML element before creating objects
     private func collectStructuralInfo(from element: XElement) -> ElementStructureInfo {
-        // Extract class name — prefer xsi:type if present (for polymorphic elements)
+        // Extract class name, preferring xsi:type if present (for polymorphic elements)
         let className: String
         if let xsiType = element[XMIAttribute.xsiType.rawValue] {
-            // xsi:type="prefix:TypeName" — extract the type name after the colon
+            // xsi:type="prefix:TypeName": extract the type name after the colon
             if xsiType.contains(":") {
                 let parts = xsiType.split(separator: ":")
                 className = String(parts.last ?? "")
@@ -1732,8 +1740,8 @@ public actor XMIParser {
             className = element.name
         }
 
-        var attributes: [String: String] = [:]
-        var containmentRefs: [String: Bool] = [:]
+        var attributes: OrderedDictionary<String, String> = [:]
+        var containmentRefs: OrderedDictionary<String, Bool> = [:]
         var crossRefs: [String] = []
 
         // Collect attributes
@@ -1750,7 +1758,7 @@ public actor XMIParser {
         }
 
         // Collect child elements
-        var childCounts: [String: Int] = [:]
+        var childCounts: OrderedDictionary<String, Int> = [:]
         for child in element.children {
             let childName = child.name
             childCounts[childName, default: 0] += 1

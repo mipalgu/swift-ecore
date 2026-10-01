@@ -183,9 +183,11 @@ public struct FragmentNavigator: Sendable {
             let classifiers = package.eClassifiers.compactMap { $0 as? any EObject }
             return classifiers + package.eSubpackages.map { $0 as any EObject }
         case let eClass as EClass:
-            let operations = eClass.eOperations.compactMap { $0 as? any EObject }
+            let operations = eClass.eOperations.map { $0 as any EObject }
             let features = eClass.eStructuralFeatures.compactMap { $0 as? any EObject }
             return operations + features
+        case let operation as EOperation:
+            return operation.eParameters.map { $0 as any EObject }
         case let eEnum as EEnum:
             return eEnum.literals.map { $0 as any EObject }
         case let dynamic as DynamicEObject:

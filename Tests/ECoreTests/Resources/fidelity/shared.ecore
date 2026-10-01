@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="shared" nsURI="http://example.org/fidelity/shared" nsPrefix="shared">
+  <eClassifiers xsi:type="ecore:EClass" name="Audited" abstract="true">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="revision" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="Colour">
+    <eLiterals name="Red"/>
+    <eLiterals name="Green" value="1"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EDataType" name="Identifier" instanceClassName="java.util.UUID"/>
+  <eSubpackages name="inner" nsURI="http://example.org/fidelity/shared/inner" nsPrefix="inner">
+    <eClassifiers xsi:type="ecore:EClass" name="Stamp"/>
+  </eSubpackages>
+</ecore:EPackage>

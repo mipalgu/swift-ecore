@@ -154,11 +154,16 @@ public struct XMISerializer: Sendable {
         // Get cross-references
         let references = try await getCrossReferences(object, in: resource)
 
+        // Get the values of many-valued attributes, written as child elements
+        let valueChildren = await getManyValuedAttributes(object, in: resource)
+
         // Check if we need to close element
-        if children.isEmpty && references.isEmpty {
+        if children.isEmpty && references.isEmpty && valueChildren.isEmpty {
             xml += "/>"
         } else {
             xml += ">\n"
+
+            xml += serializeManyValuedAttributes(valueChildren, indentLevel: indentLevel + 1)
 
             // Serialise contained children
             for (featureName, childObjects) in children {
@@ -208,6 +213,9 @@ public struct XMISerializer: Sendable {
         // Get cross-references
         let references = try await getCrossReferences(object, in: resource)
 
+        // Get the values of many-valued attributes, written as child elements
+        let valueChildren = await getManyValuedAttributes(object, in: resource)
+
         var xml = "\(indent)<\(featureName)"
 
         // Add attributes in insertion order (preserving EMF semantic ordering)
@@ -225,9 +233,9 @@ public struct XMISerializer: Sendable {
                 continue
             }
 
-            // Only serialise primitive types as attributes
-            if value is EUUID || value is [EUUID] {
-                // Skip references - they're handled separately
+            // Only serialise single primitive values as attributes
+            if isReferenceValue(value) || manyValuedTexts(of: value) != nil {
+                // Skip references and many-valued attributes - they're handled separately
                 continue
             }
 
@@ -235,10 +243,12 @@ public struct XMISerializer: Sendable {
             xml += " \(attributeName)=\"\(escapeXML(convertToString(value)))\""
         }
 
-        if children.isEmpty && references.isEmpty {
+        if children.isEmpty && references.isEmpty && valueChildren.isEmpty {
             xml += "/>\n"
         } else {
             xml += ">\n"
+
+            xml += serializeManyValuedAttributes(valueChildren, indentLevel: indentLevel + 1)
 
             // Serialise nested children
             for (childFeatureName, childObjects) in children {
@@ -273,6 +283,16 @@ public struct XMISerializer: Sendable {
     /// - Throws: `XMIError` if serialisation fails
     private func serializeCrossReference(featureName: String, target: any EcoreValue, in resource: Resource, indentLevel: Int) async throws -> String {
         let indent = String(repeating: "    ", count: indentLevel)
+
+        // Many-valued references are written as one element per target, in order
+        if target is [EUUID] || target is [ResourceProxy] || target is EcoreValueArray {
+            var xml = ""
+            for single in referenceTargets(of: target) {
+                xml += try await serializeCrossReference(
+                    featureName: featureName, target: single, in: resource, indentLevel: indentLevel)
+            }
+            return xml
+        }
 
         let href: String
 
@@ -497,9 +517,9 @@ public struct XMISerializer: Sendable {
                 continue
             }
 
-            // Only serialise primitive types as attributes
-            if value is EUUID || value is [EUUID] {
-                // Skip references - they're handled separately
+            // Only serialise single primitive values as attributes
+            if isReferenceValue(value) || manyValuedTexts(of: value) != nil {
+                // Skip references and many-valued attributes - they're handled separately
                 continue
             }
 
@@ -517,11 +537,11 @@ public struct XMISerializer: Sendable {
     /// - Parameters:
     ///   - object: The parent object
     ///   - resource: The Resource
-    /// - Returns: Dictionary of feature name to child objects
+    /// - Returns: The feature names with their child objects, in the order the features were set
     private func getContainedChildren(_ object: any EObject, in resource: Resource) async throws
-        -> [String: [any EObject]]
+        -> [(String, [any EObject])]
     {
-        var children: [String: [any EObject]] = [:]
+        var children: [(String, [any EObject])] = []
 
         guard let dynamicObject = object as? DynamicEObject else {
             return children
@@ -565,7 +585,7 @@ public struct XMISerializer: Sendable {
                 if let childObject = await resource.resolve(childId), childObject is DynamicEObject
                 {
                     // This is containment - serialize as child elements
-                    children[featureName] = [childObject]
+                    children.append((featureName, [childObject]))
                 }
             } else if let childIds = value as? [EUUID] {
                 var childObjects: [any EObject] = []
@@ -577,7 +597,7 @@ public struct XMISerializer: Sendable {
                     }
                 }
                 if !childObjects.isEmpty {
-                    children[featureName] = childObjects
+                    children.append((featureName, childObjects))
                 }
             }
         }
@@ -592,11 +612,12 @@ public struct XMISerializer: Sendable {
     /// - Parameters:
     ///   - object: The object
     ///   - resource: The Resource
-    /// - Returns: Dictionary of feature name to target (EUUID or ResourceProxy)
+    /// - Returns: The feature names with their targets (EUUID, ResourceProxy, or lists of them),
+    ///   in the order the features were set
     private func getCrossReferences(_ object: any EObject, in resource: Resource) async throws
-        -> [String: any EcoreValue]
+        -> [(String, any EcoreValue)]
     {
-        var references: [String: any EcoreValue] = [:]
+        var references: [(String, any EcoreValue)] = []
 
         guard let dynamicObject = object as? DynamicEObject else {
             return references
@@ -624,9 +645,10 @@ public struct XMISerializer: Sendable {
 
                 if let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName)
                 {
-                    // Can be EUUID (same-resource) or ResourceProxy (cross-resource)
-                    if value is EUUID || value is ResourceProxy {
-                        references[featureName] = value
+                    // Can be EUUID (same-resource) or ResourceProxy (cross-resource),
+                    // or a list of them for a many-valued reference
+                    if !referenceTargets(of: value).isEmpty {
+                        references.append((featureName, value))
                     }
                 }
             }
@@ -634,6 +656,95 @@ public struct XMISerializer: Sendable {
         }
 
         return references
+    }
+
+    // MARK: - Many-Valued Values
+
+    /// Whether a stored value refers to other objects.
+    ///
+    /// - Parameter value: The stored value.
+    /// - Returns: `true` for identifiers, proxies, and lists of them.
+    private func isReferenceValue(_ value: any EcoreValue) -> Bool {
+        value is EUUID || value is [EUUID] || value is ResourceProxy || value is [ResourceProxy]
+    }
+
+    /// The individual targets of a stored reference value.
+    ///
+    /// - Parameter value: The stored value.
+    /// - Returns: The identifiers and proxies the value holds in order; empty if the value is not
+    ///   a reference value.
+    private func referenceTargets(of value: any EcoreValue) -> [any EcoreValue] {
+        switch value {
+        case let identifier as EUUID: return [identifier]
+        case let proxy as ResourceProxy: return [proxy]
+        case let identifiers as [EUUID]: return identifiers
+        case let proxies as [ResourceProxy]: return proxies
+        case let array as EcoreValueArray:
+            let targets = array.values.filter { $0 is EUUID || $0 is ResourceProxy }
+            return targets.count == array.values.count ? targets : []
+        default: return []
+        }
+    }
+
+    /// The texts of a many-valued attribute value.
+    ///
+    /// - Parameter value: The stored value.
+    /// - Returns: The text of each element, or `nil` if the value is not a list of primitives.
+    private func manyValuedTexts(of value: any EcoreValue) -> [String]? {
+        switch value {
+        case let strings as [String]: return strings
+        case let ints as [Int]: return ints.map(String.init)
+        case let doubles as [Double]: return doubles.map { convertToString($0) }
+        case let bools as [Bool]: return bools.map { convertToString($0) }
+        case let array as EcoreValueArray:
+            let texts = array.values.map { element -> String? in
+                switch element {
+                case is EUUID, is ResourceProxy, is any EObject: return nil
+                default: return convertToString(element)
+                }
+            }
+            return texts.contains(where: { $0 == nil }) ? nil : texts.compactMap { $0 }
+        default: return nil
+        }
+    }
+
+    /// Gets the many-valued attributes of an object.
+    ///
+    /// - Parameters:
+    ///   - object: The object.
+    ///   - resource: The Resource.
+    /// - Returns: The attribute names with the text of each element, in the order the
+    ///   features were set.
+    private func getManyValuedAttributes(_ object: any EObject, in resource: Resource) async
+        -> [(String, [String])]
+    {
+        guard let dynamicObject = object as? DynamicEObject else { return [] }
+        var result: [(String, [String])] = []
+        for featureName in await resource.getFeatureNames(objectId: dynamicObject.id) {
+            if featureName.hasPrefix("_") || featureName == "eClass" { continue }
+            guard let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName),
+                let texts = manyValuedTexts(of: value), !texts.isEmpty
+            else { continue }
+            result.append((featureName, texts))
+        }
+        return result
+    }
+
+    /// Writes many-valued attributes as one child element per value.
+    ///
+    /// - Parameters:
+    ///   - attributes: The attribute names with the text of each element.
+    ///   - indentLevel: The indentation level of the child elements.
+    /// - Returns: The XML text.
+    private func serializeManyValuedAttributes(_ attributes: [(String, [String])], indentLevel: Int) -> String {
+        let indent = String(repeating: "    ", count: indentLevel)
+        var xml = ""
+        for (name, texts) in attributes {
+            for text in texts {
+                xml += "\(indent)<\(name)>\(escapeXML(text))</\(name)>\n"
+            }
+        }
+        return xml
     }
 
     /// Collect all namespace declarations needed for an object and its children

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="consumer" nsURI="http://example.org/fidelity/consumer" nsPrefix="consumer">
+  <eClassifiers xsi:type="ecore:EClass" name="Widget" eSuperTypes="shared.ecore#//Audited">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="colour" eType="ecore:EEnum shared.ecore#//Colour"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="uuid" eType="ecore:EDataType shared.ecore#//Identifier"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="stamp" eType="ecore:EClass shared.ecore#//inner/Stamp"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="parent" eType="#//Widget"/>
+  </eClassifiers>
+</ecore:EPackage>
