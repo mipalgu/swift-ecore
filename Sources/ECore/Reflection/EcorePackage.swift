@@ -466,7 +466,9 @@ private struct EcorePackageBuilder {
 
         var dataTypes: [EcoreDataType: EDataType] = [:]
         for type in EcoreDataType.allCases where type != .eStringObject {
-            dataTypes[type] = EDataType(name: type.rawValue)
+            var dataType = EDataType(name: type.rawValue)
+            dataType.instanceClassName = nil
+            dataTypes[type] = dataType
         }
 
         func stand(in classifier: EcoreClassifier) -> EClass {
