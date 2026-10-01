@@ -66,6 +66,23 @@ provides comprehensive Eclipse Modelling Framework functionality for Swift.
 - [x] EPackage and EFactory
 - [x] Resource and ResourceSet infrastructure
 
+### Reflective Ecore Metamodel ✅
+
+- [x] `EcorePackage`: the Ecore metamodel as an `EPackage` (nsURI `http://www.eclipse.org/emf/2002/Ecore`)
+- [x] Native metamodel objects report the real descriptor from `eClass`
+- [x] `eGet`/`eSet` for the meta features (`eClassifiers`, `eStructuralFeatures`, `eAllSuperTypes`, `eType`, `eOpposite`, bounds, flags, ...)
+- [x] Container features (`ePackage`, `eContainingClass`, `eEnum`, `eSuperPackage`) and `eContainer`, `eContainingFeature`, `eContents`, `eAllContents` navigation
+- [x] `Resource.getAllInstancesOf` enumerates the contents of metamodels held by a resource
+- [x] `XMISerializer.serialize(_:)` writes an `EPackage` (including `EcorePackage.instance`) as an `.ecore` document
+
+```swift
+let ecore = EcorePackage.instance
+let attributeClass = EcorePackage.metaClass(.eAttribute)
+let engine = ECoreExecutionEngine(models: [:])
+await engine.registerResource(resource, alias: "MM")  // resource holding an EPackage
+let classes = try await engine.navigate(from: package, property: "eClassifiers")
+```
+
 ### In-Memory Model ✅
 
 - [x] Binary tree containment tests (BinTree model)
