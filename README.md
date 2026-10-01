@@ -156,7 +156,13 @@ a loader, and a language-neutral facade for code generators.
   structurally compatible with the published generator metamodel (class, feature and enumeration
   names, multiplicities, containment, defaults), so `.genmodel` files interoperate in both directions.
 - `GenModelResource.load(url:resourceSet:resolution:)` loads a `.genmodel`, registers the
-  metamodel, and loads the source models named by `foreignModel` relative to the file.
+  metamodel, and loads the source models named by `foreignModel` relative to the file. With
+  `.nameFragments` the `ecore*` references are resolved through the resource set to the native Ecore
+  elements; with `.deferred` they stay as the text of the document.
+- `GenModelResource.save(_:to:)` writes a generator model in the layout of the Eclipse Modeling
+  Framework (attribute-style references such as `ecoreClass="library.ecore#//Book"`). Generator
+  packages are identified by the name of their Ecore package (`Ecore.genmodel#//ecore`), through
+  a `FragmentSegmentRule` registered by `GenModelFragments`.
 - `GenModelContext` snapshots the loaded models, and `GenElement` offers navigation, inherited
   feature order, feature and classifier numbering, label features, feature shortcuts and
   name formatting (`capName`, `uncapName`, `upperName`). Nothing in the target depends on a

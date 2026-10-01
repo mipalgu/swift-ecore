@@ -53,6 +53,17 @@ struct CrossDocumentFixtures {
         try await resourceSet.loadXMIResource(uri: uri("library.mapping"))
     }
 
+    /// Loads a document of the fixture directory with the given reference parsing.
+    ///
+    /// - Parameters:
+    ///   - name: The file name.
+    ///   - parsing: How reference attributes are read.
+    /// - Returns: The parsed resource.
+    /// - Throws: Any parsing error.
+    func loadXMI(_ name: String, parsing: XMIReferenceParsing) async throws -> Resource {
+        try await resourceSet.loadXMIResource(uri: uri(name), referenceParsing: parsing)
+    }
+
     /// Returns the objects of a resource in registration order that are instances of a class.
     ///
     /// - Parameters:
