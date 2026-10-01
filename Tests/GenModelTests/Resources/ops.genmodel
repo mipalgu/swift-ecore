@@ -15,5 +15,6 @@
       <genOperations ecoreOperation="ops.ecore#//Shape/ping"/>
       <genOperations ecoreOperation="ops.ecore#//Shape/ping.1"/>
     </genClasses>
+    <nestedGenPackages prefix="Inner"/>
   </genPackages>
 </genmodel:GenModel>

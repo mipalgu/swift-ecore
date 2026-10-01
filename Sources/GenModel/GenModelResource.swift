@@ -98,6 +98,7 @@ public enum GenModelResource {
             await resourceSet.registerMetamodel(package, uri: GenModelConstants.nsURI)
         }
         await GenModelFragments.register(in: resourceSet)
+        await GenModelDerivedFeatures.register(in: resourceSet)
 
         let resolvesReferences = resolution == .nameFragments
         let resource = try await resourceSet.loadXMIResource(

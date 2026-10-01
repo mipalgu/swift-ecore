@@ -108,6 +108,16 @@ public enum GenModelConstants {
         ]
     }
 
+    /// The names of enumeration literals of the generator metamodel that the facade interprets.
+    public enum LiteralName {
+        /// The rich client platform literal of the runtime platform.
+        public static let richClientPlatform = "RCP"
+        /// The rich Ajax platform literal of the runtime platform.
+        public static let richAjaxPlatform = "RAP"
+        /// The reflective literal of the delegation kind.
+        public static let reflectiveDelegation = "Reflective"
+    }
+
     /// The names of the enumerations of the generator metamodel.
     public enum EnumName {
         /// How item providers are created.
@@ -200,6 +210,22 @@ public enum GenModelConstants {
         public static let ecoreParameter = "ecoreParameter"
         /// The Ecore type parameter of a generator type parameter.
         public static let ecoreTypeParameter = "ecoreTypeParameter"
+        /// The derived classifiers of a generator package.
+        public static let genClassifiers = "genClassifiers"
+        /// The generator package that owns a classifier.
+        public static let genPackage = "genPackage"
+        /// The generator model that owns a generator package.
+        public static let genModel = "genModel"
+        /// The targeted runtime platform of a generator model.
+        public static let runtimePlatform = "runtimePlatform"
+        /// The feature delegation strategy of a generator model.
+        public static let featureDelegation = "featureDelegation"
+        /// The derived flag that tells whether the runtime platform is a rich client.
+        public static let richClientPlatform = "richClientPlatform"
+        /// The derived flag that tells whether the runtime platform is a rich Ajax client.
+        public static let richAjaxPlatform = "richAjaxPlatform"
+        /// The derived flag that tells whether features delegate reflectively.
+        public static let reflectiveDelegation = "reflectiveDelegation"
         /// The prefix of a generator package.
         public static let prefix = "prefix"
         /// The name of a generator model.
