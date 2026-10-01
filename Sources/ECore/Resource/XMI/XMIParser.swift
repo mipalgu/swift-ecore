@@ -112,6 +112,13 @@ public actor XMIParser {
             return cachedClass
         }
 
+        // Ecore metaclasses are described by the reflective Ecore package
+        if let known = EcoreClassifier(rawValue: classifierName) {
+            let descriptor = EcorePackage.metaClass(known)
+            eClassCache[classifierName] = descriptor
+            return descriptor
+        }
+
         // Create new EClass for this classifier type
         let eClass = EClass(name: classifierName)
 

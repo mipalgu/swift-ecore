@@ -59,6 +59,20 @@ public actor Resource {
     /// Maintains insertion order.
     private var rootObjects: [EUUID]
 
+    /// Metamodel objects contained, directly or indirectly, by native metamodel objects
+    /// registered with this resource, indexed by identifier.
+    ///
+    /// Native metamodel types are value types that hold their contents inline, so their
+    /// contents are indexed here to make them resolvable by identifier.
+    private var nativeContents: OrderedDictionary<EUUID, any EObject> = [:]
+
+    /// The identifier of the container of each indexed native object.
+    private var nativeContainers: [EUUID: EUUID] = [:]
+
+    /// The identifiers of the native objects contained by each registered native root,
+    /// in depth-first order.
+    private var nativeOwned: [EUUID: [EUUID]] = [:]
+
     /// Pending opposite reference resolutions.
     ///
     /// Maps EReference ID to (source DynamicEObject ID, target DynamicEObject ID)
@@ -127,6 +141,7 @@ public actor Resource {
     public func register(_ object: any EObject) -> Bool {
         let isNew = objects[object.id] == nil
         objects[object.id] = object
+        indexNativeContents(of: object)
         return isNew
     }
 
@@ -143,6 +158,7 @@ public actor Resource {
 
         // Update or add the object
         objects[object.id] = object
+        indexNativeContents(of: object)
 
         // Check if this should be a root object (not contained by another)
         // This check happens regardless of whether the object is new, because
@@ -182,6 +198,7 @@ public actor Resource {
     public func remove(id: EUUID) -> Bool {
         guard objects.removeValue(forKey: id) != nil else { return false }
         rootObjects.removeAll { $0 == id }
+        unindexNativeContents(of: id)
         return true
     }
 
@@ -189,6 +206,9 @@ public actor Resource {
     public func clear() {
         objects.removeAll()
         rootObjects.removeAll()
+        nativeContents.removeAll()
+        nativeContainers.removeAll()
+        nativeOwned.removeAll()
     }
 
     // MARK: - Object Resolution
@@ -198,7 +218,7 @@ public actor Resource {
     /// - Parameter id: The unique identifier of the object to resolve.
     /// - Returns: The resolved object, or `nil` if not found in this resource.
     public func resolve(_ id: EUUID) -> (any EObject)? {
-        return objects[id]
+        return objects[id] ?? nativeContents[id]
     }
 
     /// Resolves an object by its identifier with a specific type.
@@ -208,7 +228,7 @@ public actor Resource {
     ///   - type: The expected type of the resolved object.
     /// - Returns: The resolved object cast to the specified type, or `nil` if not found or wrong type.
     public func resolve<T: EObject>(_ id: EUUID, as type: T.Type) -> T? {
-        return objects[id] as? T
+        return (objects[id] ?? nativeContents[id]) as? T
     }
 
     /// Gets all objects contained in this resource.
@@ -244,7 +264,7 @@ public actor Resource {
     /// - Parameter id: The identifier to check for.
     /// - Returns: `true` if an object with the identifier exists, `false` otherwise.
     public func contains(id: EUUID) -> Bool {
-        return objects[id] != nil
+        return objects[id] != nil || nativeContents[id] != nil
     }
 
     // MARK: - Reference Resolution
@@ -661,7 +681,7 @@ public actor Resource {
     /// - Parameter eClass: The EClass to find instances of
     /// - Returns: Array of objects that are instances of the specified EClass
     public func getAllInstancesOf(_ eClass: EClass) -> [any EObject] {
-        return objects.values.filter { object in
+        return getAllObjectsIncludingContents().filter { object in
             if let objectClass = object.eClass as? EClass {
                 return objectClass.name == eClass.name
                     || isSubclassOf(objectClass, superclass: eClass)
@@ -675,7 +695,29 @@ public actor Resource {
     /// - Parameter id: The unique identifier of the object
     /// - Returns: The object if found, nil otherwise
     public func getObject(_ id: EUUID) -> (any EObject)? {
-        return objects[id]
+        return objects[id] ?? nativeContents[id]
+    }
+
+    /// Gets all objects in this resource, including the contents of native metamodel objects.
+    ///
+    /// Native metamodel objects such as an ``EPackage`` hold their classifiers, features,
+    /// literals, and annotations inline. This method lists each registered object followed by
+    /// everything it contains, depth first, so that for a resource holding an `.ecore`
+    /// metamodel every class, attribute, and reference is enumerated. Objects are listed once.
+    ///
+    /// - Returns: The registered objects and the contents of native metamodel objects.
+    public func getAllObjectsIncludingContents() -> [any EObject] {
+        var result: [any EObject] = []
+        var seen = Set<EUUID>()
+        for object in objects.values {
+            if seen.insert(object.id).inserted { result.append(object) }
+            for id in nativeOwned[object.id] ?? [] {
+                if let content = nativeContents[id], seen.insert(id).inserted {
+                    result.append(content)
+                }
+            }
+        }
+        return result
     }
 
     /// Checks if one EClass is a subclass of another.
@@ -696,6 +738,147 @@ public actor Resource {
             }
         }
         return false
+    }
+
+    // MARK: - Containment Navigation
+
+    /// Retrieves the object that contains the given object.
+    ///
+    /// For native metamodel objects the container is found from the containment structure of
+    /// the metamodel objects registered with this resource. For dynamic objects the
+    /// containment references of every registered object are searched.
+    ///
+    /// - Parameter object: The object whose container is wanted.
+    /// - Returns: The container, or `nil` if the object is a root or is not contained.
+    public func eContainer(of object: any EObject) -> (any EObject)? {
+        if let containerID = nativeContainers[object.id] {
+            return resolve(containerID)
+        }
+        if let meta = object as? any EMetaObject, let containerID = meta.eContainerID,
+            let container = resolve(containerID)
+        {
+            return container
+        }
+        return containment(of: object.id)?.container
+    }
+
+    /// Retrieves the containment feature through which an object is held by its container.
+    ///
+    /// - Parameter object: The object whose containing feature is wanted.
+    /// - Returns: The containment reference or attribute-like feature, or `nil` if the
+    ///   object is not contained.
+    public func eContainingFeature(of object: any EObject) -> (any EStructuralFeature)? {
+        if let container = eContainer(of: object) as? any EcoreReflective {
+            if let pair = container.containedObjects.first(where: { $0.object.id == object.id }) {
+                return (container.eClass as? EClass)?.getStructuralFeature(name: pair.feature.rawValue)
+            }
+            return nil
+        }
+        return containment(of: object.id)?.feature
+    }
+
+    /// Retrieves the objects directly contained by an object.
+    ///
+    /// Objects are listed in the order of the containment references of the object's class
+    /// (inherited references first), and in the order of each reference's values.
+    ///
+    /// - Parameter object: The containing object.
+    /// - Returns: The directly contained objects.
+    public func eContents(of object: any EObject) -> [any EObject] {
+        if let meta = object as? any EMetaObject {
+            return meta.eContents
+        }
+        guard let eClass = object.eClass as? EClass else { return [] }
+        var result: [any EObject] = []
+        for reference in eClass.eAllReferences where reference.containment {
+            result.append(contentsOf: referencedObjects(object.eGet(reference)))
+        }
+        return result
+    }
+
+    /// Retrieves all objects contained by an object, transitively.
+    ///
+    /// Objects are listed depth first: each object is followed by its own contents before
+    /// its next sibling.
+    ///
+    /// - Parameter object: The containing object.
+    /// - Returns: All contained objects.
+    public func eAllContents(of object: any EObject) -> [any EObject] {
+        var result: [any EObject] = []
+        var visited: Set<EUUID> = [object.id]
+        collectContents(of: object, into: &result, visited: &visited)
+        return result
+    }
+
+    private func collectContents(
+        of object: any EObject, into result: inout [any EObject], visited: inout Set<EUUID>
+    ) {
+        for child in eContents(of: object) where visited.insert(child.id).inserted {
+            result.append(child)
+            collectContents(of: child, into: &result, visited: &visited)
+        }
+    }
+
+    /// Finds the registered container and containment reference holding a dynamic object.
+    private func containment(of id: EUUID) -> (container: any EObject, feature: EReference)? {
+        for candidate in objects.values {
+            guard let eClass = candidate.eClass as? EClass else { continue }
+            for reference in eClass.eAllReferences where reference.containment {
+                if referencedObjects(candidate.eGet(reference)).contains(where: { $0.id == id }) {
+                    return (candidate, reference)
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Resolves a reference value, which may hold identifiers or objects, to objects.
+    private func referencedObjects(_ value: (any EcoreValue)?) -> [any EObject] {
+        guard let value else { return [] }
+        if let identifier = value as? EUUID {
+            return resolve(identifier).map { [$0] } ?? []
+        }
+        if let identifiers = value as? [EUUID] {
+            return identifiers.compactMap { resolve($0) }
+        }
+        if let array = value as? EcoreValueArray {
+            return array.values.flatMap { referencedObjects($0) }
+        }
+        if let object = value as? any EObject {
+            return [object]
+        }
+        return []
+    }
+
+    // MARK: - Native Metamodel Index
+
+    /// Indexes the contents of a native metamodel object registered with this resource.
+    private func indexNativeContents(of object: any EObject) {
+        unindexNativeContents(of: object.id)
+        guard let root = object as? any EMetaObject else { return }
+        var owned: [EUUID] = []
+        indexContents(of: root, owned: &owned)
+        if !owned.isEmpty { nativeOwned[object.id] = owned }
+    }
+
+    private func indexContents(of parent: any EMetaObject, owned: inout [EUUID]) {
+        for child in parent.eContents {
+            nativeContents[child.id] = child
+            nativeContainers[child.id] = parent.id
+            owned.append(child.id)
+            if let metaChild = child as? any EMetaObject {
+                indexContents(of: metaChild, owned: &owned)
+            }
+        }
+    }
+
+    /// Removes the indexed contents of a native metamodel root.
+    private func unindexNativeContents(of rootID: EUUID) {
+        guard let owned = nativeOwned.removeValue(forKey: rootID) else { return }
+        for id in owned {
+            nativeContents.removeValue(forKey: id)
+            nativeContainers.removeValue(forKey: id)
+        }
     }
 
     // MARK: - EObject Type Resolution

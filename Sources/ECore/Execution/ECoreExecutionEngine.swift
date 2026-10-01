@@ -146,6 +146,12 @@ public actor ECoreExecutionEngine: Sendable {
         // Get the latest version of the object from its resource
         let currentObject = await getLatestObject(source) ?? source
 
+        if let navigation = EObjectNavigationProperty(rawValue: property),
+            (currentObject.eClass as? EClass)?.getStructuralFeature(name: property) == nil
+        {
+            return await navigateContainment(navigation, from: currentObject)
+        }
+
         let feature = try findStructuralFeature(for: currentObject, named: property)
         let rawResult = currentObject.eGet(feature)
 
@@ -362,6 +368,53 @@ public actor ECoreExecutionEngine: Sendable {
             throw ECoreExecutionError.unknownProperty(property, eClass.name)
         }
         return feature
+    }
+
+    /// Finds the registered resource that holds an object.
+    private func containingResource(of object: any EObject) async -> Resource? {
+        for model in models.values where await model.resource.contains(id: object.id) {
+            return model.resource
+        }
+        return nil
+    }
+
+    /// Answers the container navigation properties from the containment structure.
+    ///
+    /// The registered models supply the containment structure. Metamodel objects that are not
+    /// held by a registered model still answer their contents, and their container if the
+    /// container can be found by identifier in a registered model.
+    private func navigateContainment(
+        _ property: EObjectNavigationProperty, from object: any EObject
+    ) async -> (any EcoreValue)? {
+        let resource = await containingResource(of: object)
+        switch property {
+        case .eContainer:
+            if let resource {
+                return await resource.eContainer(of: object)
+            }
+            guard let containerID = (object as? any EMetaObject)?.eContainerID else { return nil }
+            for model in models.values {
+                if let container = await model.resource.resolve(containerID) {
+                    return container
+                }
+            }
+            return nil
+        case .eContainingFeature:
+            guard let resource,
+                let feature = await resource.eContainingFeature(of: object)
+            else { return nil }
+            return feature as? any EcoreValue
+        case .eContents:
+            if let resource {
+                return EcoreValueArray(await resource.eContents(of: object))
+            }
+            return EcoreValueArray((object as? any EMetaObject)?.eContents ?? [])
+        case .eAllContents:
+            if let resource {
+                return EcoreValueArray(await resource.eAllContents(of: object))
+            }
+            return EcoreValueArray((object as? any EMetaObject)?.eAllContents ?? [])
+        }
     }
 
     /// Resolves UUIDs to actual EObjects for reference navigation.
