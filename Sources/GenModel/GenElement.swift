@@ -85,6 +85,7 @@ public struct GenElement: Sendable, Hashable {
         case let string as String: return string
         case let bool as Bool: return bool ? "true" : "false"
         case let int as Int: return String(int)
+        case let double as Double: return String(double)
         default: return nil
         }
     }
