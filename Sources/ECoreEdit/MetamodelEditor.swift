@@ -150,6 +150,7 @@ struct MetamodelEditor {
         roots[root] = package
     }
 
+    /// Replaces the element at the end of a containment path.
     private static func replace(in element: EcoreElement, steps: ArraySlice<EcoreContainment>, with new: EcoreElement)
         -> EcoreElement?
     {
@@ -197,6 +198,14 @@ struct MetamodelEditor {
         return result
     }
 
+    /// Records that elements were added to a container.
+    ///
+    /// - Parameters:
+    ///   - elements: The elements as they are held after the insertion.
+    ///   - container: The identifier of the container.
+    ///   - feature: The containment feature.
+    ///   - start: The position of the first element.
+    ///   - isCreated: Whether the elements are new, so that they count as created.
     private mutating func noteAdded(_ elements: [EcoreElement], in container: EUUID, feature: EcoreFeatureName, at start: Int, created isCreated: Bool) {
         for (offset, element) in elements.enumerated() {
             changes.append(
@@ -209,12 +218,16 @@ struct MetamodelEditor {
         structure.insert(container)
     }
 
+    /// Records that elements, and everything they contained, were removed.
+    ///
+    /// - Parameter identifiers: The identifiers of the removed elements and their descendants.
     private mutating func noteRemoved(_ identifiers: [EUUID]) {
         for identifier in identifiers where added.remove(identifier) == nil {
             removed.insert(identifier)
         }
         let gone = Set(identifiers)
         created.removeAll { gone.contains($0) }
+        for identifier in identifiers { modified[identifier] = nil }
     }
 
     // MARK: Insertion and removal
@@ -269,6 +282,7 @@ struct MetamodelEditor {
 
     // MARK: Create
 
+    /// Creates an element and adds it to a container.
     private mutating func create(
         _ kind: EcoreClassifier, in container: EUUID, feature: EcoreFeatureName, at position: Int?,
         name: String?, identifier: EUUID?
@@ -282,6 +296,15 @@ struct MetamodelEditor {
         noteAdded(stored, in: container, feature: feature, at: start, created: true)
     }
 
+    /// Makes a new element of a kind with default values.
+    ///
+    /// - Parameters:
+    ///   - kind: The metaclass of the element.
+    ///   - name: The name, or `nil` for none.
+    ///   - identifier: The identifier of the element.
+    ///   - parent: The container that the element is made for.
+    /// - Returns: The element.
+    /// - Throws: ``MetamodelEditError`` if the kind cannot be made, or a detail key is in use.
     private func makeElement(_ kind: EcoreClassifier, name: String?, identifier: EUUID, parent: EcoreElement)
         throws(MetamodelEditError) -> EcoreElement
     {
@@ -314,6 +337,7 @@ struct MetamodelEditor {
         }
     }
 
+    /// A detail key that the annotation does not use yet.
     private static func freshKey(in annotation: EAnnotation) -> String {
         var key = EcoreEditDefaults.newDetailKey
         var number = 0
@@ -326,6 +350,7 @@ struct MetamodelEditor {
 
     // MARK: Delete
 
+    /// Deletes elements, cleaning up the references to them first.
     private mutating func delete(_ ids: [EUUID]) throws(MetamodelEditError) {
         let tops = try topLevel(ids)
         guard !tops.isEmpty else { return }
@@ -354,6 +379,7 @@ struct MetamodelEditor {
         noteRemoved(doomedList)
     }
 
+    /// The identifier of an element followed by those of everything it contains.
     private func subtreeIdentifiers(_ identifier: EUUID) -> [EUUID] {
         var result = [identifier]
         for child in index.children(of: identifier) { result.append(contentsOf: subtreeIdentifiers(child.id)) }
@@ -421,6 +447,7 @@ struct MetamodelEditor {
 
     // MARK: Move
 
+    /// Moves elements into a container.
     private mutating func move(
         _ ids: [EUUID], to container: EUUID, feature requested: EcoreFeatureName?, at position: Int?
     ) throws(MetamodelEditError) {
@@ -468,6 +495,7 @@ struct MetamodelEditor {
 
     // MARK: Set
 
+    /// Sets a property of an element.
     private mutating func set(_ identifier: EUUID, _ feature: EcoreFeatureName, _ value: (any EcoreValue)?)
         throws(MetamodelEditError)
     {
@@ -591,6 +619,7 @@ struct MetamodelEditor {
         return builtIn
     }
 
+    /// Refuses, or reports, a change of supertypes that would make a class inherit from itself.
     private mutating func checkCycle(of identifier: EUUID, supertypes: [EUUID]) throws(MetamodelEditError) {
         for start in supertypes {
             guard let path = supertypePath(from: start, to: identifier) else { continue }
@@ -623,6 +652,7 @@ struct MetamodelEditor {
 
     // MARK: Opposites
 
+    /// Pairs two references as opposites, or unpairs one.
     private mutating func setOpposite(_ identifier: EUUID, _ partner: EUUID?) throws(MetamodelEditError) {
         guard case .reference(let reference) = try existing(identifier) else { throw .invalidOpposite(identifier) }
         guard let partner else {
@@ -645,6 +675,7 @@ struct MetamodelEditor {
         pair(partner, with: identifier, partnerContainment: reference.containment)
     }
 
+    /// Makes a reference point at its partner and sets its container flag accordingly.
     private mutating func pair(_ identifier: EUUID, with partner: EUUID, partnerContainment: Bool) {
         mutate(identifier, [.eOpposite, .container]) { element in
             if case .reference(var value) = element {
@@ -655,6 +686,7 @@ struct MetamodelEditor {
         }
     }
 
+    /// Clears the opposite of a reference if it still points back at an element.
     private mutating func clearPartner(_ partner: EUUID, pointingAt identifier: EUUID) {
         guard case .reference(let value)? = fetch(partner), value.opposite == identifier else { return }
         mutate(partner, [.eOpposite, .container]) { element in
@@ -668,6 +700,7 @@ struct MetamodelEditor {
 
     // MARK: Details
 
+    /// Sets the value of an annotation detail, adding the detail if the key is new.
     private mutating func setDetail(annotation identifier: EUUID, key: String, value: String, at position: Int?)
         throws(MetamodelEditError)
     {
@@ -690,6 +723,7 @@ struct MetamodelEditor {
         noteAdded(stored, in: identifier, feature: .details, at: start, created: true)
     }
 
+    /// Renames the key of an annotation detail.
     private mutating func renameDetailKey(annotation identifier: EUUID, from old: String, to new: String)
         throws(MetamodelEditError)
     {
@@ -717,6 +751,7 @@ struct MetamodelEditor {
 
     // MARK: Paste
 
+    /// Pastes the content of a clipboard into a container.
     private mutating func paste(
         _ clipboard: EcoreClipboard, into container: EUUID, feature requested: EcoreFeatureName?, at position: Int?
     ) throws(MetamodelEditError) {
@@ -747,6 +782,7 @@ struct MetamodelEditor {
         noteAdded(stored, in: container, feature: feature, at: start, created: true)
     }
 
+    /// The element with the opposites that point outside the pasted elements cleared.
     private static func clearingForeignOpposites(_ element: EcoreElement, pasted: Set<EUUID>) -> EcoreElement {
         var result = element
         if case .reference(var reference) = element, let opposite = reference.opposite, !pasted.contains(opposite) {

@@ -46,6 +46,8 @@ public final class MetamodelEditingDomain {
     public private(set) var document: MetamodelDocument
 
     private var history: EditHistory<MetamodelDocument>
+    private var undoChanges: [MetamodelChangeSet] = []
+    private var redoChanges: [MetamodelChangeSet] = []
     fileprivate var handlers: [UUID: @MainActor (MetamodelChangeSet) -> Void] = [:]
     private var continuations: [UUID: AsyncStream<MetamodelChangeSet>.Continuation] = [:]
 
@@ -75,7 +77,12 @@ public final class MetamodelEditingDomain {
         -> MetamodelChangeSet
     {
         let changes = try applying(edit, policy: policy)
-        if !changes.isEmpty { history.record(document, label: changes.label) }
+        if !changes.isEmpty {
+            history.record(document, label: changes.label)
+            undoChanges.append(changes)
+            redoChanges.removeAll()
+            if undoChanges.count > history.limit { undoChanges.removeFirst(undoChanges.count - history.limit) }
+        }
         return changes
     }
 
@@ -105,22 +112,31 @@ public final class MetamodelEditingDomain {
 
     /// Reverses the latest edit.
     ///
-    /// - Returns: What undoing changed, found by comparing the two states of the document;
-    ///   `nil` if there is nothing to undo.
+    /// - Returns: What undoing changed: the inverse of the change set of the edit; `nil` if
+    ///   there is nothing to undo.
     @discardableResult
     public func undo() -> MetamodelChangeSet? {
         guard let label = history.undoLabel, let state = history.undo() else { return nil }
-        return transition(to: state, label: label)
+        guard let recorded = undoChanges.popLast() else { return transition(to: state, label: label) }
+        redoChanges.append(recorded)
+        document = state
+        let changes = recorded.inverted()
+        deliver(changes)
+        return changes
     }
 
     /// Repeats the edit that was undone last.
     ///
-    /// - Returns: What redoing changed, found by comparing the two states of the document;
-    ///   `nil` if there is nothing to redo.
+    /// - Returns: What redoing changed: the change set of the edit; `nil` if there is nothing
+    ///   to redo.
     @discardableResult
     public func redo() -> MetamodelChangeSet? {
         guard let label = history.redoLabel, let state = history.redo() else { return nil }
-        return transition(to: state, label: label)
+        guard let recorded = redoChanges.popLast() else { return transition(to: state, label: label) }
+        undoChanges.append(recorded)
+        document = state
+        deliver(recorded)
+        return recorded
     }
 
     /// Replaces the document by another state of the same document, and reports the difference.

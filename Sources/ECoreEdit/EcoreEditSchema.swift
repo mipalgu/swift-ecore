@@ -53,7 +53,7 @@ extension EcoreEditSchema {
     struct ContainmentRule: Sendable {
         /// The containment feature.
         let feature: EcoreFeatureName
-        /// The concrete metaclasses that the feature accepts, in the order of the Ecore package.
+        /// The concrete metaclasses that the feature accepts, in the order of ``EcoreEditSchema/elementKinds``.
         let kinds: [EcoreClassifier]
     }
 

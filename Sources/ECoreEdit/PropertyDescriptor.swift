@@ -84,7 +84,7 @@ public struct PropertyDescriptor: Sendable, Hashable {
                 if character.isUppercase && previousIsLower { result += " " }
                 result.append(character)
             }
-            previousIsLower = character.isLowercase
+            previousIsLower = position > 0 && character.isLowercase
         }
         return result
     }

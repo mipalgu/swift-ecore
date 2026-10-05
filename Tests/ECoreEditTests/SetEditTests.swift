@@ -64,6 +64,33 @@ struct SetEditTests {
         #expect(document.label(for: check).text == "check(EInt) : EBoolean throws Problem")
     }
 
+    @Test("renaming the type of a parameter affects the label of its operation")
+    func parameterTypeRename() throws {
+        let fixture = Fixture()
+        var document = fixture.document
+        try document.apply(.set(fixture.id("level"), .eType, fixture.id("Item")))
+        let changes = try document.apply(.set(fixture.id("Item"), .name, "Thing"))
+        #expect(changes.labelsAffected.contains(fixture.id("level")) && changes.labelsAffected.contains(fixture.id("check")))
+        #expect(document.label(for: fixture.id("check")).text == "check(Thing) : EBoolean throws Failure")
+    }
+
+    @Test("edit values wrap reflective values")
+    func editValues() {
+        let identifier = EUUID()
+        #expect(EditValue("text") == .string("text"))
+        #expect(EditValue(true) == .bool(true))
+        #expect(EditValue(4) == .int(4))
+        #expect(EditValue(identifier) == .identifier(identifier))
+        #expect(EditValue([identifier]) == .identifiers([identifier]))
+        #expect(EditValue(EcoreValueArray([identifier, "ignored"])) == .identifiers([identifier]))
+        #expect(EditValue(EClass(name: "C")) != nil)
+        #expect(EditValue(2.5) == nil)
+        #expect(EditValue(nil) == nil)
+        #expect(EditValue.identifier(identifier).identifierList == [identifier])
+        #expect(EditValue.identifiers([identifier, identifier]).identifierList == [identifier, identifier])
+        #expect(EditValue.string("x").identifierList.isEmpty)
+    }
+
     @Test("every kind of property can be set: text, flag, integer, and references")
     func propertyKinds() throws {
         let fixture = Fixture()
