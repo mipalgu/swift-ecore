@@ -237,6 +237,17 @@ public enum GenModelConstants {
             genOperations, genParameters, genEnumLiterals, genTypeParameters, genAnnotations,
         ]
 
+        /// The feature that names the Ecore element of each kind of generator element, keyed by metaclass.
+        ///
+        /// Generator elements are identified in fragments by the names of these Ecore elements.
+        public static let ecoreReferenceByClass: [(className: String, feature: String)] = [
+            (ClassName.genPackage, ecorePackage), (ClassName.genClass, ecoreClass),
+            (ClassName.genEnum, ecoreEnum), (ClassName.genDataType, ecoreDataType),
+            (ClassName.genFeature, ecoreFeature), (ClassName.genOperation, ecoreOperation),
+            (ClassName.genParameter, ecoreParameter), (ClassName.genEnumLiteral, ecoreEnumLiteral),
+            (ClassName.genTypeParameter, ecoreTypeParameter),
+        ]
+
         /// The features that refer to Ecore elements.
         public static let ecoreReferences: [String] = [
             ecorePackage, ecoreClass, ecoreFeature, ecoreEnum, ecoreEnumLiteral, ecoreDataType,

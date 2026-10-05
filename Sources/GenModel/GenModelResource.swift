@@ -242,6 +242,6 @@ public enum GenModelResource {
         if let resourceSet = await resource.resourceSet {
             await GenModelFragments.register(in: resourceSet)
         }
-        return try await XMISerializer(options: .emf).serialize(resource, relativeTo: url)
+        return try await XMISerializer(options: .emfWrapped).serialize(resource, relativeTo: url)
     }
 }

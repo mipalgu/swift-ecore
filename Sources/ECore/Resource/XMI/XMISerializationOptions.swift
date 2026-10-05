@@ -89,4 +89,18 @@ public struct XMISerializationOptions: Sendable, Equatable {
         omitDefaultValues: true,
         manyValuedAttributesAsElements: true
     )
+
+    /// The layout of the Eclipse Modeling Framework including its line wrapping.
+    ///
+    /// This is ``emf`` with the lines wrapped at ``emfLineWidth``, which reproduces
+    /// the text that EMF's editors write.
+    public static let emfWrapped = XMISerializationOptions(
+        attributeStyleReferences: true,
+        typeQualifiers: true,
+        nameBasedFragments: true,
+        relativeURIs: true,
+        omitDefaultValues: true,
+        manyValuedAttributesAsElements: true,
+        lineWidth: emfLineWidth
+    )
 }

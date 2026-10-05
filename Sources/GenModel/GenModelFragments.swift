@@ -10,9 +10,11 @@ import Foundation
 
 /// The name-based fragment rules of the generator metamodel.
 ///
-/// A generator package is identified in a fragment by the name of the Ecore package it
+/// A generator element is identified in a fragment by the name of the Ecore element it
 /// describes, so that `Ecore.genmodel#//ecore` refers to the generator package whose
-/// Ecore package is named `ecore`. This is what `usedGenPackages` references rely on.
+/// Ecore package is named `ecore`, and `#//library/Book/title` to the generator feature
+/// of the `title` feature of the class `Book` in the package `library`. This is what
+/// `usedGenPackages` and `labelFeature` references rely on.
 ///
 /// ## Example
 ///
@@ -21,10 +23,20 @@ import Foundation
 /// ```
 public enum GenModelFragments {
     /// The rule that names a generator package after its Ecore package.
-    public static let genPackageRule = FragmentSegmentRule(
-        className: GenModelConstants.ClassName.genPackage
-    ) { object, resource in
-        await ecorePackageName(of: object, in: resource)
+    public static let genPackageRule = rule(
+        className: GenModelConstants.ClassName.genPackage,
+        feature: GenModelConstants.FeatureName.ecorePackage)
+
+    /// The rules that name each kind of generator element after its Ecore element.
+    public static let rules: [FragmentSegmentRule] =
+        GenModelConstants.FeatureName.ecoreReferenceByClass.map {
+            rule(className: $0.className, feature: $0.feature)
+        }
+
+    private static func rule(className: String, feature: String) -> FragmentSegmentRule {
+        FragmentSegmentRule(className: className) { object, resource in
+            await ecoreElementName(of: object, feature: feature, in: resource)
+        }
     }
 
     /// Registers the generator metamodel's fragment rules in a resource set.
@@ -34,22 +46,25 @@ public enum GenModelFragments {
     ///
     /// - Parameter resourceSet: The resource set to register the rules in.
     public static func register(in resourceSet: ResourceSet) async {
-        await resourceSet.registerFragmentSegmentRule(genPackageRule)
+        for rule in rules { await resourceSet.registerFragmentSegmentRule(rule) }
     }
 
-    /// Finds the name of the Ecore package that a generator package describes.
+    /// Finds the name of the Ecore element that a generator element describes.
     ///
     /// - Parameters:
-    ///   - object: The generator package.
-    ///   - resource: The resource that holds the generator package.
-    /// - Returns: The name of the Ecore package, or `nil` if the reference is unset, textual
+    ///   - object: The generator element.
+    ///   - feature: The name of the reference that holds the Ecore element.
+    ///   - resource: The resource that holds the generator element.
+    /// - Returns: The name of the Ecore element, or `nil` if the reference is unset, textual
     ///   or cannot be resolved.
-    private static func ecorePackageName(of object: DynamicEObject, in resource: Resource) async
+    private static func ecoreElementName(
+        of object: DynamicEObject, feature: String, in resource: Resource
+    ) async
         -> String?
     {
         let resourceSet = await resource.resourceSet
         let target: (any EObject)?
-        switch object.eGet(GenModelConstants.FeatureName.ecorePackage) {
+        switch object.eGet(feature) {
         case let id as EUUID:
             if let local = await resource.resolve(id) {
                 target = local
