@@ -603,29 +603,7 @@ extension DynamicEObject: Codable {
     /// - Returns: The parsed date as an `EDate`.
     /// - Throws: `DecodingError` if the string cannot be parsed using any supported format.
     private func parseDate(from dateString: String) throws -> EDate {
-        // Try ISO8601 first
-        let iso8601Formatter = ISO8601DateFormatter()
-        if let date = iso8601Formatter.date(from: dateString) {
-            return date
-        }
-
-        // Try pyecore format: %Y-%m-%dT%H:%M:%S.%f%z
-        let pyecoreFormatter = DateFormatter()
-        pyecoreFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX"
-        pyecoreFormatter.timeZone = TimeZone(secondsFromGMT: 0)
-        if let date = pyecoreFormatter.date(from: dateString) {
-            return date
-        }
-
-        // Try without microseconds: %Y-%m-%dT%H:%M:%S%z
-        pyecoreFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssXXXXX"
-        if let date = pyecoreFormatter.date(from: dateString) {
-            return date
-        }
-
-        // Try basic ISO format without timezone
-        pyecoreFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
-        if let date = pyecoreFormatter.date(from: dateString) {
+        if let date = EcoreDateCoding.date(from: dateString) {
             return date
         }
 
@@ -779,10 +757,7 @@ extension DynamicEObject: Codable {
             try container.encode(float, forKey: key)
         case let date as Date:
             // Format date to match pyecore
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX"
-            formatter.timeZone = TimeZone(secondsFromGMT: 0)
-            let dateString = formatter.string(from: date)
+            let dateString = EcoreDateCoding.fractionalString(from: date)
             try container.encode(dateString, forKey: key)
         case let object as DynamicEObject:
             // Nested object
@@ -838,11 +813,8 @@ extension DynamicEObject: Codable {
         case let float as Float:
             try container.encode(float, forKey: key)
         case let date as Date:
-            // Format date to match pyecore: %Y-%m-%dT%H:%M:%S.%f%z
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSXXXXX"
-            formatter.timeZone = TimeZone(secondsFromGMT: 0)
-            let dateString = formatter.string(from: date)
+            // Format date to match pyecore
+            let dateString = EcoreDateCoding.fractionalString(from: date)
             try container.encode(dateString, forKey: key)
         default:
             // For other types, use string representation
