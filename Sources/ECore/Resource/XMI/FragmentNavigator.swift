@@ -31,9 +31,10 @@ public struct FragmentNavigator: Sendable {
     /// The order follows the containment order EMF uses to number duplicate names.
     private static let dynamicContainments: [String: [XMIElement]] = [
         EcoreClassifier.ePackage.rawValue: [.eClassifiers, .eSubpackages],
-        EcoreClassifier.eClass.rawValue: [.eOperations, .eStructuralFeatures],
-        EcoreClassifier.eEnum.rawValue: [.eLiterals],
-        EcoreClassifier.eOperation.rawValue: [.eParameters],
+        EcoreClassifier.eClass.rawValue: [.eTypeParameters, .eOperations, .eStructuralFeatures],
+        EcoreClassifier.eEnum.rawValue: [.eTypeParameters, .eLiterals],
+        EcoreClassifier.eDataType.rawValue: [.eTypeParameters],
+        EcoreClassifier.eOperation.rawValue: [.eTypeParameters, .eParameters],
     ]
 
     /// Creates a navigator for the objects of a resource.
@@ -183,13 +184,17 @@ public struct FragmentNavigator: Sendable {
             let classifiers = package.eClassifiers.compactMap { $0 as? any EObject }
             return classifiers + package.eSubpackages.map { $0 as any EObject }
         case let eClass as EClass:
+            let parameters = eClass.eTypeParameters.map { $0 as any EObject }
             let operations = eClass.eOperations.map { $0 as any EObject }
             let features = eClass.eStructuralFeatures.compactMap { $0 as? any EObject }
-            return operations + features
+            return parameters + operations + features
         case let operation as EOperation:
-            return operation.eParameters.map { $0 as any EObject }
+            return operation.eTypeParameters.map { $0 as any EObject }
+                + operation.eParameters.map { $0 as any EObject }
         case let eEnum as EEnum:
-            return eEnum.literals.map { $0 as any EObject }
+            return eEnum.eTypeParameters.map { $0 as any EObject } + eEnum.literals.map { $0 as any EObject }
+        case let dataType as EDataType:
+            return dataType.eTypeParameters.map { $0 as any EObject }
         case let dynamic as DynamicEObject:
             guard let containments = Self.dynamicContainments[dynamic.eClass.name] else {
                 return await containedChildren(of: dynamic)

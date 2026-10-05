@@ -44,6 +44,9 @@ extension MetamodelDocument {
             return classIDs() + dataTypeIDs()
         case .eOpposite:
             return oppositeCandidates(for: identifier, element: element)
+        case .eKeys:
+            guard case .reference(let reference) = element else { return [] }
+            return index.keyCandidates(of: reference)
         case .references:
             guard case .annotation = element else { return [] }
             return index.allElements.map(\.id)
@@ -115,6 +118,40 @@ extension MetamodelDocument {
             for parent in value.eSuperTypes where seen.insert(parent.id).inserted {
                 result.append(parent.id)
                 pending.append(parent.id)
+            }
+        }
+        return result
+    }
+}
+
+extension MetamodelIndex {
+    /// The attributes of a reference's type and its supertypes, which can serve as keys.
+    ///
+    /// - Parameter reference: The reference whose keys are chosen.
+    /// - Returns: The identifiers of the candidate attributes, the type's own attributes first.
+    func keyCandidates(of reference: EReference) -> [EUUID] {
+        var result: [EUUID] = []
+        var seen: Set<EUUID> = [reference.eType.id]
+        var pending = [reference.eType.id]
+        var owners: [EUUID] = []
+        while !pending.isEmpty {
+            let current = pending.removeFirst()
+            owners.append(current)
+            let parents: [EClass]
+            if case .eClass(let value)? = element(current) {
+                parents = value.eSuperTypes
+            } else {
+                parents = (EcoreBuiltIns.classifiers[current] as? EClass)?.eSuperTypes ?? []
+            }
+            for parent in parents where seen.insert(parent.id).inserted { pending.append(parent.id) }
+        }
+        for owner in owners {
+            if case .eClass? = element(owner) {
+                for case .attribute(let attribute) in children(of: owner, feature: .eStructuralFeatures) {
+                    result.append(attribute.id)
+                }
+            } else if let eClass = EcoreBuiltIns.classifiers[owner] as? EClass {
+                result.append(contentsOf: eClass.eAttributes.map(\.id))
             }
         }
         return result

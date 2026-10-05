@@ -73,6 +73,7 @@ public enum EcoreCopier {
         case .operation(let value): return .operation(copy(value, renames))
         case .parameter(let value): return .parameter(copy(value, renames))
         case .annotation(let value): return .annotation(copy(value, renames))
+        case .typeParameter(let value): return .typeParameter(copy(value, renames))
         case .detail(let value):
             return .detail(EStringToStringMapEntry(id: renames[value.id] ?? EUUID(), key: value.key, value: value.value))
         }
@@ -106,27 +107,39 @@ public enum EcoreCopier {
     }
 
     private static func copy(_ value: EClass, _ renames: [EUUID: EUUID]) -> EClass {
-        EClass(
+        var result = EClass(
             id: renames[value.id] ?? EUUID(), name: value.name, isAbstract: value.isAbstract,
             isInterface: value.isInterface, eSuperTypes: value.eSuperTypes,
             eStructuralFeatures: value.eStructuralFeatures.map { copy($0, renames) },
             eOperations: value.eOperations.map { copy($0, renames) },
             eAnnotations: value.eAnnotations.map { copy($0, renames) },
             instanceClassName: value.instanceClassName)
+        result.instanceTypeName = value.instanceTypeName
+        result.eTypeParameters = value.eTypeParameters.map { copy($0, renames) }
+        result.eGenericSuperTypes = value.eGenericSuperTypes.map { copy($0, renames) }
+        return result
     }
 
     private static func copy(_ value: EDataType, _ renames: [EUUID: EUUID]) -> EDataType {
-        EDataType(
+        var result = EDataType(
             id: renames[value.id] ?? EUUID(), name: value.name, serialisable: value.serialisable,
             instanceClassName: value.instanceClassName, defaultValueLiteral: value.defaultValueLiteral,
             eAnnotations: value.eAnnotations.map { copy($0, renames) })
+        result.instanceTypeName = value.instanceTypeName
+        result.eTypeParameters = value.eTypeParameters.map { copy($0, renames) }
+        return result
     }
 
     private static func copy(_ value: EEnum, _ renames: [EUUID: EUUID]) -> EEnum {
-        EEnum(
+        var result = EEnum(
             id: renames[value.id] ?? EUUID(), name: value.name,
             literals: value.literals.map { copy($0, renames) },
             eAnnotations: value.eAnnotations.map { copy($0, renames) })
+        result.serialisable = value.serialisable
+        result.instanceClassName = value.instanceClassName
+        result.instanceTypeName = value.instanceTypeName
+        result.eTypeParameters = value.eTypeParameters.map { copy($0, renames) }
+        return result
     }
 
     private static func copy(_ value: EEnumLiteral, _ renames: [EUUID: EUUID]) -> EEnumLiteral {
@@ -136,17 +149,19 @@ public enum EcoreCopier {
     }
 
     private static func copy(_ value: EAttribute, _ renames: [EUUID: EUUID]) -> EAttribute {
-        EAttribute(
+        var result = EAttribute(
             id: renames[value.id] ?? EUUID(), name: value.name, eType: value.eType,
             lowerBound: value.lowerBound, upperBound: value.upperBound, changeable: value.changeable,
             volatile: value.volatile, transient: value.transient,
             defaultValueLiteral: value.defaultValueLiteral, isID: value.isID,
             eAnnotations: value.eAnnotations.map { copy($0, renames) }, ordered: value.ordered,
             unique: value.unique, unsettable: value.unsettable, derived: value.derived)
+        result.eGenericType = value.eGenericType.map { copy($0, renames) }
+        return result
     }
 
     private static func copy(_ value: EReference, _ renames: [EUUID: EUUID]) -> EReference {
-        EReference(
+        var result = EReference(
             id: renames[value.id] ?? EUUID(), name: value.name, eType: value.eType,
             lowerBound: value.lowerBound, upperBound: value.upperBound, changeable: value.changeable,
             volatile: value.volatile, transient: value.transient, containment: value.containment,
@@ -154,21 +169,45 @@ public enum EcoreCopier {
             eAnnotations: value.eAnnotations.map { copy($0, renames) }, ordered: value.ordered,
             unique: value.unique, unsettable: value.unsettable, derived: value.derived,
             container: value.container)
+        result.eGenericType = value.eGenericType.map { copy($0, renames) }
+        result.eKeys = value.eKeys.map { renames[$0] ?? $0 }
+        return result
     }
 
     private static func copy(_ value: EOperation, _ renames: [EUUID: EUUID]) -> EOperation {
-        EOperation(
+        var result = EOperation(
             id: renames[value.id] ?? EUUID(), name: value.name, eType: value.eType,
             lowerBound: value.lowerBound, upperBound: value.upperBound, ordered: value.ordered,
             unique: value.unique, eParameters: value.eParameters.map { copy($0, renames) },
             eExceptions: value.eExceptions, eAnnotations: value.eAnnotations.map { copy($0, renames) })
+        result.eGenericType = value.eGenericType.map { copy($0, renames) }
+        result.eTypeParameters = value.eTypeParameters.map { copy($0, renames) }
+        result.eGenericExceptions = value.eGenericExceptions.map { copy($0, renames) }
+        return result
     }
 
     private static func copy(_ value: EParameter, _ renames: [EUUID: EUUID]) -> EParameter {
-        EParameter(
+        var result = EParameter(
             id: renames[value.id] ?? EUUID(), name: value.name, eType: value.eType,
             lowerBound: value.lowerBound, upperBound: value.upperBound, ordered: value.ordered,
             unique: value.unique, eAnnotations: value.eAnnotations.map { copy($0, renames) })
+        result.eGenericType = value.eGenericType.map { copy($0, renames) }
+        return result
+    }
+
+    private static func copy(_ value: ETypeParameter, _ renames: [EUUID: EUUID]) -> ETypeParameter {
+        ETypeParameter(
+            id: renames[value.id] ?? EUUID(), name: value.name,
+            eBounds: value.eBounds.map { copy($0, renames) },
+            eAnnotations: value.eAnnotations.map { copy($0, renames) })
+    }
+
+    private static func copy(_ value: EGenericType, _ renames: [EUUID: EUUID]) -> EGenericType {
+        EGenericType(
+            eClassifier: value.eClassifier, eTypeParameter: value.eTypeParameter.map { renames[$0] ?? $0 },
+            eTypeArguments: value.eTypeArguments.map { copy($0, renames) },
+            eUpperBound: value.eUpperBound.map { copy($0, renames) },
+            eLowerBound: value.eLowerBound.map { copy($0, renames) })
     }
 
     private static func copy(_ value: EAnnotation, _ renames: [EUUID: EUUID]) -> EAnnotation {
@@ -203,9 +242,10 @@ public enum EcoreCopier {
                 return EcoreElement.feature(linker.feature(value, previous: linked)) ?? element
             case .operation(let value):
                 return .operation(linker.operation(value, previous: linked))
-            case .parameter(var value):
-                value.eType = value.eType.map { linker.classifier($0, previous: linked) }
-                return .parameter(value)
+            case .parameter(let value):
+                return .parameter(linker.parameter(value, previous: linked))
+            case .typeParameter(let value):
+                return .typeParameter(linker.typeParameter(value, previous: linked))
             default:
                 return element
             }

@@ -57,6 +57,14 @@ public struct EParameter: ENamedElement, ETypedElement {
     /// Whether the values of this parameter are unique.
     public var unique: Bool
 
+    /// The generic type of this element, if its type has type arguments or is a type parameter.
+    ///
+    /// If this is `nil`, ``eType`` alone describes the type. Otherwise the generic type's
+    /// classifier is the raw type that ``eType`` holds.
+    public var eGenericType: EGenericType? = nil {
+        didSet { ContainerStamp.stamp(&eGenericType, container: id) }
+    }
+
     /// Internal storage for feature values.
     private var storage: EObjectStorage
 
@@ -207,6 +215,26 @@ public struct EOperation: ENamedElement, ETypedElement {
 
     /// The classifiers of the exceptions this operation can raise.
     public var eExceptions: [any EClassifier]
+
+    /// The generic type of this element, if its type has type arguments or is a type parameter.
+    ///
+    /// If this is `nil`, ``eType`` alone describes the type. Otherwise the generic type's
+    /// classifier is the raw type that ``eType`` holds.
+    public var eGenericType: EGenericType? = nil {
+        didSet { ContainerStamp.stamp(&eGenericType, container: id) }
+    }
+
+    /// The type parameters of this element, in declaration order.
+    public var eTypeParameters: [ETypeParameter] = [] {
+        didSet { ContainerStamp.stamp(&eTypeParameters, container: id) }
+    }
+
+    /// The generic exceptions of this operation, in declaration order.
+    ///
+    /// If the list is empty, ``eExceptions`` alone describes the exceptions.
+    public var eGenericExceptions: [EGenericType] = [] {
+        didSet { EGenericType.stamp(&eGenericExceptions, container: id) }
+    }
 
     /// Internal storage for feature values.
     private var storage: EObjectStorage

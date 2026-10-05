@@ -141,9 +141,20 @@ struct NativeMetamodelConverter {
     /// The latest snapshot of each converted class, by identifier.
     private var classes: [EUUID: EClass] = [:]
 
-    init(objects: [EUUID: DynamicEObject], ignoresFailures: Bool) {
+    /// The options that govern how unresolved references are loaded.
+    let options: EcoreLoadOptions
+
+    /// The objects of the parsed data types and enumerations, whose type parameters are converted
+    /// once the classes are known.
+    private var dataTypeObjects: [DynamicEObject] = []
+
+    init(
+        objects: [EUUID: DynamicEObject], ignoresFailures: Bool,
+        options: EcoreLoadOptions = EcoreLoadOptions()
+    ) {
         self.objects = objects
         self.ignoresFailures = ignoresFailures
+        self.options = options
     }
 
     // MARK: Reading parsed objects
@@ -187,7 +198,9 @@ struct NativeMetamodelConverter {
     func unresolvedTypes(in parsed: some Collection<DynamicEObject>) -> [EUUID: ResourceProxy] {
         var result: [EUUID: ResourceProxy] = [:]
         for object in parsed {
-            guard let target = targets(object.eGet(XMIAttribute.eType.rawValue)).first,
+            let name = object.eClass.name == EcoreClassifier.eGenericType.rawValue
+                ? EcoreFeatureName.eClassifier.rawValue : XMIAttribute.eType.rawValue
+            guard let target = targets(object.eGet(name)).first,
                 case .external(let proxy) = target, external[proxy] == nil
             else { continue }
             result[object.id] = proxy
@@ -245,13 +258,17 @@ struct NativeMetamodelConverter {
 
     private static let typeReferenceNames = [
         XMIAttribute.eType.rawValue, EcoreFeatureName.eSuperTypes.rawValue,
-        EcoreFeatureName.eExceptions.rawValue,
+        EcoreFeatureName.eExceptions.rawValue, EcoreFeatureName.eClassifier.rawValue,
     ]
 
     private static let containmentNames = [
         EcoreFeatureName.eClassifiers.rawValue, EcoreFeatureName.eSubpackages.rawValue,
         EcoreFeatureName.eStructuralFeatures.rawValue, EcoreFeatureName.eOperations.rawValue,
-        EcoreFeatureName.eParameters.rawValue,
+        EcoreFeatureName.eParameters.rawValue, EcoreFeatureName.eTypeParameters.rawValue,
+        EcoreFeatureName.eBounds.rawValue, EcoreFeatureName.eGenericType.rawValue,
+        EcoreFeatureName.eGenericSuperTypes.rawValue, EcoreFeatureName.eGenericExceptions.rawValue,
+        EcoreFeatureName.eTypeArguments.rawValue, EcoreFeatureName.eUpperBound.rawValue,
+        EcoreFeatureName.eLowerBound.rawValue,
     ]
 
     // MARK: Annotations
@@ -320,6 +337,7 @@ struct NativeMetamodelConverter {
         var classObjects: [DynamicEObject] = []
         try convertDataTypes(of: root, classObjects: &classObjects)
         buildClasses(classObjects)
+        convertDataTypeParameters()
         let package = try assemble(root)
         return MetamodelLinker.relinked([package], externalClassifiers: externalClassifiers)[0]
     }
@@ -339,20 +357,28 @@ struct NativeMetamodelConverter {
                 classObjects.append(classifier)
             case EcoreClassifier.eEnum.rawValue:
                 if let name = string(classifier, XMIAttribute.name.rawValue) {
-                    dataTypes[classifier.id] = EEnum(
+                    var eEnum = EEnum(
                         id: classifier.id, name: name,
                         literals: literals(of: classifier),
                         eAnnotations: annotations(forID: classifier.id))
+                    eEnum.serialisable = flag(classifier, XMIAttribute.serializable.rawValue, true)
+                    eEnum.instanceClassName = string(classifier, XMIAttribute.instanceClassName.rawValue)
+                    eEnum.instanceTypeName = string(classifier, EcoreFeatureName.instanceTypeName.rawValue)
+                    dataTypes[classifier.id] = eEnum
+                    dataTypeObjects.append(classifier)
                 } else {
                     try failMissingName()
                 }
             case EcoreClassifier.eDataType.rawValue:
                 if let name = string(classifier, XMIAttribute.name.rawValue) {
-                    dataTypes[classifier.id] = EDataType(
+                    var dataType = EDataType(
                         id: classifier.id, name: name,
                         serialisable: flag(classifier, XMIAttribute.serializable.rawValue, true),
                         instanceClassName: string(classifier, XMIAttribute.instanceClassName.rawValue),
                         eAnnotations: annotations(forID: classifier.id))
+                    dataType.instanceTypeName = string(classifier, EcoreFeatureName.instanceTypeName.rawValue)
+                    dataTypes[classifier.id] = dataType
+                    dataTypeObjects.append(classifier)
                 } else {
                     try failMissingName()
                 }
@@ -389,12 +415,14 @@ struct NativeMetamodelConverter {
     private mutating func buildClasses(_ objects: [DynamicEObject]) {
         for object in objects {
             guard let name = string(object, XMIAttribute.name.rawValue) else { continue }
-            classes[object.id] = EClass(
+            var eClass = EClass(
                 id: object.id, name: name,
                 isAbstract: flag(object, XMIAttribute.abstract.rawValue, false),
                 isInterface: flag(object, XMIAttribute.interface.rawValue, false),
                 eAnnotations: annotations(forID: object.id),
                 instanceClassName: string(object, XMIAttribute.instanceClassName.rawValue))
+            eClass.instanceTypeName = string(object, EcoreFeatureName.instanceTypeName.rawValue)
+            classes[object.id] = eClass
         }
         let provisional = classes
         for object in objects {
@@ -415,11 +443,16 @@ struct NativeMetamodelConverter {
                 return external[proxy] as? EClass
             }
         }
+        result.eTypeParameters = typeParameters(of: object, previous: previous)
+        let parameterTable = Dictionary(
+            result.eTypeParameters.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        result.eGenericSuperTypes = contained(object, EcoreFeatureName.eGenericSuperTypes.rawValue)
+            .map { genericType($0, previous: previous) }
         result.eStructuralFeatures = contained(
             object, EcoreFeatureName.eStructuralFeatures.rawValue
-        ).compactMap { convertFeature($0, previous: previous) }
+        ).compactMap { convertFeature($0, previous: previous, parameters: parameterTable) }
         result.eOperations = contained(object, EcoreFeatureName.eOperations.rawValue)
-            .compactMap { convertOperation($0, previous: previous) }
+            .compactMap { convertOperation($0, previous: previous, classParameters: parameterTable) }
         return result
     }
 
@@ -436,11 +469,105 @@ struct NativeMetamodelConverter {
         }
     }
 
+    // MARK: Generics
+
+    /// The placeholder that stands for a classifier that cannot be loaded.
+    private func placeholder(for proxy: ResourceProxy) -> any EClassifier {
+        let name = proxy.fragment.split(separator: CrossReferenceSyntax.segmentSeparator).last
+            .map(String.init) ?? proxy.fragment
+        let identifier = ReflectiveValues.derivedID(
+            from: EcoreLoadOptions.placeholderNamespace, key: proxy.uri + "#" + proxy.fragment)
+        if proxy.qualifier == "\(EcorePackage.nsPrefix):\(EcoreClassifier.eClass.rawValue)" {
+            return EClass(id: identifier, name: name)
+        }
+        return EDataType(id: identifier, name: name)
+    }
+
+    /// The type of a typed element, honouring the options for references that cannot be loaded.
+    private func declaredType(_ object: DynamicEObject, previous: [EUUID: EClass]) -> (any EClassifier)? {
+        let value = object.eGet(XMIAttribute.eType.rawValue)
+        if options.unresolvedReferences == .keepAsProxies {
+            return classifierOrPlaceholder(value, previous: previous)
+        }
+        return classifier(value, previous: previous)
+    }
+
+    /// The classifier that a type reference names, or a placeholder if it cannot be loaded.
+    private func classifierOrPlaceholder(
+        _ value: (any EcoreValue)?, previous: [EUUID: EClass]
+    ) -> (any EClassifier)? {
+        if let found = classifier(value, previous: previous) { return found }
+        guard let target = targets(value).first, case .external(let proxy) = target else { return nil }
+        return placeholder(for: proxy)
+    }
+
+    /// Converts a parsed generic type with its arguments and bounds.
+    private func genericType(_ object: DynamicEObject, previous: [EUUID: EClass]) -> EGenericType {
+        let parameter = targets(object.eGet(EcoreFeatureName.eTypeParameter.rawValue)).compactMap {
+            target -> EUUID? in
+            if case .local(let identifier) = target { return identifier }
+            return nil
+        }.first
+        return EGenericType(
+            id: object.id,
+            eClassifier: classifierOrPlaceholder(
+                object.eGet(EcoreFeatureName.eClassifier.rawValue), previous: previous),
+            eTypeParameter: parameter,
+            eTypeArguments: contained(object, EcoreFeatureName.eTypeArguments.rawValue)
+                .map { genericType($0, previous: previous) },
+            eUpperBound: contained(object, EcoreFeatureName.eUpperBound.rawValue).first
+                .map { genericType($0, previous: previous) },
+            eLowerBound: contained(object, EcoreFeatureName.eLowerBound.rawValue).first
+                .map { genericType($0, previous: previous) })
+    }
+
+    /// Converts the type parameters that an object declares.
+    private func typeParameters(of object: DynamicEObject, previous: [EUUID: EClass]) -> [ETypeParameter] {
+        contained(object, EcoreFeatureName.eTypeParameters.rawValue).map { parameter in
+            var result = ETypeParameter(
+                id: parameter.id, name: string(parameter, XMIAttribute.name.rawValue) ?? "",
+                eAnnotations: annotations(forID: parameter.id))
+            result.eBounds = contained(parameter, EcoreFeatureName.eBounds.rawValue)
+                .map { genericType($0, previous: previous) }
+            return result
+        }
+    }
+
+    /// Gives the data types and enumerations their type parameters.
+    private mutating func convertDataTypeParameters() {
+        for object in dataTypeObjects {
+            let parameters = typeParameters(of: object, previous: classes)
+            guard !parameters.isEmpty else { continue }
+            if var dataType = dataTypes[object.id] as? EDataType {
+                dataType.eTypeParameters = parameters
+                dataTypes[object.id] = dataType
+            } else if var eEnum = dataTypes[object.id] as? EEnum {
+                eEnum.eTypeParameters = parameters
+                dataTypes[object.id] = eEnum
+            }
+        }
+    }
+
+    /// The classifier that a generic type erases to, used as the `eType` of the element that holds it.
+    private func rawType(of type: EGenericType, parameters: [EUUID: ETypeParameter]) -> (any EClassifier)? {
+        if let classifier = type.eClassifier { return classifier }
+        if let identifier = type.eTypeParameter, let parameter = parameters[identifier],
+            let bound = parameter.eBounds.first, let classifier = bound.eClassifier
+        {
+            return classifier
+        }
+        return EcorePackage.dataType(.eJavaObject)
+    }
+
     private func convertFeature(
-        _ object: DynamicEObject, previous: [EUUID: EClass]
+        _ object: DynamicEObject, previous: [EUUID: EClass], parameters: [EUUID: ETypeParameter]
     ) -> (any EStructuralFeature)? {
         guard let name = string(object, XMIAttribute.name.rawValue) else { return nil }
-        let resolved = classifier(object.eGet(XMIAttribute.eType.rawValue), previous: previous)
+        let generic = contained(object, EcoreFeatureName.eGenericType.rawValue).first
+            .map { genericType($0, previous: previous) }
+        let declared = declaredType(object, previous: previous)
+            ?? generic.flatMap { $0.eTypeParameter == nil ? $0.eClassifier : nil }
+        let resolved = declared ?? generic.flatMap { rawType(of: $0, parameters: parameters) }
         let ordered = flag(object, XMIAttribute.ordered.rawValue, true)
         let unique = flag(object, XMIAttribute.unique.rawValue, true)
         let unsettable = flag(object, XMIAttribute.unsettable.rawValue, false)
@@ -452,7 +579,7 @@ struct NativeMetamodelConverter {
         let upperBound = number(object, XMIAttribute.upperBound.rawValue, 1)
         switch object.eClass.name {
         case EcoreClassifier.eAttribute.rawValue:
-            return EAttribute(
+            var attribute = EAttribute(
                 id: object.id, name: name, eType: resolved ?? Self.defaultAttributeType,
                 lowerBound: lowerBound, upperBound: upperBound, changeable: changeable,
                 volatile: volatile, transient: transient,
@@ -460,6 +587,8 @@ struct NativeMetamodelConverter {
                 isID: flag(object, XMIAttribute.iD.rawValue, false),
                 eAnnotations: annotations(forID: object.id), ordered: ordered,
                 unique: unique, unsettable: unsettable, derived: derived)
+            attribute.eGenericType = generic.flatMap { $0.isParameterised ? $0 : nil }
+            return attribute
         case EcoreClassifier.eReference.rawValue:
             let opposite = targets(object.eGet(XMIAttribute.eOpposite.rawValue)
                 ?? object.eGet(XMIAttribute.opposite.rawValue)).compactMap { target -> EUUID? in
@@ -468,7 +597,7 @@ struct NativeMetamodelConverter {
                 }.first
             let oppositeContains = opposite.flatMap { objects[$0] }
                 .map { flag($0, XMIAttribute.containment.rawValue, false) } ?? false
-            return EReference(
+            var reference = EReference(
                 id: object.id, name: name, eType: resolved ?? Self.defaultReferenceType,
                 lowerBound: lowerBound, upperBound: upperBound, changeable: changeable,
                 volatile: volatile, transient: transient,
@@ -478,27 +607,47 @@ struct NativeMetamodelConverter {
                 eAnnotations: annotations(forID: object.id),
                 ordered: ordered, unique: unique, unsettable: unsettable, derived: derived,
                 container: oppositeContains)
+            reference.eGenericType = generic.flatMap { $0.isParameterised ? $0 : nil }
+            reference.eKeys = targets(object.eGet(EcoreFeatureName.eKeys.rawValue)).compactMap { target in
+                if case .local(let identifier) = target { return identifier }
+                return nil
+            }
+            return reference
         default:
             return nil
         }
     }
 
     private func convertOperation(
-        _ object: DynamicEObject, previous: [EUUID: EClass]
+        _ object: DynamicEObject, previous: [EUUID: EClass], classParameters: [EUUID: ETypeParameter]
     ) -> EOperation? {
         guard let name = string(object, XMIAttribute.name.rawValue) else { return nil }
+        let operationParameters = typeParameters(of: object, previous: previous)
+        let parameterTable = classParameters.merging(
+            operationParameters.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let parameters = contained(object, EcoreFeatureName.eParameters.rawValue)
             .compactMap { parameter -> EParameter? in
                 guard let parameterName = string(parameter, XMIAttribute.name.rawValue) else { return nil }
-                return EParameter(
-                    id: parameter.id, name: parameterName,
-                    eType: classifier(parameter.eGet(XMIAttribute.eType.rawValue), previous: previous),
+                let generic = contained(parameter, EcoreFeatureName.eGenericType.rawValue).first
+                    .map { genericType($0, previous: previous) }
+                var type = declaredType(parameter, previous: previous)
+                if type == nil, let generic { type = rawType(of: generic, parameters: parameterTable) }
+                var result = EParameter(
+                    id: parameter.id, name: parameterName, eType: type,
                     lowerBound: number(parameter, XMIAttribute.lowerBound.rawValue, 0),
                     upperBound: number(parameter, XMIAttribute.upperBound.rawValue, 1),
                     ordered: flag(parameter, XMIAttribute.ordered.rawValue, true),
                     unique: flag(parameter, XMIAttribute.unique.rawValue, true),
                     eAnnotations: annotations(forID: parameter.id))
+                result.eGenericType = generic.flatMap { $0.isParameterised ? $0 : nil }
+                return result
             }
+        let operationGeneric = contained(object, EcoreFeatureName.eGenericType.rawValue).first
+            .map { genericType($0, previous: previous) }
+        var operationType = declaredType(object, previous: previous)
+        if operationType == nil, let operationGeneric {
+            operationType = rawType(of: operationGeneric, parameters: parameterTable)
+        }
         let exceptions = targets(object.eGet(EcoreFeatureName.eExceptions.rawValue)).compactMap {
             target -> (any EClassifier)? in
             switch target {
@@ -509,15 +658,19 @@ struct NativeMetamodelConverter {
                 return external[proxy]
             }
         }
-        return EOperation(
-            id: object.id, name: name,
-            eType: classifier(object.eGet(XMIAttribute.eType.rawValue), previous: previous),
+        var result = EOperation(
+            id: object.id, name: name, eType: operationType,
             lowerBound: number(object, XMIAttribute.lowerBound.rawValue, 0),
             upperBound: number(object, XMIAttribute.upperBound.rawValue, 1),
             ordered: flag(object, XMIAttribute.ordered.rawValue, true),
             unique: flag(object, XMIAttribute.unique.rawValue, true),
             eParameters: parameters, eExceptions: exceptions,
             eAnnotations: annotations(forID: object.id))
+        result.eGenericType = operationGeneric.flatMap { $0.isParameterised ? $0 : nil }
+        result.eTypeParameters = operationParameters
+        result.eGenericExceptions = contained(object, EcoreFeatureName.eGenericExceptions.rawValue)
+            .map { genericType($0, previous: previous) }
+        return result
     }
 
     private static var defaultAttributeType: any EClassifier {

@@ -72,6 +72,14 @@ public struct EDataType: EClassifier, ENamedElement {
     /// Used when attributes of this type are not explicitly set.
     public var defaultValueLiteral: String?
 
+    /// The generic Java type of instances, if it differs from the instance class name.
+    public var instanceTypeName: String? = nil
+
+    /// The type parameters of this element, in declaration order.
+    public var eTypeParameters: [ETypeParameter] = [] {
+        didSet { ContainerStamp.stamp(&eTypeParameters, container: id) }
+    }
+
     /// Internal storage for feature values.
     private var storage: EObjectStorage
 
@@ -395,6 +403,20 @@ public struct EEnum: EClassifier, ENamedElement {
     public var literals: [EEnumLiteral] {
         didSet { ContainerStamp.stamp(&literals, container: id) }
     }
+
+    /// The generic Java type of instances, if it differs from the instance class name.
+    public var instanceTypeName: String? = nil
+
+    /// The type parameters of this enumeration, in declaration order.
+    public var eTypeParameters: [ETypeParameter] = [] {
+        didSet { ContainerStamp.stamp(&eTypeParameters, container: id) }
+    }
+
+    /// Whether this enumeration can be serialised to and from strings.
+    public var serialisable: Bool = true
+
+    /// The fully qualified name of the instance class, if any.
+    public var instanceClassName: String?
 
     /// Internal storage for feature values.
     private var storage: EObjectStorage

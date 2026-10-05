@@ -123,6 +123,8 @@ struct SnapshotLinker {
             canonical[eClass.id] = eClass
             var bare = eClass
             bare.eSuperTypes = []
+            bare.eGenericSuperTypes = []
+            bare.eTypeParameters = []
             bare.eStructuralFeatures = []
             bare.eOperations = []
             current[eClass.id] = bare
@@ -134,6 +136,12 @@ struct SnapshotLinker {
                 guard let source = canonical[identifier], var result = current[identifier] else { continue }
                 result.eSuperTypes = source.eSuperTypes.map {
                     supertype($0, previous: current, built: built)
+                }
+                result.eGenericSuperTypes = source.eGenericSuperTypes.map {
+                    generic($0, previous: current)
+                }
+                result.eTypeParameters = source.eTypeParameters.map {
+                    typeParameter($0, previous: current)
                 }
                 result.eStructuralFeatures = source.eStructuralFeatures.map {
                     feature($0, previous: current)
@@ -188,9 +196,12 @@ struct SnapshotLinker {
         switch feature {
         case var attribute as EAttribute:
             attribute.eType = classifier(attribute.eType, previous: previous)
+            attribute.eGenericType = attribute.eGenericType.map { generic($0, previous: previous) }
             return attribute
         case var reference as EReference:
             reference.eType = classifier(reference.eType, previous: previous)
+            reference.eGenericType = reference.eGenericType.map { generic($0, previous: previous) }
+            reference.eKeys = reference.eKeys.map(target)
             return reference
         default:
             return feature
@@ -201,12 +212,37 @@ struct SnapshotLinker {
     func operation(_ operation: EOperation, previous: [EUUID: EClass]) -> EOperation {
         var result = operation
         result.eType = operation.eType.map { classifier($0, previous: previous) }
-        result.eParameters = operation.eParameters.map { parameter in
-            var refreshed = parameter
-            refreshed.eType = parameter.eType.map { classifier($0, previous: previous) }
-            return refreshed
-        }
+        result.eGenericType = operation.eGenericType.map { generic($0, previous: previous) }
+        result.eTypeParameters = operation.eTypeParameters.map { typeParameter($0, previous: previous) }
+        result.eParameters = operation.eParameters.map { parameter($0, previous: previous) }
         result.eExceptions = operation.eExceptions.map { classifier($0, previous: previous) }
+        result.eGenericExceptions = operation.eGenericExceptions.map { generic($0, previous: previous) }
+        return result
+    }
+
+    /// Refreshes the type and generic type of a parameter.
+    func parameter(_ parameter: EParameter, previous: [EUUID: EClass]) -> EParameter {
+        var refreshed = parameter
+        refreshed.eType = parameter.eType.map { classifier($0, previous: previous) }
+        refreshed.eGenericType = parameter.eGenericType.map { generic($0, previous: previous) }
+        return refreshed
+    }
+
+    /// Refreshes the classifier snapshots in a generic type, including its arguments and bounds.
+    func generic(_ type: EGenericType, previous: [EUUID: EClass]) -> EGenericType {
+        var result = type
+        result.eClassifier = type.eClassifier.map { classifier($0, previous: previous) }
+        result.eTypeParameter = type.eTypeParameter.map(target)
+        result.eTypeArguments = type.eTypeArguments.map { generic($0, previous: previous) }
+        result.eUpperBound = type.eUpperBound.map { generic($0, previous: previous) }
+        result.eLowerBound = type.eLowerBound.map { generic($0, previous: previous) }
+        return result
+    }
+
+    /// Refreshes the classifier snapshots in the bounds of a type parameter.
+    func typeParameter(_ parameter: ETypeParameter, previous: [EUUID: EClass]) -> ETypeParameter {
+        var result = parameter
+        result.eBounds = parameter.eBounds.map { generic($0, previous: previous) }
         return result
     }
 }

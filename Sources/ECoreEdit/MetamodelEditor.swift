@@ -324,6 +324,7 @@ struct MetamodelEditor {
             return .reference(EReference(id: identifier, name: text, eType: EcoreBuiltIns.replacementReferenceType))
         case .eOperation: return .operation(EOperation(id: identifier, name: text))
         case .eParameter: return .parameter(EParameter(id: identifier, name: text))
+        case .eTypeParameter: return .typeParameter(ETypeParameter(id: identifier, name: text))
         case .eAnnotation: return .annotation(EAnnotation(id: identifier, source: text))
         case .eStringToStringMapEntry:
             guard case .annotation(let annotation) = parent else { throw .illegalChild(container: parent.id, feature: .details, kind: kind) }
@@ -400,13 +401,26 @@ struct MetamodelEditor {
     /// Removes every reference that an element holds to the deleted elements.
     private mutating func purge(_ referrer: EUUID, of doomed: Set<EUUID>) {
         guard let element = fetch(referrer) else { return }
-        let features: [EcoreFeatureName]
+        var features: [EcoreFeatureName]
         switch element {
-        case .eClass: features = [.eSuperTypes]
-        case .attribute: features = [.eType]
-        case .reference: features = [.eType, .eOpposite, .container]
-        case .operation: features = [.eType, .eExceptions]
-        case .parameter: features = [.eType]
+        case .eClass(let value):
+            features = [.eSuperTypes]
+            if !value.eGenericSuperTypes.isEmpty { features.append(.eGenericSuperTypes) }
+        case .attribute(let value):
+            features = [.eType]
+            if value.eGenericType != nil { features.append(.eGenericType) }
+        case .reference(let value):
+            features = [.eType, .eOpposite, .container]
+            if !value.eKeys.isEmpty { features.append(.eKeys) }
+            if value.eGenericType != nil { features.append(.eGenericType) }
+        case .operation(let value):
+            features = [.eType, .eExceptions]
+            if value.eGenericType != nil { features.append(.eGenericType) }
+            if !value.eGenericExceptions.isEmpty { features.append(.eGenericExceptions) }
+        case .parameter(let value):
+            features = [.eType]
+            if value.eGenericType != nil { features.append(.eGenericType) }
+        case .typeParameter: features = [.eBounds]
         case .annotation: features = [.references]
         default: return
         }
@@ -414,12 +428,16 @@ struct MetamodelEditor {
             switch element {
             case .eClass(var value):
                 value.eSuperTypes.removeAll { doomed.contains($0.id) }
+                value.eGenericSuperTypes = value.eGenericSuperTypes.compactMap { $0.removingReferences(to: doomed) }
                 element = .eClass(value)
             case .attribute(var value):
                 if doomed.contains(value.eType.id) { value.eType = EcoreBuiltIns.replacementAttributeType }
+                value.eGenericType = value.eGenericType.flatMap { $0.removingReferences(to: doomed) }
                 element = .attribute(value)
             case .reference(var value):
                 if doomed.contains(value.eType.id) { value.eType = EcoreBuiltIns.replacementReferenceType }
+                value.eKeys.removeAll { doomed.contains($0) }
+                value.eGenericType = value.eGenericType.flatMap { $0.removingReferences(to: doomed) }
                 if let opposite = value.opposite, doomed.contains(opposite) {
                     value.opposite = nil
                     value.container = false
@@ -428,12 +446,18 @@ struct MetamodelEditor {
             case .operation(var value):
                 if let type = value.eType, doomed.contains(type.id) { value.eType = nil }
                 value.eExceptions.removeAll { doomed.contains($0.id) }
+                value.eGenericType = value.eGenericType.flatMap { $0.removingReferences(to: doomed) }
+                value.eGenericExceptions = value.eGenericExceptions.compactMap { $0.removingReferences(to: doomed) }
                 element = .operation(value)
             case .parameter(var value):
                 if let type = value.eType, doomed.contains(type.id) {
                     value.eType = type is EClass ? EcoreBuiltIns.replacementReferenceType : EcoreBuiltIns.replacementAttributeType
                 }
+                value.eGenericType = value.eGenericType.flatMap { $0.removingReferences(to: doomed) }
                 element = .parameter(value)
+            case .typeParameter(var value):
+                value.eBounds = value.eBounds.compactMap { $0.removingReferences(to: doomed) }
+                element = .typeParameter(value)
             case .annotation(var value):
                 value.references.removeAll { reference in
                     if case .local(let target) = reference { return doomed.contains(target) }
@@ -532,6 +556,7 @@ struct MetamodelEditor {
             var object = element.object
             object.eSet(metaFeature, converted)
             if let updated = EcoreElement(object) { element = updated }
+            Self.dropStaleGenerics(after: feature, in: &element)
         }
         if feature == .containment, case .reference(let reference) = element, let partner = reference.opposite,
             let flag = value as? Bool
@@ -542,6 +567,34 @@ struct MetamodelEditor {
                     element = .reference(other)
                 }
             }
+        }
+    }
+
+    /// Discards generic information that no longer matches a property that was just set.
+    private static func dropStaleGenerics(after feature: EcoreFeatureName, in element: inout EcoreElement) {
+        switch (feature, element) {
+        case (.eType, .attribute(var value)):
+            value.eGenericType = nil
+            element = .attribute(value)
+        case (.eType, .reference(var value)):
+            value.eGenericType = nil
+            element = .reference(value)
+        case (.eType, .operation(var value)):
+            value.eGenericType = nil
+            element = .operation(value)
+        case (.eType, .parameter(var value)):
+            value.eGenericType = nil
+            element = .parameter(value)
+        case (.eSuperTypes, .eClass(var value)):
+            let remaining = value.eGenericSuperTypes.compactMap { $0.eClassifier?.id }
+            if remaining != value.eSuperTypes.map { $0.id } { value.eGenericSuperTypes = [] }
+            element = .eClass(value)
+        case (.eExceptions, .operation(var value)):
+            let remaining = value.eGenericExceptions.compactMap { $0.eClassifier?.id }
+            if remaining != value.eExceptions.map { $0.id } { value.eGenericExceptions = [] }
+            element = .operation(value)
+        default:
+            break
         }
     }
 
@@ -593,6 +646,15 @@ struct MetamodelEditor {
                 if let classifier = try resolveClassifier(identifier) as? any EcoreValue { classifiers.append(classifier) }
             }
             return EcoreValueArray(classifiers)
+        case .eKeys:
+            guard case .reference = element else { throw .notSettable(feature) }
+            guard let identifiers = (value ?? [EUUID]()) as? [EUUID] else { throw .invalidValue(feature) }
+            guard case .reference(let reference) = element else { throw .notSettable(feature) }
+            let allowed = Set(index.keyCandidates(of: reference))
+            for identifier in identifiers where !allowed.contains(identifier) {
+                throw .unresolvedReference(identifier)
+            }
+            return EcoreValueArray(identifiers)
         case .references:
             guard let identifiers = (value ?? [EUUID]()) as? [EUUID] else { throw .invalidValue(feature) }
             for identifier in identifiers where !index.contains(identifier) && EcoreBuiltIns.classifiers[identifier] == nil {
@@ -829,6 +891,14 @@ enum LabelImpact {
                 }
             }
             if case .parameter? = index.element(identifier), let owner = index.container(of: identifier)?.container {
+                result.insert(owner)
+            }
+            if case .typeParameter? = index.element(identifier), let owner = index.container(of: identifier)?.container {
+                result.insert(owner)
+            }
+        }
+        for identifier in added {
+            if case .typeParameter? = index.element(identifier), let owner = index.container(of: identifier)?.container {
                 result.insert(owner)
             }
         }

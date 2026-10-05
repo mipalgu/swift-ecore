@@ -30,8 +30,8 @@ struct DescriptorTests {
     func classChildren() {
         let fixture = Fixture()
         #expect(pairs(fixture.document.childDescriptors(for: fixture.id("Item"))) == [
-            "eAnnotations:EAnnotation", "eOperations:EOperation", "eStructuralFeatures:EAttribute",
-            "eStructuralFeatures:EReference",
+            "eAnnotations:EAnnotation", "eTypeParameters:ETypeParameter", "eOperations:EOperation",
+            "eStructuralFeatures:EAttribute", "eStructuralFeatures:EReference",
         ])
     }
 
@@ -40,17 +40,23 @@ struct DescriptorTests {
         let fixture = Fixture()
         let annotation = "eAnnotations:EAnnotation"
         let document = fixture.document
-        #expect(pairs(document.childDescriptors(for: fixture.id("Kind"))) == [annotation, "eLiterals:EEnumLiteral"])
+        #expect(pairs(document.childDescriptors(for: fixture.id("Kind"))) == [
+            annotation, "eTypeParameters:ETypeParameter", "eLiterals:EEnumLiteral",
+        ])
         #expect(pairs(document.childDescriptors(for: fixture.id("A"))) == [annotation])
         #expect(pairs(document.childDescriptors(for: fixture.id("label", in: "Item"))) == [annotation])
         #expect(pairs(document.childDescriptors(for: fixture.id("owner", in: "Item"))) == [annotation])
-        #expect(pairs(document.childDescriptors(for: fixture.id("check"))) == [annotation, "eParameters:EParameter"])
+        #expect(pairs(document.childDescriptors(for: fixture.id("check"))) == [
+            annotation, "eTypeParameters:ETypeParameter", "eParameters:EParameter",
+        ])
         #expect(pairs(document.childDescriptors(for: fixture.id("level"))) == [annotation])
         #expect(pairs(document.childDescriptors(for: fixture.annotationID)) == [annotation, "details:EStringToStringMapEntry"])
         let detail = document.index.children(of: fixture.annotationID)[0].id
         #expect(document.childDescriptors(for: detail).isEmpty)
         let datatype = MetamodelDocument(roots: [EPackage(name: "p", eClassifiers: [EDataType(name: "D")])])
-        #expect(pairs(datatype.childDescriptors(for: datatype.roots[0].eClassifiers[0].id)) == [annotation])
+        #expect(pairs(datatype.childDescriptors(for: datatype.roots[0].eClassifiers[0].id)) == [
+            annotation, "eTypeParameters:ETypeParameter",
+        ])
         #expect(document.childDescriptors(for: EUUID()).isEmpty)
     }
 
@@ -99,8 +105,10 @@ struct DescriptorTests {
     func propertyFeatures() {
         let fixture = Fixture()
         #expect(summary(fixture.rootID, in: fixture) == ["name", "nsURI", "nsPrefix"])
-        #expect(summary(fixture.id("Item"), in: fixture) == ["name", "instanceClassName", "abstract", "interface", "eSuperTypes"])
-        #expect(summary(fixture.id("Kind"), in: fixture) == ["name", "instanceClassName", "serializable"])
+        #expect(summary(fixture.id("Item"), in: fixture) == [
+            "name", "instanceClassName", "instanceTypeName", "abstract", "interface", "eSuperTypes",
+        ])
+        #expect(summary(fixture.id("Kind"), in: fixture) == ["name", "instanceClassName", "instanceTypeName", "serializable"])
         #expect(summary(fixture.id("A"), in: fixture) == ["name", "value", "literal"])
         #expect(summary(fixture.id("label", in: "Item"), in: fixture) == [
             "name", "ordered", "unique", "lowerBound", "upperBound", "many", "required", "eType", "changeable",
@@ -109,7 +117,7 @@ struct DescriptorTests {
         #expect(summary(fixture.id("owner", in: "Item"), in: fixture) == [
             "name", "ordered", "unique", "lowerBound", "upperBound", "many", "required", "eType", "changeable",
             "volatile", "transient", "defaultValueLiteral", "unsettable", "derived", "containment", "container",
-            "resolveProxies", "eOpposite",
+            "resolveProxies", "eOpposite", "eKeys",
         ])
         #expect(summary(fixture.id("check"), in: fixture) == [
             "name", "ordered", "unique", "lowerBound", "upperBound", "many", "required", "eType", "eExceptions",

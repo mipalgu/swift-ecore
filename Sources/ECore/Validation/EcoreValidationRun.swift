@@ -75,6 +75,7 @@ final class EcoreValidationRun {
         case .operation(let value): checkOperation(value)
         case .parameter(let value): checkParameter(value)
         case .annotation(let value): checkAnnotation(value)
+        case .typeParameter(let value): checkTypeParameter(value)
         case .detail: break
         }
         guard diagnostics.count - start > 1 else { return }

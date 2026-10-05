@@ -817,6 +817,9 @@ public actor XMIParser {
         if let instanceClassName = element[.instanceClassName] {
             eClass.eSet(.instanceClassName, instanceClassName)
         }
+        if let instanceTypeName = element[EcoreFeatureName.instanceTypeName.rawValue] {
+            eClass.eSet(EcoreFeatureName.instanceTypeName.rawValue, value: instanceTypeName)
+        }
 
         // Parse eSuperTypes - will be resolved in second pass
         let genericSuperTypes = element.children(EcoreFeatureName.eGenericSuperTypes.rawValue)
@@ -831,6 +834,8 @@ public actor XMIParser {
         }
 
         try await attachAnnotations(to: &eClass, from: element, in: resource)
+        try await attachTypeParameters(to: &eClass, from: element, in: resource)
+        await attachGenericTypes(.eGenericSuperTypes, to: &eClass, from: element, in: resource)
 
         // Parse structural features
         var featureIds: [EUUID] = []
@@ -858,6 +863,84 @@ public actor XMIParser {
         await resource.register(eClass)
 
         return eClass
+    }
+
+    /// Parses the `eTypeParameters` children of an element.
+    ///
+    /// - Parameters:
+    ///   - element: The element that declares the type parameters.
+    ///   - object: The object being built; its `eTypeParameters` feature is set if there are any.
+    ///   - resource: The Resource for object storage.
+    /// - Throws: ``XMIError`` if an annotation of a type parameter cannot be parsed.
+    private func attachTypeParameters(
+        to object: inout DynamicEObject, from element: XElement, in resource: Resource
+    ) async throws {
+        var identifiers: [EUUID] = []
+        for child in element.children(EcoreFeatureName.eTypeParameters.rawValue) {
+            let metaclass = await getOrCreateEClass(EcoreClassifier.eTypeParameter.rawValue, in: resource)
+            var parameter = DynamicEObject(eClass: metaclass)
+            if let xmiId = child[.xmiId] { xmiIdMap[xmiId] = parameter.id }
+            parameter.eSet(.name, child[.name] ?? "")
+            try await attachAnnotations(to: &parameter, from: child, in: resource)
+            var bounds: [EUUID] = []
+            for bound in child.children(EcoreFeatureName.eBounds.rawValue) {
+                bounds.append(await parseGenericType(bound, in: resource).id)
+            }
+            if !bounds.isEmpty { parameter.eSet(EcoreFeatureName.eBounds.rawValue, value: bounds) }
+            await resource.register(parameter)
+            identifiers.append(parameter.id)
+        }
+        if !identifiers.isEmpty {
+            object.eSet(EcoreFeatureName.eTypeParameters.rawValue, value: identifiers)
+        }
+    }
+
+    /// Parses the generic types that an element holds in a containment feature.
+    ///
+    /// - Parameters:
+    ///   - feature: The name of the containment feature, such as `eGenericType`.
+    ///   - element: The element that holds the generic types.
+    ///   - object: The object being built; the feature is set if there are any generic types.
+    ///   - resource: The Resource for object storage.
+    private func attachGenericTypes(
+        _ feature: EcoreFeatureName, to object: inout DynamicEObject, from element: XElement,
+        in resource: Resource
+    ) async {
+        var identifiers: [EUUID] = []
+        for child in element.children(feature.rawValue) {
+            identifiers.append(await parseGenericType(child, in: resource).id)
+        }
+        guard !identifiers.isEmpty else { return }
+        if feature == .eGenericType || feature == .eUpperBound || feature == .eLowerBound {
+            object.eSet(feature.rawValue, value: identifiers[0])
+        } else {
+            object.eSet(feature.rawValue, value: identifiers)
+        }
+    }
+
+    /// Parses an `EGenericType` element with its type arguments and bounds.
+    ///
+    /// The classifier and type parameter references are resolved in the second pass.
+    ///
+    /// - Parameters:
+    ///   - element: The generic type element.
+    ///   - resource: The Resource for object storage.
+    /// - Returns: The registered generic type object.
+    private func parseGenericType(_ element: XElement, in resource: Resource) async -> DynamicEObject {
+        let metaclass = await getOrCreateEClass(EcoreClassifier.eGenericType.rawValue, in: resource)
+        var type = DynamicEObject(eClass: metaclass)
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = type.id }
+        if let classifier = element[EcoreFeatureName.eClassifier.rawValue] {
+            type.eSet(EcoreClassifier.XMIParsingConstants.tempEClassifierRef, value: classifier)
+        }
+        if let parameter = element[EcoreFeatureName.eTypeParameter.rawValue] {
+            type.eSet(EcoreClassifier.XMIParsingConstants.tempETypeParameterRef, value: parameter)
+        }
+        await attachGenericTypes(.eUpperBound, to: &type, from: element, in: resource)
+        await attachGenericTypes(.eTypeArguments, to: &type, from: element, in: resource)
+        await attachGenericTypes(.eLowerBound, to: &type, from: element, in: resource)
+        await resource.register(type)
+        return type
     }
 
     /// The type reference of a typed element.
@@ -926,6 +1009,9 @@ public actor XMIParser {
         }
         let genericExceptions = element.children(EcoreFeatureName.eGenericExceptions.rawValue)
             .compactMap { $0[EcoreFeatureName.eClassifier.rawValue] }
+        await attachGenericTypes(.eGenericExceptions, to: &object, from: element, in: resource)
+        await attachGenericTypes(.eGenericType, to: &object, from: element, in: resource)
+        try await attachTypeParameters(to: &object, from: element, in: resource)
         let exceptions = ([element[EcoreFeatureName.eExceptions.rawValue]].compactMap { $0 }
             + genericExceptions).joined(separator: " ")
         if !exceptions.isEmpty {
@@ -961,8 +1047,18 @@ public actor XMIParser {
 
         // Set name before registering
         eEnum.eSet(.name, name)
+        if let instanceClassName = element[.instanceClassName] {
+            eEnum.eSet(.instanceClassName, instanceClassName)
+        }
+        if let instanceTypeName = element[EcoreFeatureName.instanceTypeName.rawValue] {
+            eEnum.eSet(EcoreFeatureName.instanceTypeName.rawValue, value: instanceTypeName)
+        }
+        if let isSerializable = element.getBool(.serializable) {
+            eEnum.eSet(.serializable, isSerializable)
+        }
 
         try await attachAnnotations(to: &eEnum, from: element, in: resource)
+        try await attachTypeParameters(to: &eEnum, from: element, in: resource)
 
         // Parse literals
         var literalIds: [EUUID] = []
@@ -1054,12 +1150,17 @@ public actor XMIParser {
             dataType.eSet(.instanceClassName, instanceClassName)
         }
 
+        if let instanceTypeName = element[EcoreFeatureName.instanceTypeName.rawValue] {
+            dataType.eSet(EcoreFeatureName.instanceTypeName.rawValue, value: instanceTypeName)
+        }
+
         // Parse serializable attribute
         if let isSerializable = element.getBool(.serializable) {
             dataType.eSet(.serializable, isSerializable)
         }
 
         try await attachAnnotations(to: &dataType, from: element, in: resource)
+        try await attachTypeParameters(to: &dataType, from: element, in: resource)
 
         // Register after features are set
         await resource.register(dataType)
@@ -1127,6 +1228,7 @@ public actor XMIParser {
         }
 
         try await attachAnnotations(to: &attribute, from: element, in: resource)
+        await attachGenericTypes(.eGenericType, to: &attribute, from: element, in: resource)
 
         // Default value
         if let defaultValue = element[.defaultValueLiteral] {
@@ -1206,6 +1308,10 @@ public actor XMIParser {
         }
 
         try await attachAnnotations(to: &reference, from: element, in: resource)
+        await attachGenericTypes(.eGenericType, to: &reference, from: element, in: resource)
+        if let keys = element[EcoreFeatureName.eKeys.rawValue], !keys.isEmpty {
+            reference.eSet(EcoreClassifier.XMIParsingConstants.tempEKeysRef, value: keys)
+        }
 
         // Register after features are set
         await resource.register(reference)
@@ -1274,6 +1380,9 @@ public actor XMIParser {
                 (EcoreClassifier.XMIParsingConstants.tempESuperTypesRef, XMIAttribute.eSuperTypes.rawValue),
                 (EcoreClassifier.XMIParsingConstants.tempEExceptionsRef, EcoreFeatureName.eExceptions.rawValue),
                 (EcoreClassifier.XMIParsingConstants.tempReferencesRef, EcoreFeatureName.references.rawValue),
+                (EcoreClassifier.XMIParsingConstants.tempEClassifierRef, EcoreFeatureName.eClassifier.rawValue),
+                (EcoreClassifier.XMIParsingConstants.tempETypeParameterRef, EcoreFeatureName.eTypeParameter.rawValue),
+                (EcoreClassifier.XMIParsingConstants.tempEKeysRef, EcoreFeatureName.eKeys.rawValue),
             ] {
                 guard let references = await resource.eGet(objectId: object.id, feature: temporary) as? String
                 else { continue }

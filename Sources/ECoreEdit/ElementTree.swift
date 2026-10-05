@@ -37,6 +37,22 @@ enum ElementTree {
             guard let packages = all(children, package) else { return nil }
             value.eSubpackages = packages
             return .package(value)
+        case (.eClass(var value), .eTypeParameters):
+            guard let parameters = all(children, typeParameter) else { return nil }
+            value.eTypeParameters = parameters
+            return .eClass(value)
+        case (.eEnum(var value), .eTypeParameters):
+            guard let parameters = all(children, typeParameter) else { return nil }
+            value.eTypeParameters = parameters
+            return .eEnum(value)
+        case (.dataType(var value), .eTypeParameters):
+            guard let parameters = all(children, typeParameter) else { return nil }
+            value.eTypeParameters = parameters
+            return .dataType(value)
+        case (.operation(var value), .eTypeParameters):
+            guard let parameters = all(children, typeParameter) else { return nil }
+            value.eTypeParameters = parameters
+            return .operation(value)
         case (.eClass(var value), .eOperations):
             guard let operations = all(children, operation) else { return nil }
             value.eOperations = operations
@@ -112,6 +128,11 @@ enum ElementTree {
         return nil
     }
 
+    private static func typeParameter(_ element: EcoreElement) -> ETypeParameter? {
+        if case .typeParameter(let value) = element { return value }
+        return nil
+    }
+
     private static func detail(_ element: EcoreElement) -> EStringToStringMapEntry? {
         if case .detail(let value) = element { return value }
         return nil
@@ -136,6 +157,7 @@ enum ElementTree {
         case .operation(var value): value.eAnnotations = annotations; return .operation(value)
         case .parameter(var value): value.eAnnotations = annotations; return .parameter(value)
         case .annotation(var value): value.eAnnotations = annotations; return .annotation(value)
+        case .typeParameter(var value): value.eAnnotations = annotations; return .typeParameter(value)
         case .detail: return nil
         }
     }

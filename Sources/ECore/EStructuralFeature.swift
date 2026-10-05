@@ -131,6 +131,14 @@ public struct EAttribute: EStructuralFeature, ENamedElement {
     /// Only one attribute per class should be marked as an ID.
     public var isID: Bool
 
+    /// The generic type of this element, if its type has type arguments or is a type parameter.
+    ///
+    /// If this is `nil`, ``eType`` alone describes the type. Otherwise the generic type's
+    /// classifier is the raw type that ``eType`` holds.
+    public var eGenericType: EGenericType? = nil {
+        didSet { ContainerStamp.stamp(&eGenericType, container: id) }
+    }
+
     /// Internal storage for feature values.
     private var storage: EObjectStorage
 
@@ -440,6 +448,19 @@ public struct EReference: EStructuralFeature, ENamedElement {
     /// References normally have no default value; the property exists so that all
     /// structural features answer the `defaultValueLiteral` feature of the Ecore metamodel.
     public var defaultValueLiteral: String?
+
+    /// The generic type of this element, if its type has type arguments or is a type parameter.
+    ///
+    /// If this is `nil`, ``eType`` alone describes the type. Otherwise the generic type's
+    /// classifier is the raw type that ``eType`` holds.
+    public var eGenericType: EGenericType? = nil {
+        didSet { ContainerStamp.stamp(&eGenericType, container: id) }
+    }
+
+    /// The attributes of the referenced class that identify its instances, as EMF keys.
+    ///
+    /// The identifiers name attributes of the reference's type or of its supertypes.
+    public var eKeys: [EUUID] = []
 
     /// Internal storage for feature values.
     private var storage: EObjectStorage

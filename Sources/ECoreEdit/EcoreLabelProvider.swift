@@ -150,31 +150,42 @@ public struct EcoreLabelProvider: Sendable {
         var detail = ""
         switch element {
         case .package(let value): name = value.name
-        case .eEnum(let value): name = value.name
+        case .eEnum(let value): name = value.name + Self.typeParameterList(value.eTypeParameters)
         case .eClass(let value):
-            name = value.name
+            name = value.name + Self.typeParameterList(value.eTypeParameters)
             if !value.eSuperTypes.isEmpty {
                 detail += EcoreLabelSyntax.supertypeSeparator
-                    + value.eSuperTypes.map { resolver.name(of: $0) }.joined(separator: EcoreLabelSyntax.listSeparator)
+                    + (value.eGenericSuperTypes.isEmpty
+                        ? value.eSuperTypes.map { resolver.name(of: $0) }
+                        : value.eGenericSuperTypes.map { resolver.name(of: $0) })
+                    .joined(separator: EcoreLabelSyntax.listSeparator)
             }
             if let instance = value.instanceClassName { detail += Self.bracketed(instance) }
         case .dataType(let value):
-            name = value.name
+            name = value.name + Self.typeParameterList(value.eTypeParameters)
             detail = Self.bracketed(value.instanceClassName ?? EcoreLabelSyntax.absentValue)
         case .literal(let value):
             name = value.name
             detail = EcoreLabelSyntax.literalSeparator + String(value.value)
         case .attribute(let value):
             name = value.name
-            detail = EcoreLabelSyntax.typeSeparator + resolver.name(of: value.eType)
+            detail = EcoreLabelSyntax.typeSeparator + resolver.name(of: value.eGenericType, or: value.eType)
         case .reference(let value):
             name = value.name
-            detail = EcoreLabelSyntax.typeSeparator + resolver.name(of: value.eType)
+            detail = EcoreLabelSyntax.typeSeparator + resolver.name(of: value.eGenericType, or: value.eType)
         case .parameter(let value):
             name = value.name
-            if let type = value.eType { detail = EcoreLabelSyntax.typeSeparator + resolver.name(of: type) }
-        case .operation(let value):
+            if value.eGenericType != nil || value.eType != nil {
+                detail = EcoreLabelSyntax.typeSeparator + resolver.name(of: value.eGenericType, or: value.eType)
+            }
+        case .typeParameter(let value):
             name = value.name
+            if !value.eBounds.isEmpty {
+                detail = EcoreLabelSyntax.upperBoundSeparator
+                    + value.eBounds.map { resolver.name(of: $0) }.joined(separator: EcoreLabelSyntax.boundsSeparator)
+            }
+        case .operation(let value):
+            name = value.name + Self.typeParameterList(value.eTypeParameters)
             detail = operationDetail(value, &resolver)
         case .annotation(let value):
             let nested: Bool
@@ -194,17 +205,30 @@ public struct EcoreLabelProvider: Sendable {
     private func operationDetail(_ operation: EOperation, _ resolver: inout TypeNames) -> String {
         var detail = EcoreLabelSyntax.parametersOpening
         for (position, parameter) in operation.eParameters.enumerated() {
-            guard let type = parameter.eType else { continue }
-            detail += resolver.name(of: type)
+            guard parameter.eGenericType != nil || parameter.eType != nil else { continue }
+            detail += resolver.name(of: parameter.eGenericType, or: parameter.eType)
             if position < operation.eParameters.count - 1 { detail += EcoreLabelSyntax.listSeparator }
         }
         detail += EcoreLabelSyntax.parametersClosing
-        if let type = operation.eType { detail += EcoreLabelSyntax.typeSeparator + resolver.name(of: type) }
-        if !operation.eExceptions.isEmpty {
+        if operation.eGenericType != nil || operation.eType != nil {
+            detail += EcoreLabelSyntax.typeSeparator + resolver.name(of: operation.eGenericType, or: operation.eType)
+        }
+        if !operation.eGenericExceptions.isEmpty {
+            detail += EcoreLabelSyntax.exceptionsSeparator
+                + operation.eGenericExceptions.map { resolver.name(of: $0) }.joined(separator: EcoreLabelSyntax.listSeparator)
+        } else if !operation.eExceptions.isEmpty {
             detail += EcoreLabelSyntax.exceptionsSeparator
                 + operation.eExceptions.map { resolver.name(of: $0) }.joined(separator: EcoreLabelSyntax.listSeparator)
         }
         return detail
+    }
+
+    /// The type parameters of a declaration as they follow its name: `<K, V>`, or nothing.
+    private static func typeParameterList(_ parameters: [ETypeParameter]) -> String {
+        guard !parameters.isEmpty else { return "" }
+        return EcoreLabelSyntax.typeArgumentsOpening
+            + parameters.map(\.name).joined(separator: EcoreLabelSyntax.listSeparator)
+            + EcoreLabelSyntax.typeArgumentsClosing
     }
 
     private static func bracketed(_ text: String) -> String {
@@ -244,6 +268,7 @@ public struct EcoreLabelProvider: Sendable {
         case .parameter: return .eParameter
         case .annotation: return .eAnnotation
         case .detail: return .detailsEntry
+        case .typeParameter: return .eParameter
         }
     }
 
@@ -274,6 +299,41 @@ public struct EcoreLabelProvider: Sendable {
         /// The name of a classifier: that of the element with its identifier, or, if the
         /// document holds none, that of the Ecore built-in classifier, or, failing that, the
         /// name that the snapshot carries (which marks the label as unresolved).
+        mutating func name(of type: EGenericType?, or classifier: (any EClassifier)?) -> String {
+            if let type { return name(of: type) }
+            return classifier.map { name(of: $0) } ?? ""
+        }
+
+        /// The text of a generic type: `EList<EString>`, `T`, or `? extends Car`.
+        mutating func name(of type: EGenericType) -> String {
+            var text: String
+            if let classifier = type.eClassifier {
+                text = name(of: classifier)
+            } else if let parameter = type.eTypeParameter {
+                if case .typeParameter(let value)? = index.element(parameter) {
+                    text = value.name
+                } else {
+                    unresolved = true
+                    text = EcoreLabelSyntax.wildcard
+                }
+            } else {
+                text = EcoreLabelSyntax.wildcard
+                if let bound = type.eUpperBound {
+                    text += EcoreLabelSyntax.upperBoundSeparator + name(of: bound)
+                } else if let bound = type.eLowerBound {
+                    text += EcoreLabelSyntax.lowerBoundSeparator + name(of: bound)
+                }
+            }
+            if !type.eTypeArguments.isEmpty {
+                var arguments: [String] = []
+                for argument in type.eTypeArguments { arguments.append(name(of: argument)) }
+                text += EcoreLabelSyntax.typeArgumentsOpening
+                    + arguments.joined(separator: EcoreLabelSyntax.listSeparator)
+                    + EcoreLabelSyntax.typeArgumentsClosing
+            }
+            return text
+        }
+
         mutating func name(of classifier: any EClassifier) -> String {
             if let element = index.element(classifier.id), let name = element.name { return name }
             if let builtIn = EcoreBuiltIns.classifiers[classifier.id] { return builtIn.name }

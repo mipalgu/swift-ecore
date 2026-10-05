@@ -48,6 +48,7 @@ private protocol ReflectiveStructuralFeature: EcoreReflective {
     var name: String { get set }
     var eAnnotations: [EAnnotation] { get set }
     var eType: any EClassifier { get set }
+    var eGenericType: EGenericType? { get set }
     var lowerBound: Int { get set }
     var upperBound: Int { get set }
     var changeable: Bool { get set }
@@ -74,7 +75,8 @@ extension ReflectiveStructuralFeature {
         case .many: return .value(isMany)
         case .required: return .value(isRequired)
         case .eType: return .value(EcorePackage.canonical(eType) as? any EcoreValue)
-        case .eGenericType: return .value(nil)
+        case .eGenericType:
+            return .value(eGenericType)
         case .changeable: return .value(changeable)
         case .volatile: return .value(volatile)
         case .transient: return .value(transient)
@@ -101,6 +103,10 @@ extension ReflectiveStructuralFeature {
         case .eType:
             guard let type = value as? any EClassifier else { return true }
             eType = type
+        case .eGenericType:
+            let parts = GenericTyping.stored(value as? EGenericType)
+            eGenericType = parts.generic
+            if let raw = parts.raw { eType = raw }
         case .changeable: changeable = value as? Bool ?? true
         case .volatile: volatile = value as? Bool ?? false
         case .transient: transient = value as? Bool ?? false
@@ -178,10 +184,13 @@ extension EClass: EcoreReflective {
         case .eIDAttribute: return .value(eIDAttribute)
         case .eOperations: return Reflect.objects(eOperations)
         case .eAllOperations: return Reflect.objects(eAllOperations)
-        case .eTypeParameters, .eGenericSuperTypes, .eAllGenericSuperTypes:
-            return Reflect.empty
+        case .eTypeParameters: return Reflect.objects(eTypeParameters)
+        case .eGenericSuperTypes: return Reflect.objects(eGenericSuperTypes)
+        case .eAllGenericSuperTypes:
+            return Reflect.objects(eAllSuperTypes.flatMap { $0.eGenericSuperTypes })
         case .ePackage: return .value(eContainerID)
         case .instanceClassName: return .value(instanceClassName)
+        case .instanceTypeName: return .value(instanceTypeName)
         case .instanceClass, .defaultValue: return .value(nil)
         default: return .unsupported
         }
@@ -199,6 +208,14 @@ extension EClass: EcoreReflective {
         case .eOperations:
             eOperations = ReflectiveValues.elements(value, as: EOperation.self) ?? []
         case .instanceClassName: instanceClassName = value as? String
+        case .instanceTypeName: instanceTypeName = value as? String
+        case .eTypeParameters:
+            eTypeParameters = ReflectiveValues.elements(value, as: ETypeParameter.self) ?? []
+        case .eGenericSuperTypes:
+            eGenericSuperTypes = ReflectiveValues.elements(value, as: EGenericType.self) ?? []
+            if !eGenericSuperTypes.isEmpty {
+                eSuperTypes = eGenericSuperTypes.compactMap { $0.eClassifier as? EClass }
+            }
         case .eStructuralFeatures:
             eStructuralFeatures =
                 ReflectiveValues.elements(value, as: (any EStructuralFeature).self) ?? []
@@ -209,9 +226,11 @@ extension EClass: EcoreReflective {
 
     var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
         Reflect.contained(.eAnnotations, eAnnotations)
+            + Reflect.contained(.eTypeParameters, eTypeParameters)
             + Reflect.contained(.eOperations, eOperations)
             + Reflect.contained(
                 .eStructuralFeatures, eStructuralFeatures.compactMap { $0 as? any EcoreValue })
+            + Reflect.contained(.eGenericSuperTypes, eGenericSuperTypes)
     }
 }
 
@@ -239,6 +258,7 @@ extension EAttribute {
 
     var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
         Reflect.contained(.eAnnotations, eAnnotations)
+            + Reflect.contained(.eGenericType, eGenericType.map { [$0] } ?? [])
     }
 }
 
@@ -252,7 +272,7 @@ extension EReference {
         case .eReferenceType:
             let canonical = EcorePackage.canonical(eType)
             return .value(canonical is EClass ? canonical as? any EcoreValue : nil)
-        case .eKeys: return Reflect.empty
+        case .eKeys: return .value(EcoreValueArray(eKeys))
         default: return commonGet(feature)
         }
     }
@@ -260,6 +280,10 @@ extension EReference {
     mutating func reflectiveSet(_ feature: EcoreFeatureName, _ value: (any EcoreValue)?) -> Bool {
         switch feature {
         case .containment: containment = value as? Bool ?? false
+        case .eKeys:
+            eKeys = (ReflectiveValues.elements(value, as: (any EcoreValue).self) ?? []).compactMap {
+                ($0 as? EUUID) ?? ($0 as? EAttribute)?.id
+            }
         case .resolveProxies: resolveProxies = value as? Bool ?? true
         case .eOpposite:
             if let identifier = value as? EUUID {
@@ -276,6 +300,7 @@ extension EReference {
 
     var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
         Reflect.contained(.eAnnotations, eAnnotations)
+            + Reflect.contained(.eGenericType, eGenericType.map { [$0] } ?? [])
     }
 }
 
@@ -285,6 +310,7 @@ extension EReference {
 private protocol ReflectiveTypedElement: EcoreReflective, ETypedElement {
     var name: String { get set }
     var eAnnotations: [EAnnotation] { get set }
+    var eGenericType: EGenericType? { get set }
     var isMany: Bool { get }
     var isRequired: Bool { get }
 }
@@ -301,7 +327,8 @@ extension ReflectiveTypedElement {
         case .many: return .value(isMany)
         case .required: return .value(isRequired)
         case .eType: return .value(eType.flatMap { EcorePackage.canonical($0) as? any EcoreValue })
-        case .eGenericType: return .value(nil)
+        case .eGenericType:
+            return .value(eGenericType)
         default: return .unsupported
         }
     }
@@ -318,6 +345,10 @@ extension ReflectiveTypedElement {
         case .lowerBound: lowerBound = value as? Int ?? 0
         case .upperBound: upperBound = value as? Int ?? 1
         case .eType: eType = value as? any EClassifier
+        case .eGenericType:
+            let parts = GenericTyping.stored(value as? EGenericType)
+            eGenericType = parts.generic
+            if let raw = parts.raw { eType = raw }
         default: return false
         }
         return true
@@ -331,7 +362,9 @@ extension EOperation: ReflectiveTypedElement {
         case .eParameters: return Reflect.objects(eParameters)
         case .eExceptions:
             return Reflect.classifiers(eExceptions.map { EcorePackage.canonical($0) })
-        case .eTypeParameters, .eGenericExceptions: return Reflect.empty
+        case .eTypeParameters: return Reflect.objects(eTypeParameters)
+        case .eGenericExceptions:
+            return Reflect.objects(eGenericExceptions)
         default: return typedGet(feature)
         }
     }
@@ -344,13 +377,25 @@ extension EOperation: ReflectiveTypedElement {
         case .eExceptions:
             eExceptions = ReflectiveValues.elements(value, as: (any EClassifier).self) ?? []
             return true
+        case .eTypeParameters:
+            eTypeParameters = ReflectiveValues.elements(value, as: ETypeParameter.self) ?? []
+            return true
+        case .eGenericExceptions:
+            eGenericExceptions = ReflectiveValues.elements(value, as: EGenericType.self) ?? []
+            if !eGenericExceptions.isEmpty {
+                eExceptions = eGenericExceptions.compactMap { $0.eClassifier }
+            }
+            return true
         default: return typedSet(feature, value)
         }
     }
 
     var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
         Reflect.contained(.eAnnotations, eAnnotations)
+            + Reflect.contained(.eGenericType, eGenericType.map { [$0] } ?? [])
+            + Reflect.contained(.eTypeParameters, eTypeParameters)
             + Reflect.contained(.eParameters, eParameters)
+            + Reflect.contained(.eGenericExceptions, eGenericExceptions)
     }
 }
 
@@ -368,6 +413,7 @@ extension EParameter: ReflectiveTypedElement {
 
     var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
         Reflect.contained(.eAnnotations, eAnnotations)
+            + Reflect.contained(.eGenericType, eGenericType.map { [$0] } ?? [])
     }
 }
 
@@ -380,8 +426,9 @@ extension EDataType: EcoreReflective {
         case .eAnnotations: return Reflect.objects(eAnnotations)
         case .serializable: return .value(serialisable)
         case .instanceClassName: return .value(instanceClassName)
+        case .instanceTypeName: return .value(instanceTypeName)
         case .ePackage: return .value(eContainerID)
-        case .eTypeParameters: return Reflect.empty
+        case .eTypeParameters: return Reflect.objects(eTypeParameters)
         case .instanceClass, .defaultValue: return .value(nil)
         default: return .unsupported
         }
@@ -392,6 +439,9 @@ extension EDataType: EcoreReflective {
         case .name: name = value as? String ?? ""
         case .serializable: serialisable = value as? Bool ?? true
         case .instanceClassName: instanceClassName = value as? String
+        case .instanceTypeName: instanceTypeName = value as? String
+        case .eTypeParameters:
+            eTypeParameters = ReflectiveValues.elements(value, as: ETypeParameter.self) ?? []
         case .eAnnotations:
             eAnnotations = ReflectiveValues.elements(value, as: EAnnotation.self) ?? []
         default: return false
@@ -401,6 +451,7 @@ extension EDataType: EcoreReflective {
 
     var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
         Reflect.contained(.eAnnotations, eAnnotations)
+            + Reflect.contained(.eTypeParameters, eTypeParameters)
     }
 }
 
@@ -410,9 +461,11 @@ extension EEnum: EcoreReflective {
         case .name: return .value(name)
         case .eAnnotations: return Reflect.objects(eAnnotations)
         case .eLiterals: return Reflect.objects(literals)
-        case .serializable: return .value(true)
+        case .serializable: return .value(serialisable)
+        case .instanceClassName: return .value(instanceClassName)
+        case .instanceTypeName: return .value(instanceTypeName)
         case .ePackage: return .value(eContainerID)
-        case .eTypeParameters: return Reflect.empty
+        case .eTypeParameters: return Reflect.objects(eTypeParameters)
         case .instanceClass, .defaultValue: return .value(nil)
         default: return .unsupported
         }
@@ -425,13 +478,20 @@ extension EEnum: EcoreReflective {
             eAnnotations = ReflectiveValues.elements(value, as: EAnnotation.self) ?? []
         case .eLiterals:
             literals = ReflectiveValues.elements(value, as: EEnumLiteral.self) ?? []
+        case .serializable: serialisable = value as? Bool ?? true
+        case .instanceClassName: instanceClassName = value as? String
+        case .instanceTypeName: instanceTypeName = value as? String
+        case .eTypeParameters:
+            eTypeParameters = ReflectiveValues.elements(value, as: ETypeParameter.self) ?? []
         default: return false
         }
         return true
     }
 
     var containedObjects: [(feature: EcoreFeatureName, object: any EObject)] {
-        Reflect.contained(.eAnnotations, eAnnotations) + Reflect.contained(.eLiterals, literals)
+        Reflect.contained(.eAnnotations, eAnnotations)
+            + Reflect.contained(.eTypeParameters, eTypeParameters)
+            + Reflect.contained(.eLiterals, literals)
     }
 }
 

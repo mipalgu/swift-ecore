@@ -84,6 +84,8 @@ public enum EcoreElement: Sendable {
     case annotation(EAnnotation)
     /// A key and value entry of an annotation.
     case detail(EStringToStringMapEntry)
+    /// A type parameter of a classifier or operation.
+    case typeParameter(ETypeParameter)
 
     /// Wraps a metamodel object.
     ///
@@ -103,6 +105,7 @@ public enum EcoreElement: Sendable {
         case let value as EParameter: self = .parameter(value)
         case let value as EAnnotation: self = .annotation(value)
         case let value as EStringToStringMapEntry: self = .detail(value)
+        case let value as ETypeParameter: self = .typeParameter(value)
         default: return nil
         }
     }
@@ -121,6 +124,7 @@ public enum EcoreElement: Sendable {
         case .parameter(let value): return value
         case .annotation(let value): return value
         case .detail(let value): return value
+        case .typeParameter(let value): return value
         }
     }
 
@@ -141,6 +145,7 @@ public enum EcoreElement: Sendable {
         case .parameter: return .eParameter
         case .annotation: return .eAnnotation
         case .detail: return .eStringToStringMapEntry
+        case .typeParameter: return .eTypeParameter
         }
     }
 
@@ -156,6 +161,7 @@ public enum EcoreElement: Sendable {
         case .reference(let value): return value.name
         case .operation(let value): return value.name
         case .parameter(let value): return value.name
+        case .typeParameter(let value): return value.name
         case .annotation, .detail: return nil
         }
     }
@@ -174,6 +180,7 @@ public enum EcoreElement: Sendable {
         case .parameter(let value): return value.eAnnotations
         case .annotation(let value): return value.eAnnotations
         case .detail: return []
+        case .typeParameter(let value): return value.eAnnotations
         }
     }
 
@@ -196,15 +203,20 @@ public enum EcoreElement: Sendable {
             add(.eClassifiers, value.eClassifiers.compactMap { Self.classifier($0) })
             add(.eSubpackages, value.eSubpackages.map { .package($0) })
         case .eClass(let value):
+            add(.eTypeParameters, value.eTypeParameters.map { .typeParameter($0) })
             add(.eOperations, value.eOperations.map { .operation($0) })
             add(.eStructuralFeatures, value.eStructuralFeatures.compactMap { Self.feature($0) })
         case .eEnum(let value):
+            add(.eTypeParameters, value.eTypeParameters.map { .typeParameter($0) })
             add(.eLiterals, value.literals.map { .literal($0) })
+        case .dataType(let value):
+            add(.eTypeParameters, value.eTypeParameters.map { .typeParameter($0) })
         case .operation(let value):
+            add(.eTypeParameters, value.eTypeParameters.map { .typeParameter($0) })
             add(.eParameters, value.eParameters.map { .parameter($0) })
         case .annotation(let value):
             add(.details, value.detailEntries.map { .detail($0) })
-        case .dataType, .literal, .attribute, .reference, .parameter, .detail:
+        case .literal, .attribute, .reference, .parameter, .detail, .typeParameter:
             break
         }
         return result

@@ -123,6 +123,25 @@ public struct EClass: EClassifier, ENamedElement {
     /// reference. The value is `nil` when the class has no specified instance class.
     public var instanceClassName: String?
 
+    /// The generic Java type of instances of this class, if it differs from the instance class name.
+    ///
+    /// For example `java.util.List<java.lang.String>`.
+    public var instanceTypeName: String? = nil
+
+    /// The type parameters of this class, in declaration order.
+    public var eTypeParameters: [ETypeParameter] = [] {
+        didSet { ContainerStamp.stamp(&eTypeParameters, container: id) }
+    }
+
+    /// The generic supertypes of this class, in declaration order.
+    ///
+    /// The list is empty if every supertype is a raw use of a class, in which case
+    /// ``eSuperTypes`` alone describes the supertypes. If the list is not empty it describes
+    /// the same classes as ``eSuperTypes`` but with their type arguments.
+    public var eGenericSuperTypes: [EGenericType] = [] {
+        didSet { EGenericType.stamp(&eGenericSuperTypes, container: id) }
+    }
+
     /// Internal storage for feature values.
     private var storage: EObjectStorage
 

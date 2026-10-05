@@ -36,6 +36,24 @@ public enum EcoreLabelSyntax {
     /// Introduces the exceptions of an operation.
     public static let exceptionsSeparator = " throws "
 
+    /// Opens the type parameters or type arguments that follow a name: `Name<T>`.
+    public static let typeArgumentsOpening = "<"
+
+    /// Closes the type parameters or type arguments that follow a name.
+    public static let typeArgumentsClosing = ">"
+
+    /// Stands for a wildcard type argument.
+    public static let wildcard = "?"
+
+    /// Introduces the upper bound of a wildcard or the bounds of a type parameter.
+    public static let upperBoundSeparator = " extends "
+
+    /// Introduces the lower bound of a wildcard.
+    public static let lowerBoundSeparator = " super "
+
+    /// Separates the bounds of a type parameter.
+    public static let boundsSeparator = " & "
+
     /// Separates the name of an enumeration literal from its value.
     public static let literalSeparator = " = "
 
@@ -107,15 +125,14 @@ enum EcoreEditSchema {
     /// The metaclasses of the elements that a native metamodel consists of.
     static let elementKinds: [EcoreClassifier] = [
         .ePackage, .eClass, .eDataType, .eEnum, .eEnumLiteral, .eAttribute, .eReference,
-        .eOperation, .eParameter, .eAnnotation, .eStringToStringMapEntry,
+        .eOperation, .eParameter, .eAnnotation, .eStringToStringMapEntry, .eTypeParameter,
     ]
 
     /// The features that the native metamodel types do not hold as editable properties, and
     /// the back references that follow from containment.
     static let unsupportedFeatures: Set<EcoreFeatureName> = [
-        .eGenericType, .eTypeParameters, .eGenericSuperTypes, .eAllGenericSuperTypes,
-        .eGenericExceptions, .eBounds, .instanceTypeName, .instanceClass, .defaultValue,
-        .instance, .eFactoryInstance, .contents, .eKeys, .eContainingClass, .ePackage,
+        .eAllGenericSuperTypes, .instanceClass, .defaultValue,
+        .instance, .eFactoryInstance, .contents, .eContainingClass, .ePackage,
         .eSuperPackage, .eModelElement, .eEnum, .eOperation,
     ]
 }

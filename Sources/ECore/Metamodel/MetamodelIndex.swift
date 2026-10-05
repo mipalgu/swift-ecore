@@ -146,23 +146,39 @@ public struct MetamodelIndex: Sendable {
             usageMap[target, default: []].append(
                 EcoreUsage(referrer: referrer, feature: feature, position: position))
         }
+        func noteGeneric(_ type: EGenericType, classifier: Bool = false) {
+            if classifier, let target = type.eClassifier { note(target.id, .eClassifier) }
+            if let parameter = type.eTypeParameter { note(parameter, .eTypeParameter) }
+            for argument in type.eTypeArguments { noteGeneric(argument, classifier: true) }
+            if let bound = type.eUpperBound { noteGeneric(bound, classifier: true) }
+            if let bound = type.eLowerBound { noteGeneric(bound, classifier: true) }
+        }
         switch element {
         case .eClass(let value):
             for (position, supertype) in value.eSuperTypes.enumerated() {
                 note(supertype.id, .eSuperTypes, position)
             }
+            for type in value.eGenericSuperTypes { noteGeneric(type) }
         case .attribute(let value):
             note(value.eType.id, .eType)
+            if let type = value.eGenericType { noteGeneric(type) }
         case .reference(let value):
             note(value.eType.id, .eType)
             if let opposite = value.opposite { note(opposite, .eOpposite) }
+            for (position, key) in value.eKeys.enumerated() { note(key, .eKeys, position) }
+            if let type = value.eGenericType { noteGeneric(type) }
         case .operation(let value):
             if let type = value.eType { note(type.id, .eType) }
             for (position, exception) in value.eExceptions.enumerated() {
                 note(exception.id, .eExceptions, position)
             }
+            if let type = value.eGenericType { noteGeneric(type) }
+            for type in value.eGenericExceptions { noteGeneric(type) }
         case .parameter(let value):
             if let type = value.eType { note(type.id, .eType) }
+            if let type = value.eGenericType { noteGeneric(type) }
+        case .typeParameter(let value):
+            for bound in value.eBounds { noteGeneric(bound, classifier: true) }
         case .annotation(let value):
             for (position, reference) in value.references.enumerated() {
                 if case .local(let target) = reference { note(target, .references, position) }
@@ -170,6 +186,7 @@ public struct MetamodelIndex: Sendable {
         case .package, .dataType, .eEnum, .literal, .detail:
             break
         }
+
     }
 
     // MARK: Elements
