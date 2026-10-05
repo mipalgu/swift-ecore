@@ -43,6 +43,15 @@ public final class InstanceObservation {
 @MainActor
 public final class InstanceEditingDomain {
 
+    /// An opaque marker for a captured instance model state.
+    ///
+    /// Capture it with ``snapshot`` before starting a write, then mark that
+    /// state saved when the write succeeds. Later commands remain dirty.
+    public struct SavePoint: Sendable, Hashable {
+        fileprivate let domainIdentifier: UUID
+        fileprivate let stateIdentifier: UUID
+    }
+
     /// The resource that the domain edits.
     public let resource: Resource
 
@@ -57,8 +66,8 @@ public final class InstanceEditingDomain {
 
     fileprivate var handlers: [UUID: @MainActor (ResourceChangeSet) -> Void] = [:]
     private var relay: Relay?
-    private var savedCommand: ObjectIdentifier?
-    private var savedStateLost = false
+    private let domainIdentifier = UUID()
+    private var savedStateIdentifier: UUID
 
     /// Creates a domain for a resource.
     ///
@@ -78,6 +87,7 @@ public final class InstanceEditingDomain {
         }
         self.resource = resource
         self.editingDomain = BasicEditingDomain(resourceSet: owner, maxCommandHistory: maxCommandHistory)
+        self.savedStateIdentifier = editingDomain.commandStack.stateIdentifier
         self.snapshot = await resource.snapshot()
         self.metamodels = await Self.registeredMetamodels(of: owner)
         let relay = Relay(domain: self)
@@ -186,9 +196,6 @@ public final class InstanceEditingDomain {
     @discardableResult
     public func perform(_ command: EMFCommand) async throws -> any Sendable {
         command.bind(to: resource)
-        if let savedCommand, editingDomain.commandStack.redoHistory.contains(where: { ObjectIdentifier($0) == savedCommand }) {
-            savedStateLost = true
-        }
         let result = try await editingDomain.execute(command)
         snapshot = await resource.snapshot()
         return result
@@ -230,17 +237,34 @@ public final class InstanceEditingDomain {
     /// Undoing back to the saved state makes the model clean again, unless the saved state
     /// was discarded by running a new command after undoing past it.
     public var isDirty: Bool {
-        savedStateLost || currentCommand != savedCommand
+        editingDomain.commandStack.stateIdentifier != savedStateIdentifier
     }
 
     /// Records the current state as saved.
     public func markSaved() {
-        savedCommand = currentCommand
-        savedStateLost = false
+        savedStateIdentifier = editingDomain.commandStack.stateIdentifier
     }
 
-    private var currentCommand: ObjectIdentifier? {
-        editingDomain.commandStack.nextUndoCommand.map { ObjectIdentifier($0) }
+    /// A marker for the current model state, suitable for a pending save.
+    ///
+    /// The marker remains valid through undo, redo and history trimming.
+    /// Capture it alongside the snapshot to be written.
+    public var savePoint: SavePoint {
+        SavePoint(domainIdentifier: domainIdentifier, stateIdentifier: editingDomain.commandStack.stateIdentifier)
+    }
+
+    /// Records a captured model state as saved.
+    ///
+    /// Later commands and both history stacks are preserved. Markers from
+    /// another domain are rejected without changing the saved state.
+    ///
+    /// - Parameter point: The marker captured with the snapshot that was written.
+    /// - Returns: Whether the marker belongs to this domain.
+    @discardableResult
+    public func markSaved(at point: SavePoint) -> Bool {
+        guard point.domainIdentifier == domainIdentifier else { return false }
+        savedStateIdentifier = point.stateIdentifier
+        return true
     }
 
     // MARK: - Observation

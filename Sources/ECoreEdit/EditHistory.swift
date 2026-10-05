@@ -4,6 +4,7 @@
 //
 //  Copyright © 2026 Rene Hexel. All rights reserved.
 //
+import Foundation
 
 /// The undo and redo history of a state that is edited as a whole.
 ///
@@ -22,13 +23,22 @@
 /// let previous = history.undo()
 /// ```
 public struct EditHistory<State: Sendable>: Sendable {
+    /// An opaque marker for a captured state of an edit history.
+    ///
+    /// Capture this marker with the state being written, then pass it to
+    /// ``markSaved(at:)`` when that write succeeds. Later edits remain dirty.
+    public struct SavePoint: Sendable, Hashable {
+        fileprivate let historyIdentifier: UUID
+        fileprivate let versionIdentifier: UUID
+    }
+
     /// One recorded edit.
     private struct Step: Sendable {
         let label: String
         let before: State
-        let beforeVersion: Int
+        let beforeVersion: UUID
         let after: State
-        let afterVersion: Int
+        let afterVersion: UUID
     }
 
     /// The current state.
@@ -41,9 +51,9 @@ public struct EditHistory<State: Sendable>: Sendable {
 
     private var undoSteps: [Step] = []
     private var redoSteps: [Step] = []
-    private var currentVersion = 0
-    private var savedVersion: Int? = 0
-    private var latestVersion = 0
+    private let historyIdentifier = UUID()
+    private var currentVersion: UUID
+    private var savedVersion: UUID
 
     /// Starts a history. The initial state counts as saved.
     ///
@@ -53,6 +63,9 @@ public struct EditHistory<State: Sendable>: Sendable {
     public init(_ initial: State, limit: Int = 100) {
         self.current = initial
         self.limit = max(1, limit)
+        let initialVersion = UUID()
+        self.currentVersion = initialVersion
+        self.savedVersion = initialVersion
     }
 
     /// Records an edit that led to a new state.
@@ -63,12 +76,12 @@ public struct EditHistory<State: Sendable>: Sendable {
     ///   - state: The state after the edit.
     ///   - label: What the edit did, as shown by undo and redo menu items.
     public mutating func record(_ state: State, label: String) {
-        latestVersion += 1
+        let nextVersion = UUID()
         undoSteps.append(
-            Step(label: label, before: current, beforeVersion: currentVersion, after: state, afterVersion: latestVersion))
+            Step(label: label, before: current, beforeVersion: currentVersion, after: state, afterVersion: nextVersion))
         redoSteps.removeAll()
         current = state
-        currentVersion = latestVersion
+        currentVersion = nextVersion
         trim()
     }
 
@@ -113,6 +126,28 @@ public struct EditHistory<State: Sendable>: Sendable {
         savedVersion = currentVersion
     }
 
+    /// A marker for the current state, suitable for a pending save.
+    ///
+    /// The marker remains valid after further edits, undo, redo or history
+    /// trimming. Capture it alongside the immutable state to be written.
+    public var savePoint: SavePoint {
+        SavePoint(historyIdentifier: historyIdentifier, versionIdentifier: currentVersion)
+    }
+
+    /// Records a previously captured state as saved.
+    ///
+    /// Current contents and undo or redo history are preserved. A marker from
+    /// another history is rejected without changing the saved state.
+    ///
+    /// - Parameter point: The marker captured with the state that was written.
+    /// - Returns: Whether the marker belongs to this history.
+    @discardableResult
+    public mutating func markSaved(at point: SavePoint) -> Bool {
+        guard point.historyIdentifier == historyIdentifier else { return false }
+        savedVersion = point.versionIdentifier
+        return true
+    }
+
     /// Whether the current state differs from the saved state.
     public var isDirty: Bool { savedVersion != currentVersion }
 
@@ -121,9 +156,8 @@ public struct EditHistory<State: Sendable>: Sendable {
     ///
     /// - Parameter state: The new current state.
     public mutating func replaceCurrent(with state: State) {
-        latestVersion += 1
         current = state
-        currentVersion = latestVersion
+        currentVersion = UUID()
     }
 
     private mutating func trim() {

@@ -43,6 +43,23 @@ import Foundation
 @MainActor
 public final class CommandStack {
 
+    /// The states immediately before and after one retained command.
+    ///
+    /// Identities remain stable when a command moves between the two stacks.
+    private struct StateTransition {
+        let before: UUID
+        let after: UUID
+    }
+
+    /// The identity of the current model state.
+    ///
+    /// Unlike stack positions, this identity remains distinct after trimming
+    /// older commands or discarding a redo branch.
+    private(set) var stateIdentifier = UUID()
+
+    private var undoStates: [StateTransition] = []
+    private var redoStates: [StateTransition] = []
+
     // MARK: - Properties
 
     /// Stack of commands that can be undone.
@@ -94,12 +111,17 @@ public final class CommandStack {
         do {
             let result = try await command.execute()
 
+            let transition = StateTransition(before: stateIdentifier, after: UUID())
+            stateIdentifier = transition.after
+
             // Clear redo stack since new execution invalidates redo history
             redoStack.removeAll()
+            redoStates.removeAll()
 
             // Add to undo stack if command supports undo
             if command.canUndo {
                 undoStack.append(command)
+                undoStates.append(transition)
                 
                 // Trim history if needed
                 trimHistoryIfNeeded()
@@ -126,9 +148,11 @@ public final class CommandStack {
         guard let command = undoStack.popLast() else {
             throw EMFCommandError.undoNotSupported
         }
+        let transition = undoStates.removeLast()
 
         guard command.canUndo else {
             undoStack.append(command) // Put it back
+            undoStates.append(transition)
             throw EMFCommandError.undoNotSupported
         }
 
@@ -137,16 +161,19 @@ public final class CommandStack {
 
         do {
             try await command.undo()
+            stateIdentifier = transition.before
 
             // Move to redo stack if command supports redo
             if command.canRedo {
                 redoStack.append(command)
+                redoStates.append(transition)
             }
 
             statistics.totalExecutionTime += Date().timeIntervalSince(startTime)
 
         } catch {
             undoStack.append(command) // Put it back on failure
+            undoStates.append(transition)
             statistics.failureCount += 1
             throw error
         }
@@ -162,9 +189,11 @@ public final class CommandStack {
         guard let command = redoStack.popLast() else {
             throw EMFCommandError.redoNotSupported
         }
+        let transition = redoStates.removeLast()
 
         guard command.canRedo else {
             redoStack.append(command) // Put it back
+            redoStates.append(transition)
             throw EMFCommandError.redoNotSupported
         }
 
@@ -173,9 +202,11 @@ public final class CommandStack {
 
         do {
             _ = try await command.redo()
+            stateIdentifier = transition.after
 
             // Move back to undo stack
             undoStack.append(command)
+            undoStates.append(transition)
 
             // Trim history if needed
             trimHistoryIfNeeded()
@@ -184,6 +215,7 @@ public final class CommandStack {
 
         } catch {
             redoStack.append(command) // Put it back on failure
+            redoStates.append(transition)
             statistics.failureCount += 1
             throw error
         }
@@ -235,6 +267,8 @@ public final class CommandStack {
     public func flush() {
         undoStack.removeAll()
         redoStack.removeAll()
+        undoStates.removeAll()
+        redoStates.removeAll()
         statistics.flushCount += 1
     }
 
@@ -266,6 +300,7 @@ public final class CommandStack {
     private func trimHistoryIfNeeded() {
         while undoStack.count > maxHistorySize {
             undoStack.removeFirst()
+            undoStates.removeFirst()
         }
     }
 }
