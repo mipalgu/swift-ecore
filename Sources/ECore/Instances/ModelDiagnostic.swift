@@ -8,25 +8,14 @@ public import EMFBase
 import Foundation
 
 /// How serious a problem found in a model is.
-public enum ModelDiagnosticSeverity: String, Sendable, Hashable, Comparable, CaseIterable {
-    /// Information that needs no action.
-    case info
-    /// A questionable construct that does not make the model invalid.
-    case warning
-    /// A constraint violation.
-    case error
+///
+/// Model diagnostics share ``DiagnosticSeverity`` with every other diagnostic of the library.
+@available(*, deprecated, renamed: "DiagnosticSeverity")
+public typealias ModelDiagnosticSeverity = DiagnosticSeverity
 
-    private var rank: Int {
-        switch self {
-        case .info: return 0
-        case .warning: return 1
-        case .error: return 2
-        }
-    }
-
-    public static func < (lhs: ModelDiagnosticSeverity, rhs: ModelDiagnosticSeverity) -> Bool {
-        lhs.rank < rhs.rank
-    }
+extension DiagnosticSeverity {
+    /// Information that needs no action; the same as ``information``.
+    public static var info: DiagnosticSeverity { .information }
 }
 
 /// The constraints that ``ModelValidator`` checks, with stable identifiers.
@@ -52,7 +41,7 @@ public enum ModelDiagnosticCode: String, Sendable, Hashable, CaseIterable {
 /// A problem found in a model.
 public struct ModelDiagnostic: Sendable, Equatable, Hashable {
     /// How serious the problem is.
-    public let severity: ModelDiagnosticSeverity
+    public let severity: DiagnosticSeverity
 
     /// Which constraint is violated.
     public let code: ModelDiagnosticCode
@@ -75,7 +64,7 @@ public struct ModelDiagnostic: Sendable, Equatable, Hashable {
     ///   - feature: The feature that has the problem, if any.
     ///   - arguments: The values for the message template's placeholders.
     public init(
-        severity: ModelDiagnosticSeverity = .error, code: ModelDiagnosticCode, objectID: EUUID,
+        severity: DiagnosticSeverity = .error, code: ModelDiagnosticCode, objectID: EUUID,
         feature: String? = nil, arguments: [String] = []
     ) {
         self.severity = severity

@@ -35,6 +35,31 @@ public enum EcoreDefaultValue {
         }
     }
 
+    /// Whether a literal can be converted to a value of a data type.
+    ///
+    /// Built-in numeric, Boolean, character, and date types convert only well-formed
+    /// literals. Strings and custom data types accept any literal, because only their own
+    /// conversion logic could reject one.
+    ///
+    /// - Parameters:
+    ///   - literal: The literal text.
+    ///   - type: The data type that the literal is meant to denote a value of.
+    /// - Returns: `true` if the literal converts, or if the type has no conversion that could fail.
+    static func isConvertible(_ literal: String, to type: EDataType) -> Bool {
+        switch dataType(type) {
+        case .eBoolean, .eBooleanObject, .eInt, .eIntegerObject, .eFloat, .eFloatObject, .eDouble,
+            .eDoubleObject, .eByte, .eByteObject, .eShort, .eShortObject, .eLong, .eLongObject,
+            .eBigDecimal, .eBigInteger, .eChar, .eCharacterObject:
+            return convert(literal, to: type) != nil
+        case .eDate:
+            return dateFactory.createFromString(type, literal) != nil
+        default:
+            return true
+        }
+    }
+
+    private static let dateFactory = EFactory(ePackage: EcorePackage.instance)
+
     private static func singleValue(of attribute: EAttribute) -> (any EcoreValue)? {
         let type = attribute.eType
         if let literal = attribute.defaultValueLiteral {
