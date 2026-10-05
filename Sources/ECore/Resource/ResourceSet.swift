@@ -43,7 +43,7 @@ public actor ResourceSet {
     ///
     /// Each resource in the set has a unique URI that serves as its identifier
     /// within the resource set.
-    private var resources: OrderedDictionary<String, Resource>
+    var resources: OrderedDictionary<String, Resource>
 
     /// Metamodel registry mapping namespace URIs to their root packages.
     ///
@@ -69,6 +69,9 @@ public actor ResourceSet {
 
     /// The URIs of the Ecore documents that are currently being loaded natively.
     private var ecoreLoadsInProgress: Set<String> = []
+
+    /// The handlers that read and write documents (see ``setURIHandlers(_:)``).
+    var installedURIHandlers: [any URIHandler] = []
 
     /// Fragment segment naming rules, keyed by metaclass name (see ``FragmentSegmentRule``).
     var fragmentSegmentRules: [String: FragmentSegmentRule] = [:]
@@ -151,14 +154,15 @@ public actor ResourceSet {
             return existing
         }
 
-        // Create URL from URI
-        guard let url = URL(string: uri) else {
-            throw XMIError.invalidXML("Invalid URI: \(uri)")
-        }
-
         // Parse with XMIParser
         let parser = XMIParser(resourceSet: self, referenceParsing: referenceParsing)
-        let resource = try await parser.parse(url)
+        let data: Data
+        do {
+            data = try await readDocument(uri: uri)
+        } catch URIHandlerError.invalidURI {
+            throw XMIError.invalidXML("Invalid URI: \(uri)")
+        }
+        let resource = try await parser.parse(data, uri: uri)
 
         // Register in the resource set
         resources[uri] = resource
@@ -185,14 +189,15 @@ public actor ResourceSet {
             return existing
         }
 
-        // Create URL from URI
-        guard let url = URL(string: uri) else {
-            throw JSONError.invalidFormat("Invalid URI: \(uri)")
-        }
-
         // Parse with JSONParser
         let parser = JSONParser(resourceSet: self)
-        let resource = try await parser.parse(url)
+        let data: Data
+        do {
+            data = try await readDocument(uri: uri)
+        } catch URIHandlerError.invalidURI {
+            throw JSONError.invalidFormat("Invalid URI: \(uri)")
+        }
+        let resource = try await parser.parse(data, uri: uri)
 
         // Register in the resource set
         resources[uri] = resource
@@ -506,14 +511,32 @@ public actor ResourceSet {
         if let existing = resources[uri] {
             return existing
         }
-        guard let url = URL(string: uri) else {
+        let data: Data
+        do {
+            data = try await readDocument(uri: uri)
+        } catch URIHandlerError.invalidURI {
             throw XMIError.invalidXML("Invalid URI: \(uri)")
+        }
+        return try await loadEcoreResource(data: data, uri: uri, enableDebugging: enableDebugging)
+    }
+
+    /// Loads an Ecore document that has been read already as native metamodel objects.
+    ///
+    /// - Parameters:
+    ///   - data: The bytes of the document.
+    ///   - uri: The canonical URI of the document.
+    ///   - enableDebugging: Whether the parser prints a trace.
+    /// - Returns: The resource holding the native package as its root object.
+    /// - Throws: ``XMIError`` if the document cannot be parsed or has no root package.
+    func loadEcoreResource(data: Data, uri: String, enableDebugging: Bool) async throws -> Resource {
+        if let existing = resources[uri] {
+            return existing
         }
         ecoreLoadsInProgress.insert(uri)
         defer { ecoreLoadsInProgress.remove(uri) }
 
         let parser = XMIParser(enableDebugging: enableDebugging)
-        let parsed = try await parser.parse(url)
+        let parsed = try await parser.parse(data, uri: uri)
         await parsed.enableDebugging(enableDebugging)
         await parsed.setResourceSet(self)
         guard let root = await parsed.getRootObjects().first else {
