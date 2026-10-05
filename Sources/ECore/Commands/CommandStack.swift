@@ -219,6 +219,15 @@ public final class CommandStack {
         return redoStack.last?.description
     }
 
+    /// The command that the next undo would reverse.
+    public var nextUndoCommand: EMFCommand? { undoStack.last }
+
+    /// The command that the next redo would re-apply.
+    public var nextRedoCommand: EMFCommand? { redoStack.last }
+
+    /// The commands that can be redone, oldest undone first.
+    public var redoHistory: [EMFCommand] { redoStack }
+
     /// Clear all command history.
     ///
     /// This method removes all commands from both undo and redo stacks,

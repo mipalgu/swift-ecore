@@ -50,28 +50,28 @@ public actor Resource {
     /// All objects within a resource must have unique identifiers. The resource
     /// maintains ownership and provides resolution services.
     /// Uses OrderedDictionary to preserve insertion order for EMF compliance.
-    private var objects: OrderedDictionary<EUUID, any EObject>
+    var objects: OrderedDictionary<EUUID, any EObject>
 
     /// Root objects that are not contained by other objects in this resource.
     ///
     /// Root objects serve as entry points for model traversal and are typically
     /// the top-level objects that contain the entire model hierarchy.
     /// Maintains insertion order.
-    private var rootObjects: [EUUID]
+    var rootObjects: [EUUID]
 
     /// Metamodel objects contained, directly or indirectly, by native metamodel objects
     /// registered with this resource, indexed by identifier.
     ///
     /// Native metamodel types are value types that hold their contents inline, so their
     /// contents are indexed here to make them resolvable by identifier.
-    private var nativeContents: OrderedDictionary<EUUID, any EObject> = [:]
+    var nativeContents: OrderedDictionary<EUUID, any EObject> = [:]
 
     /// The identifier of the container of each indexed native object.
-    private var nativeContainers: [EUUID: EUUID] = [:]
+    var nativeContainers: [EUUID: EUUID] = [:]
 
     /// The identifiers of the native objects contained by each registered native root,
     /// in depth-first order.
-    private var nativeOwned: [EUUID: [EUUID]] = [:]
+    var nativeOwned: [EUUID: [EUUID]] = [:]
 
     /// The resource set that owns this resource, if any.
     ///
@@ -97,6 +97,9 @@ public actor Resource {
     /// resource refers to in other resources of the set can no longer be found, so
     /// serialising such references reports ``XMIError/resourceSetReleased(_:)``.
     public var lostResourceSet: Bool { metamodelSnapshot != nil && resourceSet == nil }
+
+    /// The journal that ``recordingChanges(_:)`` is collecting, if a recording is active.
+    var changeJournal: [ResourceChange]?
 
     /// Enable debug output.
     public var debug = false
@@ -925,7 +928,7 @@ public actor Resource {
     // MARK: - Native Metamodel Index
 
     /// Indexes the contents of a native metamodel object registered with this resource.
-    private func indexNativeContents(of object: any EObject) {
+    func indexNativeContents(of object: any EObject) {
         unindexNativeContents(of: object.id)
         guard let root = object as? any EMetaObject else { return }
         var owned: [EUUID] = []
@@ -945,7 +948,7 @@ public actor Resource {
     }
 
     /// Removes the indexed contents of a native metamodel root.
-    private func unindexNativeContents(of rootID: EUUID) {
+    func unindexNativeContents(of rootID: EUUID) {
         guard let owned = nativeOwned.removeValue(forKey: rootID) else { return }
         for id in owned {
             nativeContents.removeValue(forKey: id)

@@ -81,8 +81,31 @@ public class EMFCommand {
         return canUndo
     }
 
+    /// The modifications that the most recent execution, undo, or redo made to a resource.
+    ///
+    /// Commands that edit resources fill this in each time they run; it is empty for
+    /// commands that do not, and for commands that have not run yet.
+    public internal(set) var changes: [ResourceChange] = []
+
     /// Initialise a new command.
     public init() {}
+
+    /// Connects the command to the resource that holds the objects it edits.
+    ///
+    /// Editing domains call this before executing a command. A command that is not yet
+    /// connected to a resource looks for the object it edits in the resource set; the
+    /// default implementation does nothing.
+    ///
+    /// - Parameter resourceSet: The resource set to search.
+    public func bind(in resourceSet: ResourceSet) async {}
+
+    /// Connects the command to a specific resource.
+    ///
+    /// A command that already has a resource keeps it; the default implementation does
+    /// nothing.
+    ///
+    /// - Parameter resource: The resource that holds the objects the command edits.
+    public func bind(to resource: Resource) {}
 
     /// Execute the command, applying its changes to the model.
     ///
