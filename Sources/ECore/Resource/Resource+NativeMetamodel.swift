@@ -111,10 +111,6 @@ extension Resource {
 
 /// Converts the parsed object graph of an Ecore document into native metamodel values.
 struct NativeMetamodelConverter {
-    /// The number of conversion passes; each pass deepens the class snapshots held by
-    /// references by one level.
-    private static let snapshotDepth = 4
-
     /// A target of a reference value: an object of the document or one in another document.
     private enum Target {
         case local(EUUID)
@@ -291,7 +287,13 @@ struct NativeMetamodelConverter {
         var classObjects: [DynamicEObject] = []
         try convertDataTypes(of: root, classObjects: &classObjects)
         buildClasses(classObjects)
-        return try assemble(root)
+        let package = try assemble(root)
+        return MetamodelLinker.relinked([package], externalClassifiers: externalClassifiers)[0]
+    }
+
+    /// The classifiers of other documents, by the identifier of the classifier.
+    private var externalClassifiers: [EUUID: any EClassifier] {
+        Dictionary(external.values.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Converts the enumerations and data types of a package tree and lists its classes.
@@ -347,10 +349,10 @@ struct NativeMetamodelConverter {
         }
     }
 
-    /// Builds the class snapshots in several passes.
+    /// Builds the classes with the features, operations, and supertypes they declare.
     ///
-    /// Supertypes are built before their subtypes within a pass, so that inherited features
-    /// are always available. The type of each feature is the snapshot of the previous pass.
+    /// The types and supertypes of the built classes are provisional; linking the finished
+    /// package replaces them with snapshots of the canonical classes.
     private mutating func buildClasses(_ objects: [DynamicEObject]) {
         for object in objects {
             guard let name = string(object, XMIAttribute.name.rawValue) else { continue }
@@ -361,44 +363,20 @@ struct NativeMetamodelConverter {
                 eAnnotations: annotations(forID: object.id),
                 instanceClassName: string(object, XMIAttribute.instanceClassName.rawValue))
         }
-        let order = supertypesFirst(objects)
-        for _ in 0..<Self.snapshotDepth {
-            var built: [EUUID: EClass] = [:]
-            for object in order {
-                if let converted = convertClass(object, previous: classes, built: built) {
-                    built[object.id] = converted
-                }
+        let provisional = classes
+        for object in objects {
+            if let converted = convertClass(object, previous: provisional) {
+                classes[object.id] = converted
             }
-            for (identifier, converted) in built { classes[identifier] = converted }
         }
     }
 
-    /// Orders classes so that every class follows its supertypes of the same document.
-    private func supertypesFirst(_ objects: [DynamicEObject]) -> [DynamicEObject] {
-        let byID = Dictionary(objects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        var ordered: [DynamicEObject] = []
-        var state: [EUUID: Bool] = [:]  // false while being visited, true once placed
-        func place(_ object: DynamicEObject) {
-            if state[object.id] != nil { return }
-            state[object.id] = false
-            for case .local(let identifier) in targets(object.eGet(EcoreFeatureName.eSuperTypes.rawValue)) {
-                if let parent = byID[identifier] { place(parent) }
-            }
-            state[object.id] = true
-            ordered.append(object)
-        }
-        objects.forEach(place)
-        return ordered
-    }
-
-    private func convertClass(
-        _ object: DynamicEObject, previous: [EUUID: EClass], built: [EUUID: EClass]
-    ) -> EClass? {
+    private func convertClass(_ object: DynamicEObject, previous: [EUUID: EClass]) -> EClass? {
         guard var result = previous[object.id] else { return nil }
         result.eSuperTypes = targets(object.eGet(EcoreFeatureName.eSuperTypes.rawValue)).compactMap {
             switch $0 {
             case .local(let identifier):
-                return built[identifier] ?? previous[identifier]
+                return previous[identifier]
                     ?? (EcorePackage.classifier(id: identifier) as? EClass)
             case .external(let proxy):
                 return external[proxy] as? EClass
