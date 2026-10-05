@@ -123,7 +123,7 @@ struct EMFDocumentWriter {
             let body = try await render(
                 root, elementName: "\(info.prefix):\(root.eClass.name)", xsiType: nil, indent: 0,
                 isRoot: true)
-            let startTag = XMIAttributeLayout(lineWidth: options.lineWidth).rootTag(
+            let startTag = XMIAttributeLayout(lineWidth: options.lineWidth, rootLayout: options.rootLayout).rootTag(
                 name: "\(info.prefix):\(root.eClass.name)",
                 declarations: namespaceDeclarations(rootPrefix: rootPrefix), attributes: rootAttributes)
             xml += body.replacingOccurrences(of: Self.namespacePlaceholder, with: startTag)
@@ -140,7 +140,7 @@ struct EMFDocumentWriter {
                     isRoot: false)
             }
             let wrapper = "\(CrossReferenceSyntax.xmiPrefix):\(XMIDocumentSyntax.multipleRootElement)"
-            let startTag = XMIAttributeLayout(lineWidth: options.lineWidth).rootTag(
+            let startTag = XMIAttributeLayout(lineWidth: options.lineWidth, rootLayout: options.rootLayout).rootTag(
                 name: wrapper, declarations: namespaceDeclarations(rootPrefix: firstPrefix), attributes: [])
             xml += startTag + ">\n" + bodies + "</\(wrapper)>\n"
         }
@@ -369,7 +369,7 @@ struct EMFDocumentWriter {
             rootAttributes = allAttributes
             return Self.namespacePlaceholder + ending
         }
-        let layout = XMIAttributeLayout(lineWidth: options.lineWidth)
+        let layout = XMIAttributeLayout(lineWidth: options.lineWidth, rootLayout: options.rootLayout)
         let tag = "\(indentation)<\(elementName)"
         return tag + layout.attributes(allAttributes, afterColumn: tag.utf16.count, indentation: indentation.utf16.count)
             + ending

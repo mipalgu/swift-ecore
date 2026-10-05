@@ -24,7 +24,8 @@ struct EclipseGenModelOracleTests {
         let resourceSet = ResourceSet()
         let document = try await GenModelResource.loadDocument(
             url: url, resourceSet: resourceSet, resolution: .nameFragments)
-        let written = try await GenModelResource.serialised(document.resource, for: url)
+        let written = try await GenModelResource.serialised(
+            document.resource, for: url, rootLayout: XMIRootLayout.detect(in: original))
         if written != original { EclipseOracle.recordFailure(written, for: relativePath) }
         #expect(written == original)
     }
@@ -46,7 +47,9 @@ struct EclipseEcoreOracleTests {
             uri: URIReference.canonicalise(url.absoluteString))
         let package = try #require(await resource.getRootObjects().first as? EPackage)
         let width = XMISerializationOptions.emfLineWidth
-        let written = XMISerializer(options: XMISerializationOptions(lineWidth: width))
+        let options = XMISerializationOptions(
+            lineWidth: width, rootLayout: XMIRootLayout.detect(in: original))
+        let written = XMISerializer(options: options)
             .serialize(package, relativeTo: url)
         if written != original { EclipseOracle.recordFailure(written, for: relativePath) }
         #expect(written == original)

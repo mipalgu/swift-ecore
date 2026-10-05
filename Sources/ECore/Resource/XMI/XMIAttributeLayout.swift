@@ -18,6 +18,9 @@ struct XMIAttributeLayout {
     /// The width after which attributes continue on a new line, or `nil` for none.
     let lineWidth: Int?
 
+    /// How the start tag of a root element is wrapped.
+    var rootLayout: XMIRootLayout = .standard
+
     /// Lays out the attributes of an element.
     ///
     /// - Parameters:
@@ -38,9 +41,7 @@ struct XMIAttributeLayout {
 
     /// Lays out the start tag of a root element that carries namespace declarations.
     ///
-    /// The declarations are laid out in sequence after the element name. The element's own
-    /// attributes are laid out as though the declarations were absent, with one exception:
-    /// the first of them starts a new line if the declarations ended beyond the line width.
+    /// The layout follows ``rootLayout``; see ``XMIRootLayout``.
     ///
     /// - Parameters:
     ///   - name: The qualified element name.
@@ -51,12 +52,22 @@ struct XMIAttributeLayout {
         let nameColumn = name.utf16.count + 1
         var text = "<" + name
         var column = nameColumn
-        for declaration in declarations {
-            let separator = separator(for: column, indentation: 0)
+        for (index, declaration) in declarations.enumerated() {
+            let forced = rootLayout == .versionFirst && lineWidth != nil && index == 1
+            let separator = forced ? separator(for: Int.max, indentation: 0) : separator(for: column, indentation: 0)
             text += separator.text + declaration
             column = separator.isBreak ? separator.text.utf16.count - 1 + declaration.utf16.count : column + 1 + declaration.utf16.count
         }
         guard let first = attributes.first else { return text }
+        if rootLayout == .versionFirst {
+            text += " " + first
+            guard attributes.count > 1 else { return text }
+            let second = separator(for: Int.max, indentation: 0)
+            text += second.text + attributes[1]
+            return text + self.attributes(
+                Array(attributes.dropFirst(2)), afterColumn: second.text.utf16.count - 1 + attributes[1].utf16.count,
+                indentation: 0)
+        }
         text += separator(for: column, indentation: 0).text + first
         text += self.attributes(
             Array(attributes.dropFirst()), afterColumn: nameColumn + 1 + first.utf16.count, indentation: 0)

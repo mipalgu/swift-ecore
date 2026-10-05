@@ -23,6 +23,12 @@ public struct GenModelDocument: Sendable {
 
     /// The root packages of the source models, keyed by absolute location.
     public let foreignPackages: [URL: EPackage]
+
+    /// The layout in which the root element of the generator model file was written.
+    ///
+    /// Pass it to ``GenModelResource/save(_:to:rootLayout:)`` to write the document back in the
+    /// layout it was read in.
+    public let rootLayout: XMIRootLayout
 }
 
 /// How `ecore*` references of a loaded generator model are resolved.
@@ -140,8 +146,10 @@ public enum GenModelResource {
         }
 
         if resolvesReferences { await resource.resolveProxies() }
+        let text = (try? String(contentsOf: documentURL, encoding: .utf8)) ?? ""
         return GenModelDocument(
-            resource: resource, url: documentURL, foreignPackages: foreignPackages)
+            resource: resource, url: documentURL, foreignPackages: foreignPackages,
+            rootLayout: XMIRootLayout.detect(in: text))
     }
 
     /// Reads the locations of the source models named by a generator model file.
@@ -226,9 +234,13 @@ public enum GenModelResource {
     /// - Parameters:
     ///   - resource: The resource holding the generator model, as returned by ``load(url:resourceSet:resolution:)``.
     ///   - url: The file to write.
+    ///   - rootLayout: How the root element is wrapped; the current layout by default.
     /// - Throws: The serialiser's error if a reference cannot be written or the file cannot be written.
-    public static func save(_ resource: Resource, to url: URL) async throws {
-        try await serialised(resource, for: url).write(to: url, atomically: true, encoding: .utf8)
+    public static func save(
+        _ resource: Resource, to url: URL, rootLayout: XMIRootLayout = .standard
+    ) async throws {
+        try await serialised(resource, for: url, rootLayout: rootLayout)
+            .write(to: url, atomically: true, encoding: .utf8)
     }
 
     /// Renders a generator model as the text that ``save(_:to:)`` writes.
@@ -236,12 +248,17 @@ public enum GenModelResource {
     /// - Parameters:
     ///   - resource: The resource holding the generator model.
     ///   - url: The location that the document will have; relative references are computed against it.
+    ///   - rootLayout: How the root element is wrapped; the current layout by default.
     /// - Returns: The document text in the layout of the Eclipse Modeling Framework.
     /// - Throws: The serialiser's error if a reference cannot be written.
-    public static func serialised(_ resource: Resource, for url: URL) async throws -> String {
+    public static func serialised(
+        _ resource: Resource, for url: URL, rootLayout: XMIRootLayout = .standard
+    ) async throws -> String {
         if let resourceSet = await resource.resourceSet {
             await GenModelFragments.register(in: resourceSet)
         }
-        return try await XMISerializer(options: .emfWrapped).serialize(resource, relativeTo: url)
+        var options = XMISerializationOptions.emfWrapped
+        options.rootLayout = rootLayout
+        return try await XMISerializer(options: options).serialize(resource, relativeTo: url)
     }
 }

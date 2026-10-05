@@ -5,6 +5,45 @@
 //  Created by Rene Hexel on 1/10/2026.
 //  Copyright © 2026 Rene Hexel. All rights reserved.
 //
+import Foundation
+
+/// How the start tag of a document's root element is wrapped when a line width is set.
+///
+/// Documents written by different releases of the Eclipse Modeling Framework wrap the root
+/// element differently. Both layouts are reproduced so that a document can be written back
+/// in the layout it was read in.
+public enum XMIRootLayout: Sendable, Equatable, CaseIterable {
+    /// The namespace declarations follow `xmi:version` on the same line.
+    ///
+    /// A declaration starts a new line when the line has grown beyond the line width. The
+    /// element's own attributes are laid out as though the declarations were absent, except
+    /// that the first of them starts a new line if the declarations ended beyond the width.
+    case standard
+
+    /// The namespace declarations start on a new line after `xmi:version`.
+    ///
+    /// Later declarations start a new line when the line has grown beyond the line width.
+    /// The first of the element's own attributes stays on the line of the last declaration,
+    /// the second always starts a new line, and the others follow the usual rule.
+    case versionFirst
+
+    /// Detects the layout in which a document's root element was written.
+    ///
+    /// - Parameter text: The text of the document.
+    /// - Returns: ``versionFirst`` if the line after the line holding `xmi:version` starts with
+    ///   a namespace declaration, otherwise ``standard``.
+    public static func detect(in text: String) -> XMIRootLayout {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map {
+            $0.trimmingCharacters(in: .whitespaces)
+        }
+        guard let index = lines.firstIndex(where: { $0.contains("xmi:version=") }) else { return .standard }
+        let line = lines[index]
+        guard line.hasSuffix("\"") || line.hasSuffix(">"), !line.contains("xmlns:"),
+            lines.indices.contains(index + 1), lines[index + 1].hasPrefix("xmlns:")
+        else { return .standard }
+        return .versionFirst
+    }
+}
 
 /// Options that control how ``XMISerializer`` lays out a document.
 ///
@@ -46,6 +85,9 @@ public struct XMISerializationOptions: Sendable, Equatable {
     /// The width applies to metamodel (`.ecore`) documents.
     public var lineWidth: Int?
 
+    /// How the root element's start tag is wrapped when ``lineWidth`` is set.
+    public var rootLayout: XMIRootLayout
+
     /// The line width that EMF's editors use when they write `.ecore` documents.
     public static let emfLineWidth = 80
 
@@ -59,6 +101,7 @@ public struct XMISerializationOptions: Sendable, Equatable {
     ///   - omitDefaultValues: Whether default values are left out.
     ///   - manyValuedAttributesAsElements: Whether many-valued attributes become child elements.
     ///   - lineWidth: The width after which attributes continue on a new line, or `nil` for none.
+    ///   - rootLayout: How the root element's start tag is wrapped.
     public init(
         attributeStyleReferences: Bool = false,
         typeQualifiers: Bool = false,
@@ -66,7 +109,8 @@ public struct XMISerializationOptions: Sendable, Equatable {
         relativeURIs: Bool = false,
         omitDefaultValues: Bool = false,
         manyValuedAttributesAsElements: Bool = false,
-        lineWidth: Int? = nil
+        lineWidth: Int? = nil,
+        rootLayout: XMIRootLayout = .standard
     ) {
         self.attributeStyleReferences = attributeStyleReferences
         self.typeQualifiers = typeQualifiers
@@ -75,6 +119,7 @@ public struct XMISerializationOptions: Sendable, Equatable {
         self.omitDefaultValues = omitDefaultValues
         self.manyValuedAttributesAsElements = manyValuedAttributesAsElements
         self.lineWidth = lineWidth
+        self.rootLayout = rootLayout
     }
 
     /// The layout this package has always written (all switches off).
