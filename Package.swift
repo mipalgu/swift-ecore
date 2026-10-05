@@ -4,7 +4,8 @@ import PackageDescription
 let package = Package(
     name: "swift-ecore",
     platforms: [
-        .macOS(.v15)
+        .macOS(.v15),
+        .iOS(.v18),
     ],
     products: [
         .library(
@@ -25,7 +26,6 @@ let package = Package(
         ),
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser", from: "1.6.2"),
         .package(url: "https://github.com/apple/swift-collections", from: "1.0.0"),
         .package(url: "https://github.com/attaswift/BigInt.git", from: "5.7.0"),
         .package(url: "https://github.com/swiftxml/SwiftXML.git", from: "1.0.0"),

@@ -181,8 +181,7 @@ public struct EFactory: ENamedElement {
             return EBigInteger(literal)
         case "EDate":
             // ISO 8601 date parsing
-            let formatter = ISO8601DateFormatter()
-            return formatter.date(from: literal)
+            return EcoreDateCoding.internetDate(from: literal)
         default:
             // For custom data types, return the literal as-is
             // In a complete implementation, would use instanceClassName for conversion
@@ -212,8 +211,7 @@ public struct EFactory: ENamedElement {
         switch eDataType.name {
         case "EDate":
             if let date = value as? EDate {
-                let formatter = ISO8601DateFormatter()
-                return formatter.string(from: date)
+                return EcoreDateCoding.internetString(from: date)
             }
         default:
             break
