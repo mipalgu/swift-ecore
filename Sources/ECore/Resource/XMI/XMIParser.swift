@@ -154,11 +154,42 @@ public actor XMIParser {
     /// - Returns: A Resource containing the parsed objects
     /// - Throws: XMIError if parsing fails
     public func parse(_ url: URL) async throws -> Resource {
+        let uri = URIReference.canonicalise(url.absoluteString)
         if debug {
             print("[XMI] Starting to parse file: \(url.path)")
         }
+        let data: Data
+        if let resourceSet {
+            data = try await resourceSet.readDocument(uri: uri)
+        } else {
+            data = try await FileURIHandler().read(uri)
+        }
+        return try await parse(data, uri: uri)
+    }
 
-        let data = try Data(contentsOf: url)
+    /// Parses the text of an XMI document.
+    ///
+    /// - Parameters:
+    ///   - text: The text of the document.
+    ///   - uri: The URI that the document has; relative references within the document are
+    ///     resolved against it.
+    /// - Returns: A resource with the URI that contains the parsed objects.
+    /// - Throws: ``XMIError`` if parsing fails.
+    public func parse(_ text: String, uri: String) async throws -> Resource {
+        try await parse(Data(text.utf8), uri: uri)
+    }
+
+    /// Parses the bytes of an XMI document.
+    ///
+    /// - Parameters:
+    ///   - data: The UTF-8 encoded document.
+    ///   - uri: The URI that the document has; relative references within the document are
+    ///     resolved against it.
+    /// - Returns: A resource with the URI that contains the parsed objects.
+    /// - Throws: ``XMIError/invalidEncoding`` if the data is not UTF-8, or another
+    ///   ``XMIError`` if parsing fails.
+    public func parse(_ data: Data, uri documentURI: String) async throws -> Resource {
+        let uri = URIReference.canonicalise(documentURI)
         guard let xmlString = String(data: data, encoding: .utf8) else {
             throw XMIError.invalidEncoding
         }
@@ -173,9 +204,9 @@ public actor XMIParser {
         // Create resource via ResourceSet if available, otherwise create directly
         let resource: Resource
         if let resourceSet = resourceSet {
-            resource = await resourceSet.createResource(uri: URIReference.canonicalise(url.absoluteString))
+            resource = await resourceSet.createResource(uri: uri)
         } else {
-            resource = Resource(uri: URIReference.canonicalise(url.absoluteString))
+            resource = Resource(uri: uri)
         }
 
         // Parse XMI content

@@ -58,14 +58,32 @@ public actor JSONParser {
     /// - Returns: A Resource containing the parsed objects
     /// - Throws: JSONError or DecodingError if parsing fails
     public func parse(_ url: URL) async throws -> Resource {
-        let data = try Data(contentsOf: url)
+        let uri = URIReference.canonicalise(url.absoluteString)
+        let data: Data
+        if let resourceSet {
+            data = try await resourceSet.readDocument(uri: uri)
+        } else {
+            data = try await FileURIHandler().read(uri)
+        }
+        return try await parse(data, uri: uri)
+    }
+
+    /// Parses the bytes of a JSON document.
+    ///
+    /// - Parameters:
+    ///   - data: The JSON document.
+    ///   - uri: The URI that the document has.
+    /// - Returns: A resource with the URI that contains the parsed objects.
+    /// - Throws: ``JSONError`` or a decoding error if parsing fails.
+    public func parse(_ data: Data, uri documentURI: String) async throws -> Resource {
+        let uri = URIReference.canonicalise(documentURI)
 
         // Create resource via ResourceSet if available, otherwise create directly
         let resource: Resource
         if let resourceSet = resourceSet {
-            resource = await resourceSet.createResource(uri: URIReference.canonicalise(url.absoluteString))
+            resource = await resourceSet.createResource(uri: uri)
         } else {
-            resource = Resource(uri: URIReference.canonicalise(url.absoluteString))
+            resource = Resource(uri: uri)
         }
 
         // Try to decode as array first, then fall back to single object
