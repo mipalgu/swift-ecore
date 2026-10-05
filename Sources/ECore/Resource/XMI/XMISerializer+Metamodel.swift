@@ -142,6 +142,9 @@ private struct MetamodelWriter {
         for classifier in package.eClassifiers {
             let path = prefix + classifier.name
             paths[classifier.id] = path
+            for parameter in typeParameters(of: classifier) {
+                paths[parameter.id] = path + "/" + parameter.name
+            }
             if let eClass = classifier as? EClass {
                 for feature in eClass.eStructuralFeatures {
                     paths[feature.id] = path + "/" + feature.name
@@ -149,6 +152,9 @@ private struct MetamodelWriter {
                 for operation in eClass.eOperations {
                     let operationPath = path + "/" + operation.name
                     paths[operation.id] = operationPath
+                    for parameter in operation.eTypeParameters {
+                        paths[parameter.id] = operationPath + "/" + parameter.name
+                    }
                     for parameter in operation.eParameters {
                         paths[parameter.id] = operationPath + "/" + parameter.name
                     }
@@ -347,21 +353,24 @@ private struct MetamodelWriter {
         if let instanceClassName = eClass.instanceClassName {
             attribute(EcoreFeatureName.instanceClassName, instanceClassName)
         }
+        if let name = eClass.instanceTypeName { attribute(.instanceTypeName, name) }
         if eClass.isAbstract { attribute(EcoreFeatureName.abstract, true) }
         if eClass.isInterface { attribute(EcoreFeatureName.interface, true) }
-        if !eClass.eSuperTypes.isEmpty {
+        let genericSuperTypes = eClass.eGenericSuperTypes.filter(\.isParameterised)
+        if genericSuperTypes.isEmpty && !eClass.eSuperTypes.isEmpty {
             attribute(
                 EcoreFeatureName.eSuperTypes,
                 eClass.eSuperTypes.map { reference(to: $0, expecting: .exactType) }.joined(separator: " "))
         }
         if eClass.eAnnotations.isEmpty && eClass.eStructuralFeatures.isEmpty
-            && eClass.eOperations.isEmpty
+            && eClass.eOperations.isEmpty && eClass.eTypeParameters.isEmpty && genericSuperTypes.isEmpty
         {
             output += "/>\n"
             return
         }
         output += ">\n"
         writeAnnotations(eClass.eAnnotations, depth: depth + 1)
+        writeTypeParameters(eClass.eTypeParameters, depth: depth + 1)
         for operation in eClass.eOperations {
             writeOperation(operation, depth: depth + 1)
         }
@@ -372,6 +381,9 @@ private struct MetamodelWriter {
                 writeReference(reference, depth: depth + 1)
             }
         }
+        for type in eClass.eGenericSuperTypes where !genericSuperTypes.isEmpty {
+            writeGenericType(type, tag: .eGenericSuperTypes, depth: depth + 1)
+        }
         indent(depth)
         output += "</\(tag)>\n"
     }
@@ -380,29 +392,41 @@ private struct MetamodelWriter {
         let tag = EcoreFeatureName.eOperations.rawValue
         openTag(tag, depth: depth)
         writeTypedElementAttributes(operation)
-        if !operation.eExceptions.isEmpty {
+        if operation.eGenericExceptions.isEmpty && !operation.eExceptions.isEmpty {
             attribute(
                 EcoreFeatureName.eExceptions,
                 operation.eExceptions.map { reference(to: $0) }.joined(separator: " "))
         }
-        if operation.eAnnotations.isEmpty && operation.eParameters.isEmpty {
+        if operation.eAnnotations.isEmpty && operation.eParameters.isEmpty
+            && operation.eTypeParameters.isEmpty && explicitGenericType(of: operation) == nil
+            && operation.eGenericExceptions.isEmpty {
             output += "/>\n"
             return
         }
         output += ">\n"
         writeAnnotations(operation.eAnnotations, depth: depth + 1)
+        if let type = explicitGenericType(of: operation) {
+            writeGenericType(type, tag: .eGenericType, depth: depth + 1)
+        }
+        writeTypeParameters(operation.eTypeParameters, depth: depth + 1)
         for parameter in operation.eParameters {
             let parameterTag = EcoreFeatureName.eParameters.rawValue
             openTag(parameterTag, depth: depth + 1)
             writeTypedElementAttributes(parameter)
-            if parameter.eAnnotations.isEmpty {
+            if parameter.eAnnotations.isEmpty && explicitGenericType(of: parameter) == nil {
                 output += "/>\n"
             } else {
                 output += ">\n"
                 writeAnnotations(parameter.eAnnotations, depth: depth + 2)
+                if let type = explicitGenericType(of: parameter) {
+                    writeGenericType(type, tag: .eGenericType, depth: depth + 2)
+                }
                 indent(depth + 1)
                 output += "</\(parameterTag)>\n"
             }
+        }
+        for type in operation.eGenericExceptions {
+            writeGenericType(type, tag: .eGenericExceptions, depth: depth + 1)
         }
         indent(depth)
         output += "</\(tag)>\n"
@@ -417,7 +441,7 @@ private struct MetamodelWriter {
         if !element.unique { attribute(EcoreFeatureName.unique, false) }
         if element.lowerBound != 0 { attribute(EcoreFeatureName.lowerBound, element.lowerBound) }
         if element.upperBound != 1 { attribute(EcoreFeatureName.upperBound, element.upperBound) }
-        if let type = element.eType {
+        if explicitGenericType(of: element) == nil, let type = element.eType {
             attribute(EcoreFeatureName.eType, typeReference(of: element.id, type: type))
         }
     }
@@ -426,12 +450,16 @@ private struct MetamodelWriter {
         let tag = EcoreFeatureName.eClassifiers.rawValue
         openTag(tag, depth: depth, type: .eEnum)
         attribute(EcoreFeatureName.name, eEnum.name)
-        if eEnum.eAnnotations.isEmpty && eEnum.literals.isEmpty {
+        if let name = eEnum.instanceClassName { attribute(.instanceClassName, name) }
+        if !eEnum.serialisable { attribute(.serializable, false) }
+        if let name = eEnum.instanceTypeName { attribute(.instanceTypeName, name) }
+        if eEnum.eAnnotations.isEmpty && eEnum.literals.isEmpty && eEnum.eTypeParameters.isEmpty {
             output += "/>\n"
             return
         }
         output += ">\n"
         writeAnnotations(eEnum.eAnnotations, depth: depth + 1)
+        writeTypeParameters(eEnum.eTypeParameters, depth: depth + 1)
         for literal in eEnum.literals {
             openTag(EcoreFeatureName.eLiterals.rawValue, depth: depth + 1)
             attribute(EcoreFeatureName.name, literal.name)
@@ -460,11 +488,13 @@ private struct MetamodelWriter {
             attribute(EcoreFeatureName.instanceClassName, name)
         }
         if !dataType.serialisable { attribute(EcoreFeatureName.serializable, false) }
-        if dataType.eAnnotations.isEmpty {
+        if let name = dataType.instanceTypeName { attribute(.instanceTypeName, name) }
+        if dataType.eAnnotations.isEmpty && dataType.eTypeParameters.isEmpty {
             output += "/>\n"
         } else {
             output += ">\n"
             writeAnnotations(dataType.eAnnotations, depth: depth + 1)
+            writeTypeParameters(dataType.eTypeParameters, depth: depth + 1)
             indent(depth)
             output += "</\(tag)>\n"
         }
@@ -477,36 +507,46 @@ private struct MetamodelWriter {
         openTag(tag, depth: depth, type: .eAttribute)
         writeCommonFeatureAttributes(attribute)
         if attribute.isID { self.attribute(EcoreFeatureName.iD, true) }
-        finishFeature(tag: tag, annotations: attribute.eAnnotations, depth: depth)
+        finishFeature(tag: tag, annotations: attribute.eAnnotations, generic: explicitGenericType(of: attribute), depth: depth)
     }
 
     private mutating func writeReference(_ reference: EReference, depth: Int) {
         let tag = EcoreFeatureName.eStructuralFeatures.rawValue
         openTag(tag, depth: depth, type: .eReference)
         writeCommonFeatureAttributes(reference)
-        if reference.containment { attribute(EcoreFeatureName.containment, true) }
         if !reference.resolveProxies { attribute(EcoreFeatureName.resolveProxies, false) }
+        if reference.containment { attribute(EcoreFeatureName.containment, true) }
         if let opposite = reference.opposite, let path = paths[opposite] {
             attribute(EcoreFeatureName.eOpposite, "#" + path)
         } else if let proxy = root.origin?.externalOpposites[reference.id] {
             let fragment = proxy.fragment.hasPrefix("#") ? String(proxy.fragment.dropFirst()) : proxy.fragment
             attribute(EcoreFeatureName.eOpposite, "\(relativeURI(proxy.uri))#\(fragment)")
         }
-        finishFeature(tag: tag, annotations: reference.eAnnotations, depth: depth)
+        let keys = reference.eKeys.compactMap { paths[$0].map { "#" + $0 } }
+        if !keys.isEmpty { attribute(.eKeys, keys.joined(separator: " ")) }
+        finishFeature(tag: tag, annotations: reference.eAnnotations, generic: explicitGenericType(of: reference), depth: depth)
     }
 
-    private mutating func finishFeature(tag: String, annotations: [EAnnotation], depth: Int) {
-        if annotations.isEmpty {
+    /// Completes a structural feature with its annotations and explicit generic type.
+    ///
+    /// - Parameters:
+    ///   - tag: The containing feature tag.
+    ///   - annotations: The feature's annotations.
+    ///   - generic: The generic type, if the feature uses one.
+    ///   - depth: The feature's nesting depth.
+    private mutating func finishFeature(tag: String, annotations: [EAnnotation], generic: EGenericType?, depth: Int) {
+        if annotations.isEmpty && generic == nil {
             output += "/>\n"
         } else {
             output += ">\n"
             writeAnnotations(annotations, depth: depth + 1)
+            if let generic { writeGenericType(generic, tag: .eGenericType, depth: depth + 1) }
             indent(depth)
             output += "</\(tag)>\n"
         }
     }
 
-    private mutating func writeCommonFeatureAttributes<Feature: ReflectiveFeatureAttributes>(
+    private mutating func writeCommonFeatureAttributes<Feature: ReflectiveFeatureAttributes & EObject>(
         _ feature: Feature
     ) {
         attribute(EcoreFeatureName.name, feature.name)
@@ -514,7 +554,9 @@ private struct MetamodelWriter {
         if !feature.unique { attribute(EcoreFeatureName.unique, false) }
         if feature.lowerBound != 0 { attribute(EcoreFeatureName.lowerBound, feature.lowerBound) }
         if feature.upperBound != 1 { attribute(EcoreFeatureName.upperBound, feature.upperBound) }
-        attribute(EcoreFeatureName.eType, typeReference(of: feature.id, type: feature.eType))
+        if explicitGenericType(of: feature) == nil {
+            attribute(EcoreFeatureName.eType, typeReference(of: feature.id, type: feature.eType))
+        }
         if !feature.changeable { attribute(EcoreFeatureName.changeable, false) }
         if feature.volatile { attribute(EcoreFeatureName.volatile, true) }
         if feature.transient { attribute(EcoreFeatureName.transient, true) }
@@ -523,6 +565,85 @@ private struct MetamodelWriter {
         }
         if feature.unsettable { attribute(EcoreFeatureName.unsettable, true) }
         if feature.derived { attribute(EcoreFeatureName.derived, true) }
+    }
+
+    // MARK: Generic types
+
+    /// The type parameters declared by a classifier.
+    ///
+    /// - Parameter classifier: The classifier whose declarations to read.
+    /// - Returns: The parameters in declaration order.
+    private func typeParameters(of classifier: any EClassifier) -> [ETypeParameter] {
+        switch classifier {
+        case let value as EClass: return value.eTypeParameters
+        case let value as EEnum: return value.eTypeParameters
+        case let value as EDataType: return value.eTypeParameters
+        default: return []
+        }
+    }
+
+    /// The explicit generic type of a typed element.
+    ///
+    /// - Parameter element: The element whose type to read.
+    /// - Returns: A parameterised type, or `nil` for a plain classifier reference.
+    private func explicitGenericType(of element: any EObject) -> EGenericType? {
+        let type: EGenericType?
+        switch element {
+        case let value as EAttribute: type = value.eGenericType
+        case let value as EReference: type = value.eGenericType
+        case let value as EOperation: type = value.eGenericType
+        case let value as EParameter: type = value.eGenericType
+        default: type = nil
+        }
+        return type.flatMap { $0.isParameterised ? $0 : nil }
+    }
+
+    /// Writes the type parameters of a classifier or operation.
+    ///
+    /// - Parameters:
+    ///   - parameters: The parameters in declaration order.
+    ///   - depth: The nesting depth of the parameter elements.
+    private mutating func writeTypeParameters(_ parameters: [ETypeParameter], depth: Int) {
+        for parameter in parameters {
+            let tag = EcoreFeatureName.eTypeParameters.rawValue
+            openTag(tag, depth: depth)
+            attribute(.name, parameter.name)
+            if parameter.eAnnotations.isEmpty && parameter.eBounds.isEmpty {
+                output += "/>\n"
+                continue
+            }
+            output += ">\n"
+            writeAnnotations(parameter.eAnnotations, depth: depth + 1)
+            for bound in parameter.eBounds { writeGenericType(bound, tag: .eBounds, depth: depth + 1) }
+            indent(depth)
+            output += "</\(tag)>\n"
+        }
+    }
+
+    /// Writes a generic type, its arguments and wildcard bounds.
+    ///
+    /// - Parameters:
+    ///   - type: The type to write.
+    ///   - tag: The containment feature that names the XML element.
+    ///   - depth: The nesting depth of the element.
+    private mutating func writeGenericType(_ type: EGenericType, tag: EcoreFeatureName, depth: Int) {
+        openTag(tag.rawValue, depth: depth)
+        if let parameter = type.eTypeParameter, let path = paths[parameter] {
+            attribute(.eTypeParameter, "#" + path)
+        }
+        if let classifier = type.eClassifier {
+            attribute(.eClassifier, typeReference(of: type.id, type: classifier))
+        }
+        if type.containedTypes.isEmpty {
+            output += "/>\n"
+            return
+        }
+        output += ">\n"
+        for child in type.containedTypes {
+            writeGenericType(child.object, tag: child.feature, depth: depth + 1)
+        }
+        indent(depth)
+        output += "</\(tag.rawValue)>\n"
     }
 
     // MARK: Annotations
