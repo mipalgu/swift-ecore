@@ -35,7 +35,8 @@ extension XMISerializer {
     /// - Returns: The `.ecore` document text.
     public func serialize(_ package: EPackage) -> String {
         var writer = MetamodelWriter(
-            root: package, documentURI: package.origin?.documentURI, lineWidth: options.lineWidth)
+            root: package, documentURI: package.origin?.documentURI, lineWidth: options.lineWidth,
+            rootLayout: options.rootLayout)
         return writer.document()
     }
 
@@ -51,7 +52,8 @@ extension XMISerializer {
     /// - Returns: The `.ecore` document text.
     public func serialize(_ package: EPackage, relativeTo documentURL: URL) -> String {
         var writer = MetamodelWriter(
-            root: package, documentURI: URIReference.canonicalise(documentURL.absoluteString), lineWidth: options.lineWidth)
+            root: package, documentURI: URIReference.canonicalise(documentURL.absoluteString), lineWidth: options.lineWidth,
+            rootLayout: options.rootLayout)
         return writer.document()
     }
 
@@ -119,15 +121,17 @@ private struct MetamodelWriter {
     private let root: EPackage
     private let documentURI: String?
     private let lineWidth: Int?
+    private let rootLayout: XMIRootLayout
     private var output = WrittenText()
 
     /// The depth of the element whose attributes are being written.
     private var elementDepth = 0
 
-    init(root: EPackage, documentURI: String?, lineWidth: Int?) {
+    init(root: EPackage, documentURI: String?, lineWidth: Int?, rootLayout: XMIRootLayout = .standard) {
         self.root = root
         self.documentURI = documentURI
         self.lineWidth = lineWidth
+        self.rootLayout = rootLayout
         indexPaths(of: root, prefix: "//")
     }
 
@@ -186,6 +190,20 @@ private struct MetamodelWriter {
         return EcoreDataType(rawValue: classifier.name) != nil
     }
 
+    /// The reference text for the type of a typed element.
+    ///
+    /// A type of another document that could not be loaded is written as it was read.
+    ///
+    /// - Parameters:
+    ///   - identifier: The identifier of the typed element.
+    ///   - type: The type that the element holds.
+    private func typeReference(of identifier: EUUID, type: any EClassifier) -> String {
+        guard let proxy = root.origin?.unresolvedTypes[identifier] else { return reference(to: type) }
+        let fragment = proxy.fragment.hasPrefix("#") ? String(proxy.fragment.dropFirst()) : proxy.fragment
+        let prefix = proxy.qualifier.map { $0 + " " } ?? ""
+        return prefix + relativeURI(proxy.uri) + "#" + fragment
+    }
+
     /// The reference text for a classifier.
     ///
     /// - Parameters:
@@ -228,6 +246,16 @@ private struct MetamodelWriter {
             return finish(metaclass)
         }
 
+        if rootLayout == .versionFirst {
+            let tag = XMIAttributeLayout(lineWidth: lineWidth, rootLayout: rootLayout).rootTag(
+                name: ecorePrefixed(metaclass),
+                declarations: declarations.map { "\($0.0)=\"\(XMISerializer.escapeAttribute($0.1))\"" },
+                attributes: packageAttributeTexts(root))
+            output = WrittenText()
+            output += "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + tag + ">\n"
+            return finish(metaclass)
+        }
+
         // The package's own attributes are laid out as if the declarations were absent; the
         // declarations are laid out after them and a line break follows if they ran long.
         let tagColumn = output.column
@@ -267,6 +295,14 @@ private struct MetamodelWriter {
     }
 
     // MARK: Packages
+
+    /// The attributes of a package as `name="value"` texts.
+    private func packageAttributeTexts(_ package: EPackage) -> [String] {
+        [
+            (EcoreFeatureName.name, package.name), (EcoreFeatureName.nsURI, package.nsURI),
+            (EcoreFeatureName.nsPrefix, package.nsPrefix),
+        ].map { "\($0.0.rawValue)=\"\(XMISerializer.escapeAttribute($0.1))\"" }
+    }
 
     private mutating func writePackageAttributes(_ package: EPackage) {
         attribute(EcoreFeatureName.name, package.name)
@@ -381,7 +417,9 @@ private struct MetamodelWriter {
         if !element.unique { attribute(EcoreFeatureName.unique, false) }
         if element.lowerBound != 0 { attribute(EcoreFeatureName.lowerBound, element.lowerBound) }
         if element.upperBound != 1 { attribute(EcoreFeatureName.upperBound, element.upperBound) }
-        if let type = element.eType { attribute(EcoreFeatureName.eType, reference(to: type)) }
+        if let type = element.eType {
+            attribute(EcoreFeatureName.eType, typeReference(of: element.id, type: type))
+        }
     }
 
     private mutating func writeEnum(_ eEnum: EEnum, depth: Int) {
@@ -450,6 +488,9 @@ private struct MetamodelWriter {
         if !reference.resolveProxies { attribute(EcoreFeatureName.resolveProxies, false) }
         if let opposite = reference.opposite, let path = paths[opposite] {
             attribute(EcoreFeatureName.eOpposite, "#" + path)
+        } else if let proxy = root.origin?.externalOpposites[reference.id] {
+            let fragment = proxy.fragment.hasPrefix("#") ? String(proxy.fragment.dropFirst()) : proxy.fragment
+            attribute(EcoreFeatureName.eOpposite, "\(relativeURI(proxy.uri))#\(fragment)")
         }
         finishFeature(tag: tag, annotations: reference.eAnnotations, depth: depth)
     }
@@ -473,7 +514,7 @@ private struct MetamodelWriter {
         if !feature.unique { attribute(EcoreFeatureName.unique, false) }
         if feature.lowerBound != 0 { attribute(EcoreFeatureName.lowerBound, feature.lowerBound) }
         if feature.upperBound != 1 { attribute(EcoreFeatureName.upperBound, feature.upperBound) }
-        attribute(EcoreFeatureName.eType, reference(to: feature.eType))
+        attribute(EcoreFeatureName.eType, typeReference(of: feature.id, type: feature.eType))
         if !feature.changeable { attribute(EcoreFeatureName.changeable, false) }
         if feature.volatile { attribute(EcoreFeatureName.volatile, true) }
         if feature.transient { attribute(EcoreFeatureName.transient, true) }
@@ -606,6 +647,7 @@ private struct MetamodelWriter {
 
 /// The properties that attributes and references share when written as structural features.
 private protocol ReflectiveFeatureAttributes {
+    var id: EUUID { get }
     var name: String { get }
     var ordered: Bool { get }
     var unique: Bool { get }
