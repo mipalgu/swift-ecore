@@ -12,24 +12,20 @@ import Foundation
 
 /// Command to set a property value on an EObject.
 ///
-/// SetCommand modifies a single-valued structural feature on an EObject,
-/// storing the previous value to enable undo operations. This command
-/// works with both attributes and single-valued references.
+/// SetCommand modifies a single-valued structural feature on a dynamic instance,
+/// maintaining opposite references and containment. Undo and redo restore the exact
+/// state of the resource before and after the change.
 ///
 /// ## Example Usage
 ///
 /// ```swift
-/// let command = SetCommand(
-///     object: person,
-///     feature: nameAttribute,
-///     value: "John Doe"
-/// )
+/// let command = SetCommand(object: person, feature: nameAttribute, value: "John Doe")
 ///
-/// let previousValue = try await command.execute()
-/// try await command.undo() // Restores previous value
+/// _ = try await editingDomain.execute(command)
+/// try await editingDomain.undo() // Restores previous value
 /// ```
 @MainActor
-public final class SetCommand: EMFCommand {
+public final class SetCommand: ResourceEditCommand {
 
     // MARK: - Properties
 
@@ -41,12 +37,6 @@ public final class SetCommand: EMFCommand {
 
     /// The new value to set.
     public let newValue: (any EcoreValue)?
-
-    /// The previous value (stored after execution).
-    private var previousValue: (any EcoreValue)?
-
-    /// Flag indicating if the command has been executed.
-    private var hasExecuted: Bool = false
 
     // MARK: - Initialisation
 
@@ -60,9 +50,24 @@ public final class SetCommand: EMFCommand {
         self.objectId = object.id
         self.feature = feature
         self.newValue = value
-        self.previousValue = nil
-        self.hasExecuted = false
-        super.init()
+        super.init(bindingObjectID: object.id, resource: nil)
+    }
+
+    /// Creates a new set command that edits a given resource.
+    ///
+    /// - Parameters:
+    ///   - object: The EObject to modify
+    ///   - feature: The structural feature to set
+    ///   - value: The new value to assign
+    ///   - resource: The resource that holds the object
+    public init(
+        object: any EObject, feature: any EStructuralFeature, value: (any EcoreValue)?,
+        in resource: Resource
+    ) {
+        self.objectId = object.id
+        self.feature = feature
+        self.newValue = value
+        super.init(bindingObjectID: object.id, resource: resource)
     }
 
     // MARK: - EMFCommand Implementation
@@ -72,29 +77,11 @@ public final class SetCommand: EMFCommand {
         return "Set \(feature.name) = \(valueDesc)"
     }
 
-    public override var canUndo: Bool { hasExecuted }
-    public override var canRedo: Bool { hasExecuted }
-
-    public override func execute() async throws -> any Sendable {
-        // For now, we'll mark as executed without actual implementation
-        // This enables testing of the command infrastructure
-        hasExecuted = true
-        return EMFCommandResult.modified(previous: nil)
-    }
-
-    public override func undo() async throws {
-        guard hasExecuted else {
-            throw EMFCommandError.invalidState("Command has not been executed")
-        }
-        // Simplified undo for testing infrastructure
-    }
-
-    public override func redo() async throws -> any Sendable {
-        guard hasExecuted else {
-            throw EMFCommandError.invalidState("Command has not been executed")
-        }
-        // Simplified redo for testing infrastructure
-        return EMFCommandResult.modified(previous: previousValue)
+    override func perform(on resource: Resource) async throws -> (result: EMFCommandResult, changes: [ResourceChange]) {
+        let changes = try await resource.eSetWithChanges(
+            objectId: objectId, feature: feature.name, value: newValue)
+        let previous = changes.first { $0.objectID == objectId && $0.feature == feature.name }?.oldValue
+        return (.modified(previous: previous), changes)
     }
 }
 
@@ -102,23 +89,20 @@ public final class SetCommand: EMFCommand {
 
 /// Command to add a value to a many-valued structural feature.
 ///
-/// AddCommand adds an element to a collection-valued feature on an EObject,
-/// supporting both ordered and unordered collections with proper undo capability.
+/// AddCommand inserts an element into a collection-valued feature of a dynamic instance,
+/// maintaining opposite references. Adding to a containment reference moves the element
+/// out of its previous container. Undo and redo restore exact snapshots.
 ///
 /// ## Example Usage
 ///
 /// ```swift
-/// let command = AddCommand(
-///     object: company,
-///     feature: employeesReference,
-///     value: newEmployee
-/// )
+/// let command = AddCommand(object: company, feature: employeesReference, value: newEmployee)
 ///
-/// try await command.execute()
-/// try await command.undo() // Removes the added employee
+/// _ = try await editingDomain.execute(command)
+/// try await editingDomain.undo() // Removes the added employee
 /// ```
 @MainActor
-public final class AddCommand: EMFCommand {
+public final class AddCommand: ResourceEditCommand {
 
     // MARK: - Properties
 
@@ -131,11 +115,8 @@ public final class AddCommand: EMFCommand {
     /// The value to add.
     public let value: any EcoreValue
 
-    /// The index where the value was added (for undo).
-    private var addedIndex: Int?
-
-    /// Flag indicating if the command has been executed.
-    private var hasExecuted: Bool = false
+    /// The position to insert at, or `nil` to append.
+    public let index: Int?
 
     // MARK: - Initialisation
 
@@ -149,9 +130,27 @@ public final class AddCommand: EMFCommand {
         self.objectId = object.id
         self.feature = feature
         self.value = value
-        self.addedIndex = nil
-        self.hasExecuted = false
-        super.init()
+        self.index = nil
+        super.init(bindingObjectID: object.id, resource: nil)
+    }
+
+    /// Creates a new add command that edits a given resource.
+    ///
+    /// - Parameters:
+    ///   - object: The EObject to modify
+    ///   - feature: The many-valued structural feature to add to
+    ///   - value: The value to add to the collection
+    ///   - index: The position to insert at, or `nil` to append
+    ///   - resource: The resource that holds the object
+    public init(
+        object: any EObject, feature: any EStructuralFeature, value: any EcoreValue,
+        at index: Int? = nil, in resource: Resource
+    ) {
+        self.objectId = object.id
+        self.feature = feature
+        self.value = value
+        self.index = index
+        super.init(bindingObjectID: object.id, resource: resource)
     }
 
     // MARK: - EMFCommand Implementation
@@ -160,31 +159,10 @@ public final class AddCommand: EMFCommand {
         return "Add \(value) to \(feature.name)"
     }
 
-    public override var canUndo: Bool { hasExecuted }
-    public override var canRedo: Bool { hasExecuted }
-
-    public override func execute() async throws -> any Sendable {
-        // Simplified execution for testing infrastructure
-        addedIndex = 0
-        hasExecuted = true
-        return EMFCommandResult.success
-    }
-
-    public override func undo() async throws {
-        guard hasExecuted, addedIndex != nil else {
-            throw EMFCommandError.invalidState(
-                "Command has not been executed or index not recorded")
-        }
-        // Simplified undo for testing infrastructure
-    }
-
-    public override func redo() async throws -> any Sendable {
-        guard hasExecuted else {
-            throw EMFCommandError.invalidState("Command has not been executed")
-        }
-        // Simplified redo for testing infrastructure
-        addedIndex = 0
-        return EMFCommandResult.success
+    override func perform(on resource: Resource) async throws -> (result: EMFCommandResult, changes: [ResourceChange]) {
+        let changes = try await resource.eAdd(
+            objectId: objectId, feature: feature.name, value: value, at: index)
+        return (.success, changes)
     }
 }
 
@@ -192,23 +170,21 @@ public final class AddCommand: EMFCommand {
 
 /// Command to remove a value from a many-valued structural feature.
 ///
-/// RemoveCommand removes an element from a collection-valued feature on an EObject,
-/// storing the removal index and value to enable proper undo operations.
+/// RemoveCommand removes an element from a collection-valued feature of a dynamic
+/// instance, maintaining opposite references. Undo restores the element at its original
+/// position. An element removed from a containment reference remains in the resource as a
+/// root object.
 ///
 /// ## Example Usage
 ///
 /// ```swift
-/// let command = RemoveCommand(
-///     object: company,
-///     feature: employeesReference,
-///     value: employeeToRemove
-/// )
+/// let command = RemoveCommand(object: company, feature: employeesReference, value: employee)
 ///
-/// try await command.execute()
-/// try await command.undo() // Restores the removed employee
+/// _ = try await editingDomain.execute(command)
+/// try await editingDomain.undo() // Restores the removed employee
 /// ```
 @MainActor
-public final class RemoveCommand: EMFCommand {
+public final class RemoveCommand: ResourceEditCommand {
 
     // MARK: - Properties
 
@@ -220,12 +196,6 @@ public final class RemoveCommand: EMFCommand {
 
     /// The value to remove.
     public let value: any EcoreValue
-
-    /// The index where the value was removed from (for undo).
-    private var removedIndex: Int?
-
-    /// Flag indicating if the command has been executed.
-    private var hasExecuted: Bool = false
 
     // MARK: - Initialisation
 
@@ -239,9 +209,24 @@ public final class RemoveCommand: EMFCommand {
         self.objectId = object.id
         self.feature = feature
         self.value = value
-        self.removedIndex = nil
-        self.hasExecuted = false
-        super.init()
+        super.init(bindingObjectID: object.id, resource: nil)
+    }
+
+    /// Creates a new remove command that edits a given resource.
+    ///
+    /// - Parameters:
+    ///   - object: The EObject to modify
+    ///   - feature: The many-valued structural feature to remove from
+    ///   - value: The value to remove from the collection
+    ///   - resource: The resource that holds the object
+    public init(
+        object: any EObject, feature: any EStructuralFeature, value: any EcoreValue,
+        in resource: Resource
+    ) {
+        self.objectId = object.id
+        self.feature = feature
+        self.value = value
+        super.init(bindingObjectID: object.id, resource: resource)
     }
 
     // MARK: - EMFCommand Implementation
@@ -250,40 +235,11 @@ public final class RemoveCommand: EMFCommand {
         return "Remove \(value) from \(feature.name)"
     }
 
-    public override var canUndo: Bool { hasExecuted }
-    public override var canRedo: Bool { hasExecuted }
-
-    public override func execute() async throws -> any Sendable {
-        // Simplified execution for testing infrastructure
-        removedIndex = 0
-        hasExecuted = true
-        return EMFCommandResult.success
-    }
-
-    public override func undo() async throws {
-        guard hasExecuted, removedIndex != nil else {
-            throw EMFCommandError.invalidState(
-                "Command has not been executed or index not recorded")
+    override func perform(on resource: Resource) async throws -> (result: EMFCommandResult, changes: [ResourceChange]) {
+        guard let removal = try await resource.removeValue(objectId: objectId, feature: feature.name, value: value)
+        else {
+            throw ResourceEditError.valueNotFound(feature.name)
         }
-        // Simplified undo for testing infrastructure
-    }
-
-    public override func redo() async throws -> any Sendable {
-        guard hasExecuted else {
-            throw EMFCommandError.invalidState("Command has not been executed")
-        }
-        // Simplified redo for testing infrastructure
-        removedIndex = 0
-        return EMFCommandResult.success
+        return (.success, removal.changes)
     }
 }
-
-// MARK: - Helper Functions
-
-// MARK: - TODO: Resource Integration
-//
-// The helper functions below will be implemented when the command system
-// is integrated with the full resource management infrastructure.
-//
-// For now, the commands use simplified implementations to enable testing
-// of the command pattern infrastructure itself.

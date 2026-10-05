@@ -130,6 +130,43 @@ public final class BasicEditingDomain {
         return RemoveCommand(object: object, feature: feature, value: value)
     }
 
+    /// Create a command to move a value within a many-valued feature.
+    ///
+    /// - Parameters:
+    ///   - object: The EObject that owns the feature
+    ///   - feature: The many-valued structural feature
+    ///   - from: The current position of the value
+    ///   - to: The position the value takes
+    /// - Returns: A configured MoveCommand
+    public func createMoveCommand(
+        object: any EObject, feature: any EStructuralFeature, from: Int, to: Int
+    ) -> MoveCommand {
+        return MoveCommand(object: object, feature: feature, from: from, to: to)
+    }
+
+    /// Create a command to delete objects together with their contents.
+    ///
+    /// - Parameters:
+    ///   - objects: The objects to delete
+    ///   - cleaningReferences: Whether to remove references to them
+    /// - Returns: A configured DeleteCommand
+    public func createDeleteCommand(objects: [any EObject], cleaningReferences: Bool = true) -> DeleteCommand {
+        return DeleteCommand(objects: objects, cleaningReferences: cleaningReferences)
+    }
+
+    /// Create a command to create an object inside a container.
+    ///
+    /// - Parameters:
+    ///   - container: The containing object
+    ///   - reference: The containment reference to add to
+    ///   - eClass: The class to instantiate
+    /// - Returns: A configured CreateChildCommand
+    public func createChildCommand(
+        container: any EObject, reference: EReference, eClass: EClass
+    ) -> CreateChildCommand {
+        return CreateChildCommand(container: container, reference: reference, eClass: eClass)
+    }
+
     /// Create a compound command from multiple commands.
     ///
     /// - Parameter commands: Array of commands to combine
@@ -159,6 +196,7 @@ public final class BasicEditingDomain {
 
         // Notify observers of pending change
         await notifyObservers(.aboutToExecute(command.description))
+        await command.bind(in: resourceSet)
 
         do {
             let result = try await commandStack.execute(command)
@@ -168,6 +206,7 @@ public final class BasicEditingDomain {
 
             // Notify observers of successful execution
             await notifyObservers(.executed(command.description))
+            await notifyChanges(of: command, origin: .execute)
 
             return result
 
@@ -190,6 +229,7 @@ public final class BasicEditingDomain {
         }
 
         let description = commandStack.nextUndoDescription ?? "Unknown"
+        let command = commandStack.nextUndoCommand
 
         // Notify observers of pending undo
         await notifyObservers(.aboutToUndo(description))
@@ -200,6 +240,7 @@ public final class BasicEditingDomain {
 
         // Notify observers of successful undo
         await notifyObservers(.undone(description))
+        if let command { await notifyChanges(of: command, origin: .undo) }
     }
 
     /// Redo the most recent undone command.
@@ -211,6 +252,7 @@ public final class BasicEditingDomain {
         }
 
         let description = commandStack.nextRedoDescription ?? "Unknown"
+        let command = commandStack.nextRedoCommand
 
         // Notify observers of pending redo
         await notifyObservers(.aboutToRedo(description))
@@ -221,6 +263,7 @@ public final class BasicEditingDomain {
 
         // Notify observers of successful redo
         await notifyObservers(.redone(description))
+        if let command { await notifyChanges(of: command, origin: .redo) }
     }
 
     // MARK: - State Management
@@ -296,6 +339,13 @@ public final class BasicEditingDomain {
 
     // MARK: - Private Implementation
 
+    /// Tell observers which modifications a command made, if it made any.
+    private func notifyChanges(of command: EMFCommand, origin: ResourceChangeSet.Origin) async {
+        guard !command.changes.isEmpty else { return }
+        let changeSet = ResourceChangeSet(label: command.description, origin: origin, changes: command.changes)
+        for observer in changeObservers { await observer.changed(changeSet) }
+    }
+
     /// Notify all observers of an editing domain event.
     ///
     /// - Parameter event: The event to broadcast to observers
@@ -340,6 +390,14 @@ public final class CompoundCommand: EMFCommand {
 
     // MARK: - EMFCommand Implementation
 
+    public override func bind(in resourceSet: ResourceSet) async {
+        for command in commands { await command.bind(in: resourceSet) }
+    }
+
+    public override func bind(to resource: Resource) {
+        for command in commands { command.bind(to: resource) }
+    }
+
     public override var description: String {
         if commands.isEmpty {
             return "Empty compound command"
@@ -368,6 +426,7 @@ public final class CompoundCommand: EMFCommand {
 
     public override func execute() async throws -> any Sendable {
         var executedResults: [EMFCommandResult] = []
+        var executedChanges: [ResourceChange] = []
 
         // Execute all commands in order
         for i in 0..<commands.count {
@@ -378,6 +437,7 @@ public final class CompoundCommand: EMFCommand {
                 } else {
                     executedResults.append(.success)
                 }
+                executedChanges.append(contentsOf: commands[i].changes)
             } catch {
                 // Undo any commands that were already executed
                 for j in (0..<executedResults.count).reversed() {
@@ -390,6 +450,7 @@ public final class CompoundCommand: EMFCommand {
         }
 
         results = executedResults
+        changes = executedChanges
         hasExecuted = true
 
         return EMFCommandResult.success
@@ -401,11 +462,14 @@ public final class CompoundCommand: EMFCommand {
         }
 
         // Undo commands in reverse order
+        var undoneChanges: [ResourceChange] = []
         for i in (0..<commands.count).reversed() {
             if commands[i].canUndo {
                 try await commands[i].undo()
+                undoneChanges.append(contentsOf: commands[i].changes)
             }
         }
+        changes = undoneChanges
     }
 
     public override func redo() async throws -> any Sendable {
@@ -414,11 +478,14 @@ public final class CompoundCommand: EMFCommand {
         }
 
         // Redo commands in original order
+        var redoneChanges: [ResourceChange] = []
         for i in 0..<commands.count {
             if commands[i].canRedo {
                 _ = try await commands[i].redo()
+                redoneChanges.append(contentsOf: commands[i].changes)
             }
         }
+        changes = redoneChanges
 
         return EMFCommandResult.success
     }
@@ -433,6 +500,18 @@ public protocol EditingDomainObserver: AnyObject, Sendable {
     ///
     /// - Parameter event: The event that occurred in the editing domain
     func handle(_ event: EditingDomainEvent) async
+
+    /// Handle the modifications that an execution, undo, or redo made to a resource.
+    ///
+    /// Called after the corresponding event. The default implementation does nothing, so
+    /// existing observers need not implement it.
+    ///
+    /// - Parameter changeSet: The modifications, in the order in which they were made.
+    func changed(_ changeSet: ResourceChangeSet) async
+}
+
+extension EditingDomainObserver {
+    public func changed(_ changeSet: ResourceChangeSet) async {}
 }
 
 // MARK: - Editing Domain Events
