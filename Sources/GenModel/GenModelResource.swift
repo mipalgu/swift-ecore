@@ -123,9 +123,10 @@ public enum GenModelResource {
                 foreignPackages[foreignURL] == nil
             else { continue }
             let isExplicit = explicit.contains(location)
-            guard isExplicit || foreignURL.pathExtension == GenModelConstants.metamodelResourceExtension,
-                FileManager.default.fileExists(atPath: foreignURL.path)
-            else {
+            guard foreignURL.isFileURL,
+                foreignURL.pathExtension == GenModelConstants.metamodelResourceExtension
+            else { continue }
+            guard FileManager.default.fileExists(atPath: foreignURL.path) else {
                 if isExplicit {
                     throw GenModelError.foreignModelUnreadable(
                         foreignURL.absoluteString, "file not found")
@@ -227,9 +228,20 @@ public enum GenModelResource {
     ///   - url: The file to write.
     /// - Throws: The serialiser's error if a reference cannot be written or the file cannot be written.
     public static func save(_ resource: Resource, to url: URL) async throws {
+        try await serialised(resource, for: url).write(to: url, atomically: true, encoding: .utf8)
+    }
+
+    /// Renders a generator model as the text that ``save(_:to:)`` writes.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource holding the generator model.
+    ///   - url: The location that the document will have; relative references are computed against it.
+    /// - Returns: The document text in the layout of the Eclipse Modeling Framework.
+    /// - Throws: The serialiser's error if a reference cannot be written.
+    public static func serialised(_ resource: Resource, for url: URL) async throws -> String {
         if let resourceSet = await resource.resourceSet {
             await GenModelFragments.register(in: resourceSet)
         }
-        try await XMISerializer(options: .emf).serialize(resource, to: url)
+        return try await XMISerializer(options: .emf).serialize(resource, relativeTo: url)
     }
 }
