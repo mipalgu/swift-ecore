@@ -63,9 +63,9 @@ public actor JSONParser {
         // Create resource via ResourceSet if available, otherwise create directly
         let resource: Resource
         if let resourceSet = resourceSet {
-            resource = await resourceSet.createResource(uri: url.absoluteString)
+            resource = await resourceSet.createResource(uri: URIReference.canonicalise(url.absoluteString))
         } else {
-            resource = Resource(uri: url.absoluteString)
+            resource = Resource(uri: URIReference.canonicalise(url.absoluteString))
         }
 
         // Try to decode as array first, then fall back to single object

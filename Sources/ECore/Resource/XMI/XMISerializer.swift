@@ -59,7 +59,7 @@ public struct XMISerializer: Sendable {
     public func serialize(_ resource: Resource, to url: URL) async throws {
         let xmiString =
             options != .legacy
-            ? try await serializeEMFStyle(resource, documentURI: url.absoluteURL.absoluteString)
+            ? try await serializeEMFStyle(resource, documentURI: URIReference.canonicalise(url.absoluteURL.absoluteString))
             : try await serialize(resource)
         try xmiString.write(to: url, atomically: true, encoding: .utf8)
     }

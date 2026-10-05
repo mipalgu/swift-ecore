@@ -102,7 +102,7 @@ public enum GenModelResource {
 
         let resolvesReferences = resolution == .nameFragments
         let resource = try await resourceSet.loadXMIResource(
-            uri: documentURL.absoluteString,
+            uri: URIReference.canonicalise(documentURL.absoluteString),
             referenceParsing: resolvesReferences ? .interpreted : .rawText)
         let roots = await resource.getRootObjects()
         guard let root = roots.first as? DynamicEObject,
@@ -188,7 +188,7 @@ public enum GenModelResource {
         -> EPackage
     {
         do {
-            let resource = try await resourceSet.loadEcoreResource(uri: url.absoluteString)
+            let resource = try await resourceSet.loadEcoreResource(uri: URIReference.canonicalise(url.absoluteString))
             guard let package = await resource.getRootObjects().first as? EPackage else {
                 throw XMIError.noRootObject
             }
@@ -202,7 +202,7 @@ public enum GenModelResource {
         -> EPackage
     {
         do {
-            let resource = try await resourceSet.loadXMIResource(uri: url.absoluteString)
+            let resource = try await resourceSet.loadXMIResource(uri: URIReference.canonicalise(url.absoluteString))
             guard let root = await resource.getRootObjects().first else {
                 throw XMIError.noRootObject
             }

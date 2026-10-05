@@ -51,7 +51,7 @@ extension XMISerializer {
     /// - Returns: The `.ecore` document text.
     public func serialize(_ package: EPackage, relativeTo documentURL: URL) -> String {
         var writer = MetamodelWriter(
-            root: package, documentURI: documentURL.absoluteString, lineWidth: options.lineWidth)
+            root: package, documentURI: URIReference.canonicalise(documentURL.absoluteString), lineWidth: options.lineWidth)
         return writer.document()
     }
 

@@ -185,7 +185,7 @@ public struct EPackage: ENamedElement {
     public init(url: URL, enableDebugging: Bool = false) async throws {
         let resourceSet = ResourceSet()
         let resource = try await resourceSet.loadEcoreResource(
-            uri: url.absoluteString, enableDebugging: enableDebugging)
+            uri: URIReference.canonicalise(url.absoluteString), enableDebugging: enableDebugging)
         guard let package = await resource.getRootObjects().first as? EPackage else {
             throw XMIError.noRootObject
         }

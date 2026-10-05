@@ -18,6 +18,9 @@ import Foundation
 /// All operations work on the textual form of the URI and do not touch the
 /// file system, so they behave identically on every platform.
 public enum URIReference {
+    /// The scheme (with its separator) of file URIs.
+    private static let fileScheme = "file:"
+
     /// The components of a hierarchical URI.
     private struct Components {
         /// The scheme including its separator (for example `file:`), or an empty string.
@@ -58,7 +61,7 @@ public enum URIReference {
     /// - Returns: The absolute URI of the referenced resource.
     public static func resolve(_ reference: String, against base: String) -> String {
         if reference.isEmpty { return base }
-        if hasScheme(reference) { return reference }
+        if hasScheme(reference) || driveLength(of: reference) > 0 { return reference }
 
         var baseComponents = components(of: base)
         let referencePath: String
@@ -72,6 +75,21 @@ public enum URIReference {
         }
         baseComponents.path = normalise(path: referencePath)
         return baseComponents.scheme + baseComponents.authority + baseComponents.path
+    }
+
+    /// Reduces a file URI to its canonical textual form.
+    ///
+    /// Empty path segments (`//`) and `.` and `..` segments are removed and a Windows drive
+    /// letter is upper-cased, so that different spellings of the same file produce the same
+    /// text. URIs with any other scheme, and text that is not a URI, are returned unchanged.
+    ///
+    /// - Parameter uri: The URI text.
+    /// - Returns: The canonical form of a file URI, or `uri` itself.
+    public static func canonicalise(_ uri: String) -> String {
+        var parts = components(of: uri)
+        guard parts.scheme.lowercased() == fileScheme, parts.path.hasPrefix("/") else { return uri }
+        parts.path = normalise(path: parts.path)
+        return fileScheme + parts.authority + parts.path
     }
 
     /// Expresses a target URI relative to a base URI where possible.
@@ -94,6 +112,9 @@ public enum URIReference {
         else {
             return target
         }
+
+        guard driveDesignator(of: targetComponents.path) == driveDesignator(of: baseComponents.path)
+        else { return target }
 
         let targetSegments = targetComponents.path.split(
             separator: "/", omittingEmptySubsequences: true
@@ -119,10 +140,12 @@ public enum URIReference {
     /// Whether the reference starts with a URI scheme.
     ///
     /// - Parameter reference: The text to check.
-    /// - Returns: `true` if the text begins with `scheme:`.
+    /// - Returns: `true` if the text begins with `scheme:`. A single letter followed by a colon
+    ///   is a Windows drive designator rather than a scheme.
     private static func hasScheme(_ reference: String) -> Bool {
         guard let colon = reference.firstIndex(of: ":") else { return false }
         let scheme = reference[..<colon]
+        guard scheme.count > 1 else { return false }
         guard let first = scheme.first, first.isLetter else { return false }
         return scheme.allSatisfy { $0.isLetter || $0.isNumber || "+-.".contains($0) }
     }
@@ -153,8 +176,11 @@ public enum URIReference {
     /// - Parameter path: The absolute path.
     /// - Returns: The normalised path, preserving a trailing slash.
     private static func normalise(path: String) -> String {
+        let driveCount = driveLength(of: path)
+        let drive = driveCount > 0 ? String(path.prefix(driveCount)).uppercased() : ""
+        let rest = path.dropFirst(driveCount)
         var output: [Substring] = []
-        for segment in path.split(separator: "/", omittingEmptySubsequences: true) {
+        for segment in rest.split(separator: "/", omittingEmptySubsequences: true) {
             if segment == "." { continue }
             if segment == Substring(CrossReferenceSyntax.parentDirectory) {
                 if !output.isEmpty { output.removeLast() }
@@ -162,6 +188,33 @@ public enum URIReference {
                 output.append(segment)
             }
         }
-        return "/" + output.joined(separator: "/") + (path.hasSuffix("/") && !output.isEmpty ? "/" : "")
+        let root = drive.isEmpty ? "/" : drive + "/"
+        return root + output.joined(separator: "/") + (path.hasSuffix("/") && !output.isEmpty ? "/" : "")
+    }
+
+    /// The length of a leading Windows drive designator in a path.
+    ///
+    /// Recognises `C:` and `/C:` when followed by a slash or the end of the path.
+    ///
+    /// - Parameter path: The path or reference text.
+    /// - Returns: The number of characters of the designator, or zero if there is none.
+    private static func driveLength(of path: String) -> Int {
+        let characters = Array(path.prefix(4))
+        let offset = characters.first == "/" ? 1 : 0
+        guard characters.count >= offset + 2, characters[offset].isASCII, characters[offset].isLetter,
+            characters[offset + 1] == ":"
+        else { return 0 }
+        if characters.count > offset + 2, characters[offset + 2] != "/" { return 0 }
+        return offset + 2
+    }
+
+    /// The upper-cased drive designator of a path, or an empty string.
+    ///
+    /// - Parameter path: The path text.
+    /// - Returns: The designator without any leading slash, such as `C:`.
+    private static func driveDesignator(of path: String) -> String {
+        let count = driveLength(of: path)
+        guard count > 0 else { return "" }
+        return String(path.prefix(count).drop { $0 == "/" }).uppercased()
     }
 }

@@ -95,7 +95,8 @@ public actor ResourceSet {
     /// - Parameter uri: The URI for the new resource.
     /// - Returns: The created or existing resource.
     @discardableResult
-    public func createResource(uri: String) async -> Resource {
+    public func createResource(uri logicalURI: String) async -> Resource {
+        let uri = URIReference.canonicalise(logicalURI)
         if let existing = resources[uri] {
             return existing
         }
@@ -114,7 +115,8 @@ public actor ResourceSet {
     ///
     /// - Parameter uri: The URI of the resource to retrieve.
     /// - Returns: The resource, or `nil` if it cannot be found or loaded.
-    public func getResource(uri: String) -> Resource? {
+    public func getResource(uri logicalURI: String) -> Resource? {
+        let uri = URIReference.canonicalise(logicalURI)
         // Return existing resource if already loaded
         if let existing = resources[uri] {
             return existing
@@ -141,8 +143,9 @@ public actor ResourceSet {
     /// - Returns: The loaded Resource, either newly loaded or cached from previous load
     /// - Throws: XMIError if parsing fails
     public func loadXMIResource(
-        uri: String, referenceParsing: XMIReferenceParsing = .interpreted
+        uri documentURI: String, referenceParsing: XMIReferenceParsing = .interpreted
     ) async throws -> Resource {
+        let uri = URIReference.canonicalise(documentURI)
         // Check if already loaded
         if let existing = resources[uri] {
             return existing
@@ -175,7 +178,8 @@ public actor ResourceSet {
     /// - Parameter uri: The URI of the JSON file to load
     /// - Returns: The loaded Resource, either newly loaded or cached from previous load
     /// - Throws: JSONError if parsing fails
-    public func loadJSONResource(uri: String) async throws -> Resource {
+    public func loadJSONResource(uri documentURI: String) async throws -> Resource {
+        let uri = URIReference.canonicalise(documentURI)
         // Check if already loaded
         if let existing = resources[uri] {
             return existing
@@ -457,7 +461,8 @@ public actor ResourceSet {
     /// - Parameter uri: The absolute URI of the resource to load.
     /// - Returns: The loaded resource.
     /// - Throws: A parsing error if the resource cannot be read or parsed.
-    public func loadReferencedResource(uri: String) async throws -> Resource {
+    public func loadReferencedResource(uri documentURI: String) async throws -> Resource {
+        let uri = URIReference.canonicalise(documentURI)
         if let existing = resources[uri] {
             return existing
         }
@@ -496,7 +501,8 @@ public actor ResourceSet {
     ///   - enableDebugging: Whether the parser prints a trace.
     /// - Returns: The resource holding the native package as its root object.
     /// - Throws: ``XMIError`` if the document cannot be read or has no root package.
-    func loadEcoreResource(uri: String, enableDebugging: Bool) async throws -> Resource {
+    func loadEcoreResource(uri documentURI: String, enableDebugging: Bool) async throws -> Resource {
+        let uri = URIReference.canonicalise(documentURI)
         if let existing = resources[uri] {
             return existing
         }
@@ -530,7 +536,8 @@ public actor ResourceSet {
     ///
     /// - Parameter uri: The absolute URI of the document.
     /// - Returns: The native resource, or `nil` if the document cannot be provided natively.
-    func nativeResource(uri: String) async -> Resource? {
+    func nativeResource(uri documentURI: String) async -> Resource? {
+        let uri = URIReference.canonicalise(documentURI)
         if let existing = resources[uri] {
             return await existing.getRootObjects().first is EPackage ? existing : nil
         }

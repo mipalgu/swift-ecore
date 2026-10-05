@@ -55,7 +55,7 @@ public struct EcoreFragmentResolver: Sendable {
     }
 
     private static func canonical(_ url: URL) -> String {
-        url.standardizedFileURL.absoluteString
+        URIReference.canonicalise(url.standardizedFileURL.absoluteString)
     }
 
     private enum Node {
