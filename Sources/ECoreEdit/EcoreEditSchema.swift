@@ -49,6 +49,19 @@ public struct ChildDescriptor: Sendable, Hashable {
 }
 
 extension EcoreEditSchema {
+    /// Whether a single-valued reference property accepts an absent target.
+    ///
+    /// - Parameters:
+    ///   - feature: The reference property to check.
+    ///   - element: The element that holds the property.
+    /// - Returns: Whether clearing the reference is permitted.
+    static func allowsClearing(_ feature: EcoreFeatureName, on element: EcoreElement) -> Bool {
+        switch (feature, element) {
+        case (.eType, .operation), (.eType, .parameter), (.eOpposite, .reference): return true
+        default: return false
+        }
+    }
+
     /// A containment feature and the metaclasses that it accepts.
     struct ContainmentRule: Sendable {
         /// The containment feature.

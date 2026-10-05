@@ -83,6 +83,21 @@ public struct MetamodelDocument: Sendable {
         return (try? copy.apply(edit, policy: policy)) != nil
     }
 
+    /// Whether an optional reference property may be cleared.
+    ///
+    /// Property pickers can use this capability to offer an empty selection only where
+    /// the editing domain accepts it. Mandatory structural types remain required.
+    /// Unknown elements and elements of external packages cannot be cleared.
+    ///
+    /// - Parameters:
+    ///   - feature: The single-valued reference property.
+    ///   - identifier: The identifier of the element holding the property.
+    /// - Returns: Whether the reference accepts an absent target.
+    public func allowsClearing(_ feature: EcoreFeatureName, for identifier: EUUID) -> Bool {
+        guard !index.isExternal(identifier), let element = index.element(identifier) else { return false }
+        return EcoreEditSchema.allowsClearing(feature, on: element)
+    }
+
     /// Copies elements for pasting.
     ///
     /// - Parameter ids: The elements to copy, each with everything it contains. Unknown

@@ -618,10 +618,8 @@ struct MetamodelEditor {
         switch feature {
         case .eType:
             guard let value else {
-                switch element {
-                case .operation, .parameter: return nil
-                default: throw .invalidValue(feature)
-                }
+                guard EcoreEditSchema.allowsClearing(feature, on: element) else { throw .invalidValue(feature) }
+                return nil
             }
             guard let identifier = value as? EUUID else { throw .invalidValue(feature) }
             let classifier = try resolveClassifier(identifier)
