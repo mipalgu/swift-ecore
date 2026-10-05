@@ -99,7 +99,7 @@ public struct FileURIHandler: URIHandler {
         try Data(contentsOf: try location(of: uri))
     }
 
-    /// Writes a file atomically.
+    /// Writes a file, using atomic replacement where the runtime supports it.
     ///
     /// - Parameters:
     ///   - data: The contents of the file.
@@ -107,7 +107,19 @@ public struct FileURIHandler: URIHandler {
     /// - Throws: ``URIHandlerError/invalidURI(_:)`` if the URI is malformed, or the error
     ///   that writing the file raises.
     public func write(_ data: Data, to uri: String) async throws {
-        try data.write(to: try location(of: uri), options: .atomic)
+        try data.write(to: try location(of: uri), options: Self.writingOptions)
+    }
+
+    /// The file-writing mode supported by the runtime.
+    ///
+    /// Native runtimes replace files atomically. WASI writes directly to its available
+    /// file system without requiring a temporary directory.
+    static var writingOptions: Data.WritingOptions {
+        #if os(WASI)
+        []
+        #else
+        .atomic
+        #endif
     }
 
     /// Whether a file exists.
