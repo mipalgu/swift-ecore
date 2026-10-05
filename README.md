@@ -120,6 +120,8 @@ let documentation = book?.getEAnnotationDetail(
 - [x] Classifiers of Ecore itself are written with the Ecore namespace URI (`ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString`); loaded built-ins have the identity of the classifiers of `EcorePackage.instance`
 - [x] `XMISerializer.serialize(_:relativeTo:)` and `serialize(_:to:)` compute relative URIs for the target location
 - [x] `XMISerializationOptions(lineWidth: XMISerializationOptions.emfLineWidth)` wraps long attribute lists as EMF's editors do, so documents such as `shared.ecore` and `consumer.ecore` round-trip byte for byte
+- [x] `XMISerializationOptions.emfWrapped` is `.emf` with that line width. Documents written by different EMF releases wrap the root element differently; `XMIRootLayout.standard` (declarations follow `xmi:version`) and `.versionFirst` (declarations start on the next line) reproduce both, and `XMIRootLayout.detect(in:)` tells which one a document uses
+- [x] Types and opposites that lie in documents that cannot be loaded are kept and written back unchanged
 - [x] Enumeration-typed attributes of model instances are read by literal text (the literal name is the fallback) and written as literal text, as EMF does; unsettable attributes that are set to their default value are still written
 
 ### In-Memory Model ✅
@@ -198,10 +200,15 @@ a loader, and a language-neutral facade for code generators.
   metamodel, and loads the source models named by `foreignModel` relative to the file. With
   `.nameFragments` the `ecore*` references are resolved through the resource set to the native Ecore
   elements; with `.deferred` they stay as the text of the document.
-- `GenModelResource.save(_:to:)` writes a generator model in the layout of the Eclipse Modeling
-  Framework (attribute-style references such as `ecoreClass="library.ecore#//Book"`). Generator
-  packages are identified by the name of their Ecore package (`Ecore.genmodel#//ecore`), through
-  a `FragmentSegmentRule` registered by `GenModelFragments`.
+- `GenModelResource.save(_:to:rootLayout:)` writes a generator model in the layout of the Eclipse
+  Modeling Framework, including its wrapping of long attribute lists at 80 columns
+  (attribute-style references such as `ecoreClass="library.ecore#//Book"`). Generator elements are
+  identified by the names of their Ecore elements (`Ecore.genmodel#//ecore`,
+  `#//library/Book/title`), through `FragmentSegmentRule`s registered by `GenModelFragments`.
+  `GenModelDocument.rootLayout` records how the loaded file wrapped its root element, so a
+  document can be written back in the layout it was read in; `serialised(_:for:rootLayout:)`
+  returns the text instead of writing a file. Source models that are not Ecore documents (for
+  example `.mdl` or `.xsd` files) are not loaded.
 - `GenModelContext` snapshots the loaded models, and `GenElement` offers navigation, inherited
   feature order, feature and classifier numbering, label features, feature shortcuts and
   name formatting (`capName`, `uncapName`, `upperName`). Nothing in the target depends on a

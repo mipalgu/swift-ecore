@@ -25,13 +25,37 @@ public struct EPackageOrigin: Sendable, Hashable {
     /// of its document and its fragment within that document.
     public var externalReferences: [EUUID: ResourceProxy]
 
+    /// The types of other documents that could not be loaded, keyed by the typed element.
+    ///
+    /// An element whose type lies in a document that is not available keeps a default type
+    /// (`EString` or `EObject`). This record keeps the reference as it was written, so that the
+    /// serialiser can write it back unchanged. Each entry maps the identifier of an attribute,
+    /// reference, operation, or parameter to the proxy that holds the URI, fragment, and kind
+    /// qualifier of its type.
+    public var unresolvedTypes: [EUUID: ResourceProxy]
+
+    /// The opposites that lie in other documents, keyed by the reference that names them.
+    ///
+    /// A reference whose opposite is declared in another document has no local opposite. This
+    /// record keeps the reference to it, as the proxy of the opposite, so that the serialiser can
+    /// write it back.
+    public var externalOpposites: [EUUID: ResourceProxy]
+
     /// Creates an origin.
     ///
     /// - Parameters:
     ///   - documentURI: The absolute URI of the document that the package was loaded from.
     ///   - externalReferences: The classifiers of other documents that the package refers to.
-    public init(documentURI: String, externalReferences: [EUUID: ResourceProxy] = [:]) {
+    ///   - unresolvedTypes: The types that could not be loaded, keyed by the typed element.
+    ///   - externalOpposites: The opposites in other documents, keyed by the reference.
+    public init(
+        documentURI: String, externalReferences: [EUUID: ResourceProxy] = [:],
+        unresolvedTypes: [EUUID: ResourceProxy] = [:],
+        externalOpposites: [EUUID: ResourceProxy] = [:]
+    ) {
         self.documentURI = documentURI
         self.externalReferences = externalReferences
+        self.unresolvedTypes = unresolvedTypes
+        self.externalOpposites = externalOpposites
     }
 }

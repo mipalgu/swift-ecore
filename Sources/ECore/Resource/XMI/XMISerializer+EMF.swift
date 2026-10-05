@@ -60,6 +60,7 @@ struct EMFDocumentWriter {
     private var packagesByPrefix: [String: PackageInfo] = [:]
     private var usedPrefixes: [String: String] = [:]
     private var needsXSI = false
+    private var rootAttributes: [String] = []
 
     private static let ecorePackage = PackageInfo(
         prefix: CrossReferenceSyntax.ecorePrefix, nsURI: EcoreURI.ecoreNamespace.rawValue)
@@ -122,7 +123,10 @@ struct EMFDocumentWriter {
             let body = try await render(
                 root, elementName: "\(info.prefix):\(root.eClass.name)", xsiType: nil, indent: 0,
                 isRoot: true)
-            xml += body.replacingOccurrences(of: Self.namespacePlaceholder, with: namespaceDeclarations(rootPrefix: rootPrefix))
+            let startTag = XMIAttributeLayout(lineWidth: options.lineWidth, rootLayout: options.rootLayout).rootTag(
+                name: "\(info.prefix):\(root.eClass.name)",
+                declarations: namespaceDeclarations(rootPrefix: rootPrefix), attributes: rootAttributes)
+            xml += body.replacingOccurrences(of: Self.namespacePlaceholder, with: startTag)
         } else {
             var bodies = ""
             var firstPrefix = CrossReferenceSyntax.ecorePrefix
@@ -136,7 +140,9 @@ struct EMFDocumentWriter {
                     isRoot: false)
             }
             let wrapper = "\(CrossReferenceSyntax.xmiPrefix):\(XMIDocumentSyntax.multipleRootElement)"
-            xml += "<\(wrapper)\(namespaceDeclarations(rootPrefix: firstPrefix))>\n" + bodies + "</\(wrapper)>\n"
+            let startTag = XMIAttributeLayout(lineWidth: options.lineWidth, rootLayout: options.rootLayout).rootTag(
+                name: wrapper, declarations: namespaceDeclarations(rootPrefix: firstPrefix), attributes: [])
+            xml += startTag + ">\n" + bodies + "</\(wrapper)>\n"
         }
         return xml
     }
@@ -233,20 +239,20 @@ struct EMFDocumentWriter {
     /// Builds the namespace declarations of the root element.
     ///
     /// - Parameter rootPrefix: The prefix of the root object's package.
-    /// - Returns: The attribute text, starting with a space.
-    private func namespaceDeclarations(rootPrefix: String) -> String {
-        var text = " \(XMIAttribute.xmiVersion.rawValue)=\"\(CrossReferenceSyntax.xmiVersion)\""
-        text += declaration(CrossReferenceSyntax.xmiPrefix, EcoreURI.xmiNamespace.rawValue)
-        if needsXSI { text += declaration(CrossReferenceSyntax.xsiPrefix, EcoreURI.xsiNamespace.rawValue) }
+    /// - Returns: The declaration attributes (`xmlns:ecore="..."`), `xmi:version` first.
+    private func namespaceDeclarations(rootPrefix: String) -> [String] {
+        var result = ["\(XMIAttribute.xmiVersion.rawValue)=\"\(CrossReferenceSyntax.xmiVersion)\""]
+        result.append(declaration(CrossReferenceSyntax.xmiPrefix, EcoreURI.xmiNamespace.rawValue))
+        if needsXSI { result.append(declaration(CrossReferenceSyntax.xsiPrefix, EcoreURI.xsiNamespace.rawValue)) }
         var ordered: [String] = []
         for prefix in [CrossReferenceSyntax.ecorePrefix, rootPrefix] where usedPrefixes[prefix] != nil && !ordered.contains(prefix) {
             ordered.append(prefix)
         }
         ordered += usedPrefixes.keys.filter { !ordered.contains($0) }.sorted()
         for prefix in ordered {
-            if let uri = usedPrefixes[prefix] { text += declaration(prefix, uri) }
+            if let uri = usedPrefixes[prefix] { result.append(declaration(prefix, uri)) }
         }
-        return text
+        return result
     }
 
     /// Formats a namespace declaration attribute.
@@ -254,9 +260,9 @@ struct EMFDocumentWriter {
     /// - Parameters:
     ///   - prefix: The namespace prefix.
     ///   - uri: The namespace URI.
-    /// - Returns: The attribute text, starting with a space.
+    /// - Returns: The attribute text.
     private func declaration(_ prefix: String, _ uri: String) -> String {
-        " \(CrossReferenceSyntax.namespaceAttribute(for: prefix))=\"\(uri)\""
+        "\(CrossReferenceSyntax.namespaceAttribute(for: prefix))=\"\(uri)\""
     }
 
     /// Casts a root or child object to a dynamic object.
@@ -320,7 +326,7 @@ struct EMFDocumentWriter {
     ) async throws -> String {
         let indentation = String(repeating: XMIDocumentSyntax.indentUnit, count: indent)
         let childIndentation = indentation + XMIDocumentSyntax.indentUnit
-        var attributes = ""
+        var attributes: [String] = []
         var children = ""
         var handled = Set<String>()
 
@@ -349,18 +355,24 @@ struct EMFDocumentWriter {
             guard let value = await resource.eGet(objectId: object.id, feature: name),
                 value is String || value is Int || value is Double || value is Bool
             else { continue }
-            attributes += " \(name)=\"\(XMISerializer.escapeAttribute(convertToString(value)))\""
+            attributes.append("\(name)=\"\(XMISerializer.escapeAttribute(convertToString(value)))\"")
         }
 
-        var tag = "\(indentation)<\(elementName)"
-        if isRoot { tag += Self.namespacePlaceholder }
+        var allAttributes: [String] = []
         if let xsiType {
             needsXSI = true
-            tag += " \(XMIAttribute.xsiType.rawValue)=\"\(xsiType)\""
+            allAttributes.append("\(XMIAttribute.xsiType.rawValue)=\"\(xsiType)\"")
         }
-        tag += attributes
-        if children.isEmpty { return tag + "/>\n" }
-        return tag + ">\n" + children + "\(indentation)</\(elementName)>\n"
+        allAttributes += attributes
+        let ending = children.isEmpty ? "/>\n" : ">\n" + children + "\(indentation)</\(elementName)>\n"
+        if isRoot {
+            rootAttributes = allAttributes
+            return Self.namespacePlaceholder + ending
+        }
+        let layout = XMIAttributeLayout(lineWidth: options.lineWidth, rootLayout: options.rootLayout)
+        let tag = "\(indentation)<\(elementName)"
+        return tag + layout.attributes(allAttributes, afterColumn: tag.utf16.count, indentation: indentation.utf16.count)
+            + ending
     }
 
     /// Whether a reference is the container side of a containment reference.
@@ -389,7 +401,7 @@ struct EMFDocumentWriter {
     ///   - indentation: The indentation for child elements.
     private func renderAttribute(
         _ attribute: EAttribute, value: any EcoreValue, of object: DynamicEObject,
-        into attributes: inout String, children: inout String, indentation: String
+        into attributes: inout [String], children: inout String, indentation: String
     ) {
         let serialiser = XMISerializer()
         if let stored = arrayTexts(of: value) {
@@ -400,14 +412,15 @@ struct EMFDocumentWriter {
                     children += "\(indentation)<\(attribute.name)>\(escapeXML(text))</\(attribute.name)>\n"
                 }
             } else {
-                attributes += " \(attribute.name)=\"\(XMISerializer.escapeAttribute(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\""
+                attributes.append(
+                    "\(attribute.name)=\"\(XMISerializer.escapeAttribute(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\"")
             }
             return
         }
         let text = convertToString(value)
         if options.omitDefaultValues && !attribute.unsettable && isDefault(text, of: attribute) { return }
         let written = serialiser.attributeText(value, feature: attribute.name, of: object)
-        attributes += " \(attribute.name)=\"\(XMISerializer.escapeAttribute(written))\""
+        attributes.append("\(attribute.name)=\"\(XMISerializer.escapeAttribute(written))\"")
     }
 
     /// Converts an array value into the texts of its elements.
@@ -483,7 +496,7 @@ struct EMFDocumentWriter {
     ///   - children: The child element text of the element being written.
     ///   - indentation: The indentation for child elements.
     private mutating func renderReference(
-        _ reference: EReference, value: any EcoreValue, into attributes: inout String,
+        _ reference: EReference, value: any EcoreValue, into attributes: inout [String],
         children: inout String, indentation: String
     ) async throws {
         var entries: [(qualifier: String?, href: String)] = []
@@ -509,7 +522,8 @@ struct EMFDocumentWriter {
             let texts = entries.map { entry in
                 entry.qualifier.map { "\($0)\(CrossReferenceSyntax.listSeparator)\(entry.href)" } ?? entry.href
             }
-            attributes += " \(reference.name)=\"\(XMISerializer.escapeAttribute(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\""
+            attributes.append(
+                "\(reference.name)=\"\(XMISerializer.escapeAttribute(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\"")
         } else {
             for entry in entries {
                 var tag = "\(indentation)<\(reference.name)"

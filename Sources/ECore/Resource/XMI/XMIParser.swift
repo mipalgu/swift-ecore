@@ -1293,7 +1293,8 @@ public actor XMIParser {
     /// become ``ResourceProxy`` values. A single-valued feature takes one value and a
     /// many-valued feature an array. If an array mixes both kinds, the same-document
     /// references are stored as proxies to this resource so that the array has one type.
-    /// References that cannot be resolved in the same document are dropped.
+    /// References that cannot be resolved yet are kept as proxies to this resource, so that they
+    /// can be resolved later and are written back unchanged.
     ///
     /// - Parameters:
     ///   - references: The parsed references in document order.
@@ -1313,6 +1314,8 @@ public actor XMIParser {
             let href = reference.uri.isEmpty ? "#\(reference.fragment)" : reference.href
             guard let resolved = await resolveReference(href, using: xpathResolver, in: resource) else {
                 if debug { print("[XMI DEBUG] Declared reference '\(href)' could not be resolved") }
+                proxies.append(ResourceProxy(uri: resource.uri, fragment: reference.fragment, qualifier: reference.qualifier))
+                kinds.append(false)
                 continue
             }
             if let identifier = resolved as? EUUID {

@@ -67,7 +67,10 @@ extension Resource {
         for (proxy, classifier) in converter.external where references[classifier.id] == nil {
             references[classifier.id] = proxy
         }
-        package.origin = EPackageOrigin(documentURI: uri, externalReferences: references)
+        package.origin = EPackageOrigin(
+            documentURI: uri, externalReferences: references,
+            unresolvedTypes: converter.unresolvedTypes(in: parsed.values),
+            externalOpposites: converter.externalOpposites(in: parsed.values))
         return package
     }
 
@@ -179,6 +182,36 @@ struct NativeMetamodelConverter {
         case let array as EcoreValueArray: return array.values.flatMap { targets($0) }
         default: return []
         }
+    }
+
+    /// The types that name a classifier which could not be loaded.
+    ///
+    /// - Parameter parsed: The parsed objects of the document.
+    /// - Returns: The proxy of the unresolved type of each typed element, by element identifier.
+    func unresolvedTypes(in parsed: some Collection<DynamicEObject>) -> [EUUID: ResourceProxy] {
+        var result: [EUUID: ResourceProxy] = [:]
+        for object in parsed {
+            guard let target = targets(object.eGet(XMIAttribute.eType.rawValue)).first,
+                case .external(let proxy) = target, external[proxy] == nil
+            else { continue }
+            result[object.id] = proxy
+        }
+        return result
+    }
+
+    /// The opposites that lie in other documents.
+    ///
+    /// - Parameter parsed: The parsed objects of the document.
+    /// - Returns: The proxy of the opposite of each reference that has one, by reference identifier.
+    func externalOpposites(in parsed: some Collection<DynamicEObject>) -> [EUUID: ResourceProxy] {
+        var result: [EUUID: ResourceProxy] = [:]
+        for object in parsed where object.eClass.name == EcoreClassifier.eReference.rawValue {
+            let value = object.eGet(XMIAttribute.eOpposite.rawValue) ?? object.eGet(XMIAttribute.opposite.rawValue)
+            if let target = targets(value).first, case .external(let proxy) = target {
+                result[object.id] = proxy
+            }
+        }
+        return result
     }
 
     /// The parsed objects that a containment value denotes, in order.
