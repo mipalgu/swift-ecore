@@ -69,7 +69,8 @@ extension Resource {
         }
         package.origin = EPackageOrigin(
             documentURI: uri, externalReferences: references,
-            unresolvedTypes: converter.unresolvedTypes(in: parsed.values))
+            unresolvedTypes: converter.unresolvedTypes(in: parsed.values),
+            externalOpposites: converter.externalOpposites(in: parsed.values))
         return package
     }
 
@@ -194,6 +195,21 @@ struct NativeMetamodelConverter {
                 case .external(let proxy) = target, external[proxy] == nil
             else { continue }
             result[object.id] = proxy
+        }
+        return result
+    }
+
+    /// The opposites that lie in other documents.
+    ///
+    /// - Parameter parsed: The parsed objects of the document.
+    /// - Returns: The proxy of the opposite of each reference that has one, by reference identifier.
+    func externalOpposites(in parsed: some Collection<DynamicEObject>) -> [EUUID: ResourceProxy] {
+        var result: [EUUID: ResourceProxy] = [:]
+        for object in parsed where object.eClass.name == EcoreClassifier.eReference.rawValue {
+            let value = object.eGet(XMIAttribute.eOpposite.rawValue) ?? object.eGet(XMIAttribute.opposite.rawValue)
+            if let target = targets(value).first, case .external(let proxy) = target {
+                result[object.id] = proxy
+            }
         }
         return result
     }

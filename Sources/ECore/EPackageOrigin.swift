@@ -34,18 +34,28 @@ public struct EPackageOrigin: Sendable, Hashable {
     /// qualifier of its type.
     public var unresolvedTypes: [EUUID: ResourceProxy]
 
+    /// The opposites that lie in other documents, keyed by the reference that names them.
+    ///
+    /// A reference whose opposite is declared in another document has no local opposite. This
+    /// record keeps the reference to it, as the proxy of the opposite, so that the serialiser can
+    /// write it back.
+    public var externalOpposites: [EUUID: ResourceProxy]
+
     /// Creates an origin.
     ///
     /// - Parameters:
     ///   - documentURI: The absolute URI of the document that the package was loaded from.
     ///   - externalReferences: The classifiers of other documents that the package refers to.
     ///   - unresolvedTypes: The types that could not be loaded, keyed by the typed element.
+    ///   - externalOpposites: The opposites in other documents, keyed by the reference.
     public init(
         documentURI: String, externalReferences: [EUUID: ResourceProxy] = [:],
-        unresolvedTypes: [EUUID: ResourceProxy] = [:]
+        unresolvedTypes: [EUUID: ResourceProxy] = [:],
+        externalOpposites: [EUUID: ResourceProxy] = [:]
     ) {
         self.documentURI = documentURI
         self.externalReferences = externalReferences
         self.unresolvedTypes = unresolvedTypes
+        self.externalOpposites = externalOpposites
     }
 }

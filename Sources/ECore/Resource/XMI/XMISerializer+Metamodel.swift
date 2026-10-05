@@ -488,6 +488,9 @@ private struct MetamodelWriter {
         if !reference.resolveProxies { attribute(EcoreFeatureName.resolveProxies, false) }
         if let opposite = reference.opposite, let path = paths[opposite] {
             attribute(EcoreFeatureName.eOpposite, "#" + path)
+        } else if let proxy = root.origin?.externalOpposites[reference.id] {
+            let fragment = proxy.fragment.hasPrefix("#") ? String(proxy.fragment.dropFirst()) : proxy.fragment
+            attribute(EcoreFeatureName.eOpposite, "\(relativeURI(proxy.uri))#\(fragment)")
         }
         finishFeature(tag: tag, annotations: reference.eAnnotations, depth: depth)
     }
