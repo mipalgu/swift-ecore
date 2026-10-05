@@ -1,5 +1,5 @@
 //
-// SourceLocation.swift
+// SourcePosition.swift
 // EMFBase
 //
 // Copyright © 2025 Rene Hexel. All rights reserved.
@@ -7,12 +7,12 @@
 
 /// A position within a text document.
 ///
-/// A location records the zero-based UTF-8 byte offset from the start of the
+/// A position records the zero-based UTF-8 byte offset from the start of the
 /// document together with the one-based line and column of that position.
 /// Columns count Unicode scalars from the start of the line, so a character
-/// outside the Basic Multilingual Plane occupies a single column. Locations
+/// outside the Basic Multilingual Plane occupies a single column. Positions
 /// are ordered by their UTF-8 offset.
-public struct SourceLocation: Sendable, Hashable, Comparable, Codable {
+public struct SourcePosition: Sendable, Hashable, Comparable, Codable {
     /// The zero-based offset in UTF-8 code units from the start of the document.
     public var utf8Offset: Int
 
@@ -22,7 +22,7 @@ public struct SourceLocation: Sendable, Hashable, Comparable, Codable {
     /// The one-based column, counted in Unicode scalars from the start of the line.
     public var column: Int
 
-    /// Creates a location.
+    /// Creates a position.
     ///
     /// - Parameters:
     ///   - utf8Offset: The zero-based UTF-8 offset from the start of the document.
@@ -34,16 +34,16 @@ public struct SourceLocation: Sendable, Hashable, Comparable, Codable {
         self.column = column
     }
 
-    /// The location at the very start of a document.
-    public static let start = SourceLocation(utf8Offset: 0, line: 1, column: 1)
+    /// The position at the very start of a document.
+    public static let start = SourcePosition(utf8Offset: 0, line: 1, column: 1)
 
-    /// Orders two locations of the same document by their UTF-8 offsets.
+    /// Orders two positions of the same document by their UTF-8 offsets.
     ///
     /// - Parameters:
-    ///   - lhs: The first location.
-    ///   - rhs: The second location.
+    ///   - lhs: The first position.
+    ///   - rhs: The second position.
     /// - Returns: `true` if `lhs` precedes `rhs`.
-    public static func < (lhs: SourceLocation, rhs: SourceLocation) -> Bool {
+    public static func < (lhs: SourcePosition, rhs: SourcePosition) -> Bool {
         lhs.utf8Offset < rhs.utf8Offset
     }
 }
@@ -54,18 +54,18 @@ public struct SourceLocation: Sendable, Hashable, Comparable, Codable {
 /// `end`. A range whose bounds coincide is empty and denotes an insertion
 /// point.
 public struct SourceRange: Sendable, Hashable, Codable {
-    /// The first location inside the range.
-    public var start: SourceLocation
+    /// The first position inside the range.
+    public var start: SourcePosition
 
-    /// The first location after the range (exclusive).
-    public var end: SourceLocation
+    /// The first position after the range (exclusive).
+    public var end: SourcePosition
 
     /// Creates a range.
     ///
     /// - Parameters:
     ///   - start: The inclusive start of the range.
     ///   - end: The exclusive end of the range.
-    public init(start: SourceLocation, end: SourceLocation) {
+    public init(start: SourcePosition, end: SourcePosition) {
         self.start = start
         self.end = end
     }
@@ -76,12 +76,12 @@ public struct SourceRange: Sendable, Hashable, Codable {
     /// The length of the range in UTF-8 code units.
     public var utf8Length: Int { max(0, end.utf8Offset - start.utf8Offset) }
 
-    /// Tests whether a location lies inside the range.
+    /// Tests whether a position lies inside the range.
     ///
-    /// - Parameter location: The location to test.
-    /// - Returns: `true` if `start <= location < end`.
-    public func contains(_ location: SourceLocation) -> Bool {
-        location.utf8Offset >= start.utf8Offset && location.utf8Offset < end.utf8Offset
+    /// - Parameter position: The position to test.
+    /// - Returns: `true` if `start <= position < end`.
+    public func contains(_ position: SourcePosition) -> Bool {
+        position.utf8Offset >= start.utf8Offset && position.utf8Offset < end.utf8Offset
     }
 
     /// Tests whether another range lies entirely inside this one.
@@ -92,7 +92,7 @@ public struct SourceRange: Sendable, Hashable, Codable {
         other.start.utf8Offset >= start.utf8Offset && other.end.utf8Offset <= end.utf8Offset
     }
 
-    /// Tests whether two ranges share at least one location.
+    /// Tests whether two ranges share at least one position.
     ///
     /// - Parameter other: The range to test.
     /// - Returns: `true` if the ranges overlap; empty ranges never overlap.

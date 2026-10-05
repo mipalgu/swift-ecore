@@ -58,18 +58,18 @@ public struct LineTable: Sendable {
     /// The length of the text in UTF-16 code units.
     public var utf16Count: Int { utf16Offset(forUTF8Offset: bytes.count) }
 
-    /// The location corresponding to a UTF-8 offset.
+    /// The position corresponding to a UTF-8 offset.
     ///
     /// - Parameter offset: The zero-based UTF-8 offset; clamped to the text.
-    /// - Returns: The location with its line and column.
-    public func location(forUTF8Offset offset: Int) -> SourceLocation {
+    /// - Returns: The position with its line and column.
+    public func position(forUTF8Offset offset: Int) -> SourcePosition {
         let offset = scalarStart(atOrBefore: offset)
         let line = lineIndex(containing: offset)
         var column = 1
         for index in lineStarts[line]..<offset where Self.isStartByte(bytes[index]) {
             column += 1
         }
-        return SourceLocation(utf8Offset: offset, line: line + 1, column: column)
+        return SourcePosition(utf8Offset: offset, line: line + 1, column: column)
     }
 
     /// The UTF-8 offset corresponding to a line and column.
@@ -159,7 +159,7 @@ public struct LineTable: Sendable {
     ///   - end: The exclusive end offset.
     /// - Returns: The corresponding range.
     public func range(fromUTF8Offset start: Int, to end: Int) -> SourceRange {
-        SourceRange(start: location(forUTF8Offset: start), end: location(forUTF8Offset: end))
+        SourceRange(start: position(forUTF8Offset: start), end: position(forUTF8Offset: end))
     }
 
     private static func isStartByte(_ byte: UInt8) -> Bool { byte & 0xC0 != 0x80 }

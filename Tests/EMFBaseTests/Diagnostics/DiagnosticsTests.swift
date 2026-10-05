@@ -10,13 +10,10 @@ import Testing
 
 @testable import EMFBase
 
-// Disambiguates from the Testing module's own source location type.
-private typealias SourceLocation = EMFBase.SourceLocation
-
 @Suite("Source Diagnostics Tests")
 struct DiagnosticsTests {
-    private func loc(_ offset: Int, _ line: Int = 1, _ column: Int? = nil) -> SourceLocation {
-        SourceLocation(utf8Offset: offset, line: line, column: column ?? offset + 1)
+    private func loc(_ offset: Int, _ line: Int = 1, _ column: Int? = nil) -> SourcePosition {
+        SourcePosition(utf8Offset: offset, line: line, column: column ?? offset + 1)
     }
 
     private func range(_ a: Int, _ b: Int) -> SourceRange {
@@ -27,12 +24,12 @@ struct DiagnosticsTests {
         try JSONDecoder().decode(T.self, from: JSONEncoder().encode(value))
     }
 
-    @Test("Locations order by offset")
-    func locationOrdering() {
+    @Test("Positions order by offset")
+    func positionOrdering() {
         #expect(loc(1) < loc(2))
         #expect(!(loc(2) < loc(2)))
         #expect([loc(5), loc(1), loc(3)].sorted() == [loc(1), loc(3), loc(5)])
-        #expect(SourceLocation.start == SourceLocation(utf8Offset: 0, line: 1, column: 1))
+        #expect(SourcePosition.start == SourcePosition(utf8Offset: 0, line: 1, column: 1))
     }
 
     @Test("Range containment is half open")
@@ -148,9 +145,9 @@ struct LineTableTests {
         let t = LineTable("")
         #expect(t.lineCount == 1)
         #expect(t.utf8Count == 0 && t.utf16Count == 0)
-        #expect(t.location(forUTF8Offset: 0) == .start)
-        #expect(t.location(forUTF8Offset: 10) == .start)
-        #expect(t.location(forUTF8Offset: -3) == .start)
+        #expect(t.position(forUTF8Offset: 0) == .start)
+        #expect(t.position(forUTF8Offset: 10) == .start)
+        #expect(t.position(forUTF8Offset: -3) == .start)
         #expect(t.utf8Offset(line: 1, column: 1) == 0)
         #expect(t.utf8Offset(line: 1, column: 2) == nil)
         #expect(t.utf8Offset(line: 2, column: 1) == nil)
@@ -164,9 +161,9 @@ struct LineTableTests {
     func lf() {
         let t = LineTable("ab\ncd\n")
         #expect(t.lineCount == 3)
-        #expect(t.location(forUTF8Offset: 2) == SourceLocation(utf8Offset: 2, line: 1, column: 3))
-        #expect(t.location(forUTF8Offset: 3) == SourceLocation(utf8Offset: 3, line: 2, column: 1))
-        #expect(t.location(forUTF8Offset: 6) == SourceLocation(utf8Offset: 6, line: 3, column: 1))
+        #expect(t.position(forUTF8Offset: 2) == SourcePosition(utf8Offset: 2, line: 1, column: 3))
+        #expect(t.position(forUTF8Offset: 3) == SourcePosition(utf8Offset: 3, line: 2, column: 1))
+        #expect(t.position(forUTF8Offset: 6) == SourcePosition(utf8Offset: 6, line: 3, column: 1))
         #expect(t.utf8Offset(line: 2, column: 2) == 4)
         #expect(t.utf8Offset(line: 2, column: 3) == 5)
         #expect(t.utf8Offset(line: 2, column: 4) == nil)
@@ -179,7 +176,7 @@ struct LineTableTests {
     func crlf() {
         let t = LineTable("ab\r\ncd")
         #expect(t.lineCount == 2)
-        #expect(t.location(forUTF8Offset: 4) == SourceLocation(utf8Offset: 4, line: 2, column: 1))
+        #expect(t.position(forUTF8Offset: 4) == SourcePosition(utf8Offset: 4, line: 2, column: 1))
         #expect(t.contentRange(ofLine: 1) == 0..<2)
         #expect(t.utf8Offset(line: 2, column: 3) == 6)
         #expect(t.utf16Offset(forUTF8Offset: 4) == 4)
@@ -191,9 +188,9 @@ struct LineTableTests {
     func loneCR() {
         let t = LineTable("a\rb\r\rc")
         #expect(t.lineCount == 4)
-        #expect(t.location(forUTF8Offset: 2) == SourceLocation(utf8Offset: 2, line: 2, column: 1))
-        #expect(t.location(forUTF8Offset: 4) == SourceLocation(utf8Offset: 4, line: 3, column: 1))
-        #expect(t.location(forUTF8Offset: 5) == SourceLocation(utf8Offset: 5, line: 4, column: 1))
+        #expect(t.position(forUTF8Offset: 2) == SourcePosition(utf8Offset: 2, line: 2, column: 1))
+        #expect(t.position(forUTF8Offset: 4) == SourcePosition(utf8Offset: 4, line: 3, column: 1))
+        #expect(t.position(forUTF8Offset: 5) == SourcePosition(utf8Offset: 5, line: 4, column: 1))
         #expect(t.contentRange(ofLine: 3) == 4..<4)
         #expect(t.utf16Offset(forUTF8Offset: 5) == 5)
     }
@@ -203,16 +200,16 @@ struct LineTableTests {
         let t = LineTable("a\nb\r\nc\rd")
         #expect(t.lineCount == 4)
         #expect(t.utf8Offset(line: 4, column: 1) == 7)
-        #expect(t.location(forUTF8Offset: 8).line == 4)
+        #expect(t.position(forUTF8Offset: 8).line == 4)
     }
 
     @Test("Non-ASCII columns count scalars")
     func nonASCII() {
         let t = LineTable("é€x\nz")
         // é = 2 bytes, € = 3 bytes
-        #expect(t.location(forUTF8Offset: 2) == SourceLocation(utf8Offset: 2, line: 1, column: 2))
-        #expect(t.location(forUTF8Offset: 5) == SourceLocation(utf8Offset: 5, line: 1, column: 3))
-        #expect(t.location(forUTF8Offset: 3) == SourceLocation(utf8Offset: 2, line: 1, column: 2))
+        #expect(t.position(forUTF8Offset: 2) == SourcePosition(utf8Offset: 2, line: 1, column: 2))
+        #expect(t.position(forUTF8Offset: 5) == SourcePosition(utf8Offset: 5, line: 1, column: 3))
+        #expect(t.position(forUTF8Offset: 3) == SourcePosition(utf8Offset: 2, line: 1, column: 2))
         #expect(t.utf8Offset(line: 1, column: 3) == 5)
         #expect(t.utf8Offset(line: 1, column: 4) == 6)
         #expect(t.utf16Offset(forUTF8Offset: 5) == 2)
@@ -223,8 +220,8 @@ struct LineTableTests {
     func emoji() {
         let text = "a😀b\n😀"
         let t = LineTable(text)
-        #expect(t.location(forUTF8Offset: 5) == SourceLocation(utf8Offset: 5, line: 1, column: 3))
-        #expect(t.location(forUTF8Offset: 3) == SourceLocation(utf8Offset: 1, line: 1, column: 2))
+        #expect(t.position(forUTF8Offset: 5) == SourcePosition(utf8Offset: 5, line: 1, column: 3))
+        #expect(t.position(forUTF8Offset: 3) == SourcePosition(utf8Offset: 1, line: 1, column: 2))
         #expect(t.utf8Offset(line: 1, column: 3) == 5)
         #expect(t.utf16Offset(forUTF8Offset: 5) == 3)
         #expect(t.utf16Offset(forUTF8Offset: 7) == 5)
@@ -241,11 +238,11 @@ struct LineTableTests {
     @Test("End of file positions")
     func endOfFile() {
         let t = LineTable("ab")
-        #expect(t.location(forUTF8Offset: 2) == SourceLocation(utf8Offset: 2, line: 1, column: 3))
-        #expect(t.location(forUTF8Offset: 100) == SourceLocation(utf8Offset: 2, line: 1, column: 3))
+        #expect(t.position(forUTF8Offset: 2) == SourcePosition(utf8Offset: 2, line: 1, column: 3))
+        #expect(t.position(forUTF8Offset: 100) == SourcePosition(utf8Offset: 2, line: 1, column: 3))
         #expect(t.utf8Offset(line: 1, column: 3) == 2)
         let n = LineTable("ab\r\n")
-        #expect(n.location(forUTF8Offset: 4) == SourceLocation(utf8Offset: 4, line: 2, column: 1))
+        #expect(n.position(forUTF8Offset: 4) == SourcePosition(utf8Offset: 4, line: 2, column: 1))
         #expect(n.contentRange(ofLine: 2) == 4..<4)
         #expect(n.range(fromUTF8Offset: 1, to: 4).end.line == 2)
     }
@@ -256,7 +253,7 @@ struct LineTableTests {
         let t = LineTable(text)
         var offset = 0
         for scalar in text.unicodeScalars {
-            let l = t.location(forUTF8Offset: offset)
+            let l = t.position(forUTF8Offset: offset)
             if !"\r\n".unicodeScalars.contains(scalar) {
                 #expect(t.utf8Offset(line: l.line, column: l.column) == offset)
             }

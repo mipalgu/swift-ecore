@@ -30,7 +30,7 @@ public enum DiagnosticSeverity: Int, Sendable, Hashable, Comparable, CaseIterabl
 /// A message about a place in a document.
 ///
 /// Diagnostics are produced by parsers and validators. The optional
-/// `related` list carries secondary locations, such as the other declaration
+/// `related` list carries secondary positions, such as the other declaration
 /// in a duplicate-name error.
 public struct SourceDiagnostic: Sendable, Hashable, Error, Codable {
     /// How serious the problem is.
