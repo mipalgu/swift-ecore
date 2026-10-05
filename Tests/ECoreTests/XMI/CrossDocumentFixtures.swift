@@ -28,10 +28,14 @@ struct CrossDocumentFixtures {
     /// - Throws: ``FixtureError/missing(_:)`` if the fixture directory cannot be found.
     init() async throws {
         guard let base = Bundle.module.resourceURL else { throw FixtureError.missing("bundle") }
-        directory = base.appendingPathComponent("Resources").appendingPathComponent("crossref")
-        guard FileManager.default.fileExists(atPath: directory.path) else {
-            throw FixtureError.missing(directory.path)
+        let candidates = [
+            base.appendingPathComponent("Resources").appendingPathComponent("crossref"),
+            base.appendingPathComponent("crossref"),
+        ]
+        guard let found = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
+            throw FixtureError.missing(candidates.map(\.path).joined(separator: ", "))
         }
+        directory = found
         resourceSet = ResourceSet()
         let mapping = try await EPackage(url: directory.appendingPathComponent("mapping.ecore"))
         await resourceSet.registerMetamodel(mapping, uri: mapping.nsURI)
