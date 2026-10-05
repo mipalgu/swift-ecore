@@ -83,6 +83,23 @@ await engine.registerResource(resource, alias: "MM")  // resource holding an EPa
 let classes = try await engine.navigate(from: package, property: "eClassifiers")
 ```
 
+### Native Ecore fidelity
+
+Native Ecore documents retain type parameters, generic bounds and arguments, generic
+supertypes and exceptions, reference keys, instance type names and enum data type flags.
+Loading preserves all package roots in order. Save a single package with
+`XMISerializer.serialize(_:)`, or pass `[EPackage]` to write a multi-root XMI document.
+Comments, the XML encoding declaration and explicit `xmi:id` values follow model element
+identity through edits and saving.
+
+Editors can select `EcoreLoadOptions(unresolvedReferences: .keepAsProxies, tolerant: true)` when calling
+`ResourceSet.loadEcoreResource(uri:options:)`
+or `loadEcoreResource(text:uri:options:)`. Retained references keep their source spelling
+when a target is unavailable. Missing required names and package attributes are reported in
+`Resource.loadDiagnostics`; strict loading remains the default. `EcoreValidator` checks
+keys, generic declaration names, scopes, bounds, arguments, inherited substitutions and
+retained unresolved references. Each constraint can be disabled through validator options.
+
 ### Faithful `.ecore` Loading ✅
 
 - [x] Multiple `eSuperTypes`, nested `eSubpackages`, `eOperations` with `eParameters`, `eType`, bounds, and `eExceptions`

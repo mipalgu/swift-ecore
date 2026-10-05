@@ -11,10 +11,6 @@
 /// The raw values are the names that Eclipse's Ecore validator gives its constraints, so a
 /// diagnostic can be related to its Eclipse counterpart and used as a stable key for
 /// configuration and localisation.
-///
-/// Constraints that need features that native metamodels do not yet carry (keys, generics,
-/// and unresolved references) are declared, so that code can refer to them already, but they
-/// yield no diagnostics until those features arrive; see ``isImplemented``.
 public enum EcoreConstraint: String, Sendable, Hashable, CaseIterable {
     // MARK: Names, packages, and annotations
 
@@ -95,23 +91,21 @@ public enum EcoreConstraint: String, Sendable, Hashable, CaseIterable {
     /// The literals of an enumeration have different literal texts.
     case uniqueEnumeratorLiterals = "UniqueEnumeratorLiterals"
 
-    // MARK: Awaiting later features
+    // MARK: Generic declarations and retained references
 
-    /// The keys of a reference are features of its type. Arrives with `eKeys`.
+    /// The keys of a reference are features of its type.
     case consistentKeys = "ConsistentKeys"
-    /// A class's generic supertypes are not duplicated or inconsistent. Arrives with generics.
+    /// A class's generic supertypes are not duplicated or inconsistent.
     case consistentSuperTypes = "ConsistentSuperTypes"
-    /// The type parameters of a classifier or operation have different names. Arrives with
-    /// generics.
+    /// The type parameters of a classifier or operation have different names.
     case uniqueTypeParameterNames = "UniqueTypeParameterNames"
-    /// A generic type refers to a suitable classifier or type parameter. Arrives with generics.
+    /// A generic type refers to a suitable classifier or type parameter.
     case consistentType = "ConsistentType"
-    /// The bounds of a generic type are well formed. Arrives with generics.
+    /// The bounds of a generic type are well formed.
     case consistentGenericBounds = "ConsistentGenericBounds"
-    /// The arguments of a generic type match the type parameters of its classifier. Arrives
-    /// with generics.
+    /// The arguments of a generic type match the type parameters of its classifier.
     case consistentArguments = "ConsistentArguments"
-    /// Every reference to another document resolves. Arrives with proxies.
+    /// Every reference to another document resolves.
     case everyProxyResolves = "EveryProxyResolves"
 
     // MARK: Delegates
@@ -121,16 +115,7 @@ public enum EcoreConstraint: String, Sendable, Hashable, CaseIterable {
 
     /// Whether ``EcoreValidator`` currently checks the constraint.
     ///
-    /// Constraints that need `eKeys`, generics, or proxies are declared but not yet checked,
-    /// so they never yield a diagnostic. The delegate constraint is never checked by the
-    /// validator itself, because delegates supply its diagnostics.
-    public var isImplemented: Bool {
-        switch self {
-        case .consistentKeys, .consistentSuperTypes, .uniqueTypeParameterNames, .consistentType,
-            .consistentGenericBounds, .consistentArguments, .everyProxyResolves:
-            return false
-        default:
-            return true
-        }
-    }
+    /// Native constraints include generic declarations, keys and retained proxies.
+    /// Delegate diagnostics are supplied by validation delegates.
+    public var isImplemented: Bool { true }
 }

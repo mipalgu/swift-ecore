@@ -719,16 +719,16 @@ struct EcoreValidatorInfrastructureTests {
         #expect(clashing.count == 1)
     }
 
-    @Test("constraints that await later features are declared and yield nothing")
+    @Test("generic and proxy constraints are implemented")
     func pendingConstraints() {
         let pending: [EcoreConstraint] = [
             .consistentKeys, .consistentSuperTypes, .uniqueTypeParameterNames, .consistentType,
             .consistentGenericBounds, .consistentArguments, .everyProxyResolves,
         ]
         for constraint in pending {
-            #expect(!constraint.isImplemented, "\(constraint)")
+            #expect(constraint.isImplemented, "\(constraint)")
         }
-        #expect(EcoreConstraint.allCases.filter { !$0.isImplemented }.count == pending.count)
+        #expect(EcoreConstraint.allCases.allSatisfy { $0.isImplemented })
         let found = F.validate(Self.troubled())
         #expect(found.allSatisfy { !pending.contains($0.code) })
     }

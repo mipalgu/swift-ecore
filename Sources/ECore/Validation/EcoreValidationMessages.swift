@@ -90,6 +90,28 @@ public enum EcoreValidationMessage: String, Sendable, Hashable, CaseIterable {
     case similarEnumeratorNames
     /// Arguments: the literal text.
     case duplicateEnumeratorLiteral
+    /// Arguments: the name of the invalid reference key.
+    case keyNotFromType
+    /// Arguments: the duplicate type parameter name.
+    case duplicateTypeParameterName
+    /// No arguments.
+    case genericTypeConflictingTargets
+    /// No arguments.
+    case typeParameterOutOfScope
+    /// No arguments.
+    case genericClassifierInvalid
+    /// No arguments.
+    case genericWildcardInvalid
+    /// No arguments.
+    case genericBoundsInvalid
+    /// Arguments: the actual and expected number of arguments.
+    case genericArgumentsInvalid
+    /// No arguments.
+    case genericSubstitutionInvalid
+    /// Arguments: the name of the conflicting superclass.
+    case genericSuperTypesInconsistent
+    /// Arguments: the unresolved reference text.
+    case unresolvedProxy
     /// Arguments: the message that a delegate reported.
     case delegateMessage
 }
@@ -157,6 +179,17 @@ public enum EcoreValidationMessages {
         case .similarEnumeratorNames:
             "The literal names '{0}' and '{1}' differ only by case or underscores."
         case .duplicateEnumeratorLiteral: "More than one literal has the text '{0}'."
+        case .keyNotFromType: "The key '{0}' is not an attribute of the reference's type."
+        case .duplicateTypeParameterName: "There is more than one type parameter named '{0}'."
+        case .genericTypeConflictingTargets: "A generic type cannot name both a classifier and a type parameter."
+        case .typeParameterOutOfScope: "The referenced type parameter is outside this type's declaration scope."
+        case .genericClassifierInvalid: "The generic classifier is not suitable for this use."
+        case .genericWildcardInvalid: "A wildcard is only permitted as a type argument outside a generic supertype."
+        case .genericBoundsInvalid: "Only a wildcard type argument may have one upper or lower bound."
+        case .genericArgumentsInvalid: "The generic type has {0} arguments but requires {1}."
+        case .genericSubstitutionInvalid: "A type argument does not satisfy its parameter's bounds."
+        case .genericSuperTypesInconsistent: "The generic superclass '{0}' is repeated or has inconsistent arguments."
+        case .unresolvedProxy: "The reference '{0}' cannot be resolved."
         case .delegateMessage: "{0}"
         }
     }

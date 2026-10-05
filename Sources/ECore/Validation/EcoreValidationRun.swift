@@ -78,6 +78,7 @@ final class EcoreValidationRun {
         case .typeParameter(let value): checkTypeParameter(value)
         case .detail: break
         }
+        checkGenericDeclarations(element)
         guard diagnostics.count - start > 1 else { return }
         let ordered = diagnostics[start...].enumerated().sorted {
             let (left, right) = (Self.rank[$0.element.code] ?? 0, Self.rank[$1.element.code] ?? 0)
