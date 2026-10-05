@@ -55,13 +55,13 @@ import Foundation
 /// - Note: Commands should store only the minimum information required
 ///   for execution and reversal. All command operations are MainActor-isolated.
 @MainActor
-public class EMFCommand {
+open class EMFCommand {
 
     /// A human-readable description of the command.
     ///
     /// This description is used for debugging, logging, and potentially
     /// for user interface elements showing command history.
-    public var description: String {
+    open var description: String {
         return "EMF Command"
     }
 
@@ -69,7 +69,7 @@ public class EMFCommand {
     ///
     /// Some commands may not support undo operations, particularly those
     /// involving external resources or irreversible actions.
-    public var canUndo: Bool {
+    open var canUndo: Bool {
         return true
     }
 
@@ -77,7 +77,7 @@ public class EMFCommand {
     ///
     /// Commands that can be undone should generally support redo,
     /// but this may not always be the case.
-    public var canRedo: Bool {
+    open var canRedo: Bool {
         return canUndo
     }
 
@@ -97,7 +97,7 @@ public class EMFCommand {
     /// default implementation does nothing.
     ///
     /// - Parameter resourceSet: The resource set to search.
-    public func bind(in resourceSet: ResourceSet) async {}
+    open func bind(in resourceSet: ResourceSet) async {}
 
     /// Connects the command to a specific resource.
     ///
@@ -105,7 +105,7 @@ public class EMFCommand {
     /// nothing.
     ///
     /// - Parameter resource: The resource that holds the objects the command edits.
-    public func bind(to resource: Resource) {}
+    open func bind(to resource: Resource) {}
 
     /// Execute the command, applying its changes to the model.
     ///
@@ -114,7 +114,7 @@ public class EMFCommand {
     ///
     /// - Returns: The result of command execution
     /// - Throws: `EMFCommandError` if execution fails
-    public func execute() async throws -> any Sendable {
+    open func execute() async throws -> any Sendable {
         throw EMFCommandError.executionFailed("Abstract method must be implemented by subclasses")
     }
 
@@ -125,7 +125,7 @@ public class EMFCommand {
     /// where `canUndo` returns `true`.
     ///
     /// - Throws: `EMFCommandError` if undo fails or is not supported
-    public func undo() async throws {
+    open func undo() async throws {
         throw EMFCommandError.undoNotSupported
     }
 
@@ -137,7 +137,7 @@ public class EMFCommand {
     ///
     /// - Returns: The result of command re-execution
     /// - Throws: `EMFCommandError` if redo fails or is not supported
-    public func redo() async throws -> any Sendable {
+    open func redo() async throws -> any Sendable {
         throw EMFCommandError.redoNotSupported
     }
 }

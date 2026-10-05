@@ -24,6 +24,10 @@ let package = Package(
             name: "GenModel",
             targets: ["GenModel"]
         ),
+        .library(
+            name: "ECoreEdit",
+            targets: ["ECoreEdit"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-collections", from: "1.0.0"),
@@ -47,6 +51,17 @@ let package = Package(
                 "OCL",
                 .product(name: "OrderedCollections", package: "swift-collections"),
                 .product(name: "SwiftXML", package: "SwiftXML"),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .target(
+            name: "ECoreEdit",
+            dependencies: [
+                "ECore",
+                "EMFBase",
+                .product(name: "OrderedCollections", package: "swift-collections"),
             ],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
@@ -98,6 +113,13 @@ let package = Package(
             resources: [
                 .copy("Resources")
             ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "ECoreEditTests",
+            dependencies: ["ECoreEdit", "ECore", "EMFBase"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]

@@ -217,6 +217,36 @@ for genClass in context.genModels[0].genPackages[0].genClasses {
 }
 ```
 
+## ECoreEdit
+
+The `ECoreEdit` library product edits native metamodels (`EPackage` trees) as values, for
+metamodel editors and diagram tools. It has no user interface and no dependency on Observation.
+
+- `MetamodelDocument` holds the root packages and a `MetamodelIndex`. `apply(_:policy:)` applies a
+  `MetamodelEdit` (`create`, `delete`, `move`, `set`, `setOpposite`, `setDetail`,
+  `renameDetailKey`, `paste`, `compound`), refreshes the class snapshots by identifier, rebuilds the
+  index, and returns a `MetamodelChangeSet` that lists what was added, removed, modified, and
+  moved, which containers changed, and which labels may read differently. A refused edit throws a
+  `MetamodelEditError` and leaves the document unchanged.
+- Deleting elements cleans up every reference to them (supertypes, exceptions, opposites, annotation
+  references). A feature whose type was deleted gets the Ecore built-in `EObject` (reference) or
+  `EJavaObject` (attribute); an operation whose type was deleted has no type.
+- `childDescriptors(for:)`, `siblingDescriptors(for:)`, `propertyDescriptors(for:)`, and
+  `choices(for:feature:)` are derived reflectively from `EcorePackage`.
+- `EcoreLabelProvider` gives labels, icons, and multiplicity decorations in the layout of the
+  Eclipse Sample Ecore Editor; separators are defined once in `EcoreLabelSyntax`.
+- `EditHistory` is a generic undo and redo history with a saved point, and
+  `MetamodelEditingDomain` (main actor) combines a document with a history, closure observers, an
+  `AsyncStream` of change sets, and an `EMFCommand` adapter for `CommandStack`.
+- `EcoreClipboard` carries copied elements to any compatible container, in any document.
+
+```swift
+let domain = MetamodelEditingDomain(document: MetamodelDocument(roots: [package]))
+let token = domain.observe { changes in refresh(changes.labelsAffected) }
+try domain.perform(.set(classID, .name, "Book"))
+domain.undo()
+```
+
 ## Licence
 
 See the details in the LICENCE file.
