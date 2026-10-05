@@ -99,8 +99,23 @@ extension ResourceSet {
     /// - Returns: The resource holding the native package as its root object.
     /// - Throws: ``XMIError`` if the document cannot be parsed or has no root package.
     public func loadEcoreResource(text: String, uri: String) async throws -> Resource {
+        try await loadEcoreResource(text: text, uri: uri, options: EcoreLoadOptions())
+    }
+
+    /// Loads native Ecore packages from text with explicit loading policies.
+    ///
+    /// References to other documents resolve through the resource set's URI handlers.
+    /// A previously loaded resource is returned unchanged.
+    ///
+    /// - Parameters:
+    ///   - text: The document text.
+    ///   - uri: The URI used to resolve relative references.
+    ///   - options: The policies for unresolved references and incomplete elements.
+    /// - Returns: The resource containing every root package and load diagnostics.
+    /// - Throws: ``XMIError`` if the document cannot be parsed or converted.
+    public func loadEcoreResource(text: String, uri: String, options: EcoreLoadOptions) async throws -> Resource {
         try await loadEcoreResource(
-            data: Data(text.utf8), uri: URIReference.canonicalise(uri), enableDebugging: false)
+            data: Data(text.utf8), uri: URIReference.canonicalise(uri), enableDebugging: false, options: options)
     }
 
     /// Loads an XMI document from text.

@@ -129,6 +129,28 @@ public struct EPackage: ENamedElement {
     /// the correct URIs. It is `nil` for a package that was built in code.
     public internal(set) var origin: EPackageOrigin?
 
+    /// Discards a retained proxy when its reference property is explicitly replaced.
+    ///
+    /// Editors use this after a successful property edit so that saving writes the new
+    /// selection rather than an unresolved target retained from the source document.
+    /// Other source metadata and references remain available for round-tripping.
+    ///
+    /// - Parameters:
+    ///   - feature: The reference property that was replaced.
+    ///   - identifier: The identity of the element holding the property.
+    /// - Returns: Whether a retained target was discarded.
+    @discardableResult
+    public mutating func discardRetainedReference(_ feature: EcoreFeatureName, for identifier: EUUID) -> Bool {
+        guard var origin else { return false }
+        var discarded = false
+        if feature == .eType, origin.unresolvedTypes.removeValue(forKey: identifier) != nil { discarded = true }
+        if feature == .eOpposite, origin.externalOpposites.removeValue(forKey: identifier) != nil { discarded = true }
+        if origin.unresolvedReferences[identifier]?.removeValue(forKey: feature) != nil { discarded = true }
+        self.origin = origin
+        return discarded
+    }
+
+
     /// Internal storage for feature values.
     private var storage: EObjectStorage
 

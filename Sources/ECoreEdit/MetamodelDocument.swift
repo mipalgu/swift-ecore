@@ -125,10 +125,11 @@ extension MetamodelDocument: Equatable {
     /// Whether two documents hold the same metamodel.
     ///
     /// Documents are equal when they have the same location, the same roots in the same order,
-    /// and every element has the same place and the same property values. Elements are
-    /// compared by their content, not just by identifier.
+    /// the same retained document metadata, and every element has the same place and the
+    /// same property values. Elements are compared by their content and identifiers.
     public static func == (lhs: MetamodelDocument, rhs: MetamodelDocument) -> Bool {
         lhs.uri == rhs.uri && lhs.roots.map(\.id) == rhs.roots.map(\.id)
+            && lhs.roots.map(\.origin) == rhs.roots.map(\.origin)
             && MetamodelDiff.changeSet(from: lhs, to: rhs, label: "").isEmpty
     }
 }

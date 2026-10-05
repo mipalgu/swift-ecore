@@ -41,6 +41,15 @@ public struct EPackageOrigin: Sendable, Hashable {
     /// write it back.
     public var externalOpposites: [EUUID: ResourceProxy]
 
+    /// References that could not be resolved, grouped by owner and feature.
+    ///
+    /// The original proxies allow validators to locate unresolved supertypes, exceptions,
+    /// opposites, keys and annotation references, and allow saving to retain their spelling.
+    public var unresolvedReferences: [EUUID: [EcoreFeatureName: [ResourceProxy]]]
+
+    /// The XML comments, declaration and explicit identifiers of the source document.
+    public var documentMetadata: EcoreDocumentMetadata
+
     /// Creates an origin.
     ///
     /// - Parameters:
@@ -48,14 +57,20 @@ public struct EPackageOrigin: Sendable, Hashable {
     ///   - externalReferences: The classifiers of other documents that the package refers to.
     ///   - unresolvedTypes: The types that could not be loaded, keyed by the typed element.
     ///   - externalOpposites: The opposites in other documents, keyed by the reference.
+    ///   - unresolvedReferences: Unresolved references grouped by owner and feature.
+    ///   - documentMetadata: The XML metadata retained from the source document.
     public init(
         documentURI: String, externalReferences: [EUUID: ResourceProxy] = [:],
         unresolvedTypes: [EUUID: ResourceProxy] = [:],
-        externalOpposites: [EUUID: ResourceProxy] = [:]
+        externalOpposites: [EUUID: ResourceProxy] = [:],
+        unresolvedReferences: [EUUID: [EcoreFeatureName: [ResourceProxy]]] = [:],
+        documentMetadata: EcoreDocumentMetadata = EcoreDocumentMetadata()
     ) {
         self.documentURI = documentURI
         self.externalReferences = externalReferences
         self.unresolvedTypes = unresolvedTypes
         self.externalOpposites = externalOpposites
+        self.unresolvedReferences = unresolvedReferences
+        self.documentMetadata = documentMetadata
     }
 }

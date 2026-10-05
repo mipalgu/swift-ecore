@@ -32,9 +32,9 @@ extension Resource {
     /// document keep the identifiers of those elements; references to other documents are
     /// kept as proxies.
     ///
-    /// A type given by an `eGenericType` child is read as its raw classifier. Type arguments,
-    /// type parameters, and generic bounds are not represented, so a reference to a type
-    /// parameter has no type.
+    /// Generic declarations retain their type parameters, arguments and bounds. Typed
+    /// elements also expose their raw classifier for clients that use `eType`. XML metadata
+    /// and unresolved reference targets remain available through the package origin.
     ///
     /// Because native classes are value types, a reference records a snapshot of its target
     /// class. Snapshots are accurate to a fixed depth of reference hops; use the identifier
@@ -60,6 +60,7 @@ extension Resource {
         for case let candidate as DynamicEObject in getAllObjects() { parsed[candidate.id] = candidate }
         var converter = NativeMetamodelConverter(
             objects: parsed, ignoresFailures: shouldIgnoreUnresolvedClassifiers)
+        converter.metadata = ecoreDocumentMetadata
         converter.external = await resolveExternalClassifiers(converter.collectProxies(from: root))
         converter.localProxies = await resolveLocalAnnotationProxies(converter.annotationProxies())
         var package = try converter.convert(root)
@@ -70,8 +71,41 @@ extension Resource {
         package.origin = EPackageOrigin(
             documentURI: uri, externalReferences: references,
             unresolvedTypes: converter.unresolvedTypes(in: parsed.values),
-            externalOpposites: converter.externalOpposites(in: parsed.values))
+            externalOpposites: converter.externalOpposites(in: parsed.values),
+            unresolvedReferences: converter.unresolvedReferences(in: parsed.values),
+            documentMetadata: ecoreDocumentMetadata)
         return package
+    }
+
+    /// Converts all parsed root packages with shared classifier resolution.
+    ///
+    /// - Parameters:
+    ///   - roots: The parsed root objects in document order.
+    ///   - options: The policies for unresolved classifier references.
+    /// - Returns: The native packages with origins and references retained.
+    /// - Throws: ``XMIError`` if a root is not a package or conversion fails.
+    func createEPackages(from roots: [any EObject], options: EcoreLoadOptions) async throws -> [EPackage] {
+        let dynamic = try roots.map { root -> DynamicEObject in
+            guard let object = root as? DynamicEObject, object.eClass.name == EcoreClassifier.ePackage.rawValue else {
+                throw XMIError.invalidObjectType("Expected an EPackage root")
+            }
+            return object
+        }
+        var parsed: [EUUID: DynamicEObject] = [:]
+        for case let object as DynamicEObject in getAllObjects() { parsed[object.id] = object }
+        var converter = NativeMetamodelConverter(objects: parsed, ignoresFailures: false, options: options)
+        converter.metadata = ecoreDocumentMetadata
+        converter.external = await resolveExternalClassifiers(dynamic.flatMap { converter.collectProxies(from: $0) })
+        converter.localProxies = await resolveLocalAnnotationProxies(converter.annotationProxies())
+        var packages = try converter.convertRoots(dynamic)
+        let references = Dictionary(converter.external.map { ($0.value.id, $0.key) }, uniquingKeysWith: { first, _ in first })
+        let origin = EPackageOrigin(documentURI: uri, externalReferences: references,
+            unresolvedTypes: converter.unresolvedTypes(in: parsed.values),
+            externalOpposites: converter.externalOpposites(in: parsed.values),
+            unresolvedReferences: converter.unresolvedReferences(in: parsed.values),
+            documentMetadata: ecoreDocumentMetadata)
+        for index in packages.indices { packages[index].origin = origin }
+        return packages
     }
 
     /// Resolves the annotation references that point back into this document.
@@ -131,6 +165,9 @@ struct NativeMetamodelConverter {
 
     /// The identifiers of the elements that annotation references of this document name.
     var localProxies: [ResourceProxy: EUUID] = [:]
+
+    /// XML metadata used to retain otherwise raw generic declarations.
+    var metadata = EcoreDocumentMetadata()
 
     /// The converted annotations of each element, by the identifier of the element.
     private var annotationMap: [EUUID: [EAnnotation]] = [:]
@@ -207,6 +244,30 @@ struct NativeMetamodelConverter {
         }
         return result
     }
+
+    /// Unresolved reference families retained alongside native values.
+    ///
+    /// - Parameter parsed: The parsed objects of the document.
+    /// - Returns: Proxies grouped by their containing element and reference feature.
+    func unresolvedReferences(in parsed: some Collection<DynamicEObject>) -> [EUUID: [EcoreFeatureName: [ResourceProxy]]] {
+        var result: [EUUID: [EcoreFeatureName: [ResourceProxy]]] = [:]
+        for object in parsed {
+            for feature in Self.retainedReferenceFeatures {
+                let proxies = targets(object.eGet(feature.rawValue)).compactMap { target -> ResourceProxy? in
+                    guard case .external(let proxy) = target, external[proxy] == nil,
+                        localProxies[proxy] == nil else { return nil }
+                    return proxy
+                }
+                if !proxies.isEmpty { result[object.id, default: [:]][feature] = proxies }
+            }
+        }
+        return result
+    }
+
+    /// Reference families whose unresolved targets have no native object representation.
+    private static let retainedReferenceFeatures: [EcoreFeatureName] = [
+        .eSuperTypes, .eExceptions, .eOpposite, .eKeys, .references, .eTypeParameter,
+    ]
 
     /// The opposites that lie in other documents.
     ///
@@ -333,13 +394,22 @@ struct NativeMetamodelConverter {
     /// - Returns: The native package.
     /// - Throws: ``XMIError`` if an element cannot be converted and failures are not ignored.
     mutating func convert(_ root: DynamicEObject) throws -> EPackage {
+        try convertRoots([root])[0]
+    }
+
+    /// Converts root packages together so that references between them resolve.
+    ///
+    /// - Parameter roots: The parsed packages in declaration order.
+    /// - Returns: The linked native packages in the same order.
+    /// - Throws: ``XMIError`` if a classifier or package cannot be converted.
+    mutating func convertRoots(_ roots: [DynamicEObject]) throws -> [EPackage] {
         convertAnnotations()
         var classObjects: [DynamicEObject] = []
-        try convertDataTypes(of: root, classObjects: &classObjects)
+        for root in roots { try convertDataTypes(of: root, classObjects: &classObjects) }
         buildClasses(classObjects)
         convertDataTypeParameters()
-        let package = try assemble(root)
-        return MetamodelLinker.relinked([package], externalClassifiers: externalClassifiers)[0]
+        let packages = try roots.map { try assemble($0) }
+        return MetamodelLinker.relinked(packages, externalClassifiers: externalClassifiers)
     }
 
     /// The classifiers of other documents, by the identifier of the classifier.
@@ -501,6 +571,15 @@ struct NativeMetamodelConverter {
         return placeholder(for: proxy)
     }
 
+    /// Whether a generic declaration has structure or XML metadata to retain.
+    ///
+    /// - Parameter type: The parsed generic declaration.
+    /// - Returns: Whether converting it to a raw type would lose information.
+    private func shouldRetain(_ type: EGenericType) -> Bool {
+        type.isParameterised || metadata.xmlIdentifiers[type.id] != nil
+            || metadata.commentsBefore[type.id] != nil || metadata.commentsAtEnd[type.id] != nil
+    }
+
     /// Converts a parsed generic type with its arguments and bounds.
     private func genericType(_ object: DynamicEObject, previous: [EUUID: EClass]) -> EGenericType {
         let parameter = targets(object.eGet(EcoreFeatureName.eTypeParameter.rawValue)).compactMap {
@@ -587,7 +666,7 @@ struct NativeMetamodelConverter {
                 isID: flag(object, XMIAttribute.iD.rawValue, false),
                 eAnnotations: annotations(forID: object.id), ordered: ordered,
                 unique: unique, unsettable: unsettable, derived: derived)
-            attribute.eGenericType = generic.flatMap { $0.isParameterised ? $0 : nil }
+            attribute.eGenericType = generic.flatMap { shouldRetain($0) ? $0 : nil }
             return attribute
         case EcoreClassifier.eReference.rawValue:
             let opposite = targets(object.eGet(XMIAttribute.eOpposite.rawValue)
@@ -607,7 +686,7 @@ struct NativeMetamodelConverter {
                 eAnnotations: annotations(forID: object.id),
                 ordered: ordered, unique: unique, unsettable: unsettable, derived: derived,
                 container: oppositeContains)
-            reference.eGenericType = generic.flatMap { $0.isParameterised ? $0 : nil }
+            reference.eGenericType = generic.flatMap { shouldRetain($0) ? $0 : nil }
             reference.eKeys = targets(object.eGet(EcoreFeatureName.eKeys.rawValue)).compactMap { target in
                 if case .local(let identifier) = target { return identifier }
                 return nil
@@ -639,7 +718,7 @@ struct NativeMetamodelConverter {
                     ordered: flag(parameter, XMIAttribute.ordered.rawValue, true),
                     unique: flag(parameter, XMIAttribute.unique.rawValue, true),
                     eAnnotations: annotations(forID: parameter.id))
-                result.eGenericType = generic.flatMap { $0.isParameterised ? $0 : nil }
+                result.eGenericType = generic.flatMap { shouldRetain($0) ? $0 : nil }
                 return result
             }
         let operationGeneric = contained(object, EcoreFeatureName.eGenericType.rawValue).first
@@ -666,7 +745,7 @@ struct NativeMetamodelConverter {
             unique: flag(object, XMIAttribute.unique.rawValue, true),
             eParameters: parameters, eExceptions: exceptions,
             eAnnotations: annotations(forID: object.id))
-        result.eGenericType = operationGeneric.flatMap { $0.isParameterised ? $0 : nil }
+        result.eGenericType = operationGeneric.flatMap { shouldRetain($0) ? $0 : nil }
         result.eTypeParameters = operationParameters
         result.eGenericExceptions = contained(object, EcoreFeatureName.eGenericExceptions.rawValue)
             .map { genericType($0, previous: previous) }

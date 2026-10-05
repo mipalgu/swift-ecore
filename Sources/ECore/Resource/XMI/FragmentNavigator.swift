@@ -56,12 +56,19 @@ public struct FragmentNavigator: Sendable {
         if path.isEmpty || path == CrossReferenceSyntax.rootFragment {
             return roots.first
         }
-        guard path.hasPrefix(CrossReferenceSyntax.fragmentPathPrefix) else { return nil }
-        let segments = path.dropFirst(CrossReferenceSyntax.fragmentPathPrefix.count)
-            .split(separator: CrossReferenceSyntax.segmentSeparator, omittingEmptySubsequences: true)
-            .map(String.init)
-
-        for root in roots {
+        let candidates: [any EObject]
+        let remainder: Substring
+        if path.hasPrefix(CrossReferenceSyntax.fragmentPathPrefix) {
+            candidates = roots
+            remainder = path.dropFirst(CrossReferenceSyntax.fragmentPathPrefix.count)
+        } else if path.hasPrefix(String(CrossReferenceSyntax.segmentSeparator)) {
+            let parts = path.dropFirst().split(separator: CrossReferenceSyntax.segmentSeparator, maxSplits: 1)
+            guard let first = parts.first, let index = Int(first), roots.indices.contains(index) else { return nil }
+            candidates = [roots[index]]
+            remainder = parts.count > 1 ? parts[1] : ""
+        } else { return nil }
+        let segments = remainder.split(separator: CrossReferenceSyntax.segmentSeparator, omittingEmptySubsequences: true).map(String.init)
+        for root in candidates {
             var current: any EObject = root
             var found = true
             for segment in segments {

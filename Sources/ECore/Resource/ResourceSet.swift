@@ -496,7 +496,21 @@ public actor ResourceSet {
     /// - Returns: The resource holding the native package as its root object.
     /// - Throws: ``XMIError`` if the document cannot be read or has no root package.
     public func loadEcoreResource(uri: String) async throws -> Resource {
-        try await loadEcoreResource(uri: uri, enableDebugging: false)
+        try await loadEcoreResource(uri: uri, options: EcoreLoadOptions())
+    }
+
+    /// Loads a native Ecore document with explicit reference and diagnostic policies.
+    ///
+    /// Previously loaded documents are returned unchanged. All root packages are retained
+    /// in declaration order, including references between the roots.
+    ///
+    /// - Parameters:
+    ///   - uri: The absolute URI of the document.
+    ///   - options: The policies for unresolved references and incomplete elements.
+    /// - Returns: The resource containing the native packages and load diagnostics.
+    /// - Throws: An I/O error or ``XMIError`` if the document cannot be loaded.
+    public func loadEcoreResource(uri: String, options: EcoreLoadOptions) async throws -> Resource {
+        try await loadEcoreResource(uri: uri, enableDebugging: false, options: options)
     }
 
     /// Loads an Ecore document as native metamodel objects, optionally tracing the parse.
@@ -506,7 +520,7 @@ public actor ResourceSet {
     ///   - enableDebugging: Whether the parser prints a trace.
     /// - Returns: The resource holding the native package as its root object.
     /// - Throws: ``XMIError`` if the document cannot be read or has no root package.
-    func loadEcoreResource(uri documentURI: String, enableDebugging: Bool) async throws -> Resource {
+    func loadEcoreResource(uri documentURI: String, enableDebugging: Bool, options: EcoreLoadOptions = EcoreLoadOptions()) async throws -> Resource {
         let uri = URIReference.canonicalise(documentURI)
         if let existing = resources[uri] {
             return existing
@@ -517,7 +531,7 @@ public actor ResourceSet {
         } catch URIHandlerError.invalidURI {
             throw XMIError.invalidXML("Invalid URI: \(uri)")
         }
-        return try await loadEcoreResource(data: data, uri: uri, enableDebugging: enableDebugging)
+        return try await loadEcoreResource(data: data, uri: uri, enableDebugging: enableDebugging, options: options)
     }
 
     /// Loads an Ecore document that has been read already as native metamodel objects.
@@ -528,26 +542,28 @@ public actor ResourceSet {
     ///   - enableDebugging: Whether the parser prints a trace.
     /// - Returns: The resource holding the native package as its root object.
     /// - Throws: ``XMIError`` if the document cannot be parsed or has no root package.
-    func loadEcoreResource(data: Data, uri: String, enableDebugging: Bool) async throws -> Resource {
+    func loadEcoreResource(data: Data, uri: String, enableDebugging: Bool, options: EcoreLoadOptions = EcoreLoadOptions()) async throws -> Resource {
         if let existing = resources[uri] {
             return existing
         }
         ecoreLoadsInProgress.insert(uri)
         defer { ecoreLoadsInProgress.remove(uri) }
 
-        let parser = XMIParser(enableDebugging: enableDebugging)
+        let parser = XMIParser(enableDebugging: enableDebugging, ecoreLoadOptions: options)
         let parsed = try await parser.parse(data, uri: uri)
         await parsed.enableDebugging(enableDebugging)
         await parsed.setResourceSet(self)
-        guard let root = await parsed.getRootObjects().first else {
-            throw XMIError.noRootObject
-        }
-        let package = try await parsed.createEPackage(from: root)
+        let roots = await parsed.getRootObjects()
+        guard !roots.isEmpty else { throw XMIError.noRootObject }
+        let packages = try await parsed.createEPackages(from: roots, options: options)
         let resource = await createResource(uri: uri)
-        await resource.registerNativePackage(package)
-        if metamodelRegistry[package.nsURI] == nil {
-            registerMetamodel(package, uri: package.nsURI)
+        for package in packages {
+            await resource.registerNativePackage(package)
+            if !package.nsURI.isEmpty && metamodelRegistry[package.nsURI] == nil {
+                registerMetamodel(package, uri: package.nsURI)
+            }
         }
+        await resource.setLoadDiagnostics(parsed.loadDiagnostics)
         return resource
     }
 

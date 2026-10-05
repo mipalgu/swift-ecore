@@ -177,10 +177,11 @@ struct MetamodelEditor {
         let before = features.map { value(of: $0, in: element) }
         body(&element)
         let after = features.map { value(of: $0, in: element) }
-        guard before != after else { return }
+        let clearedProxies = clearRetainedProxies(of: identifier, features: features)
+        guard before != after || !clearedProxies.isEmpty else { return }
         store(element, identifier)
         staleness = max(staleness, .values)
-        for (position, feature) in features.enumerated() where before[position] != after[position] {
+        for (position, feature) in features.enumerated() where before[position] != after[position] || clearedProxies.contains(feature) {
             changes.append(
                 MetamodelChange(
                     kind: .set, element: identifier, feature: feature, oldValue: before[position],
@@ -196,6 +197,22 @@ struct MetamodelEditor {
         var result = [element.id]
         for child in element.children { result.append(contentsOf: subtree(child.element)) }
         return result
+    }
+
+    /// Removes saved proxy targets when an editor explicitly replaces their property.
+    ///
+    /// - Parameters:
+    ///   - identifier: The element whose properties were edited.
+    ///   - features: The explicitly edited properties.
+    /// - Returns: Properties whose saved proxies were removed.
+    private mutating func clearRetainedProxies(of identifier: EUUID, features: [EcoreFeatureName]) -> Set<EcoreFeatureName> {
+        var cleared = Set<EcoreFeatureName>()
+        for position in roots.indices {
+            for feature in features where roots[position].discardRetainedReference(feature, for: identifier) {
+                cleared.insert(feature)
+            }
+        }
+        return cleared
     }
 
     /// Records that elements were added to a container.

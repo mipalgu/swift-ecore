@@ -57,6 +57,22 @@ extension XMISerializer {
         return writer.document()
     }
 
+    /// Serialises native root packages as one Ecore document.
+    ///
+    /// Multiple packages share an XMI wrapper and document-relative fragment paths.
+    ///
+    /// - Parameters:
+    ///   - packages: The root packages in document order.
+    ///   - documentURL: The output location, or `nil` to use the first package's origin.
+    /// - Returns: The document text, ending in a newline, or an empty string when there are no roots.
+    public func serialize(_ packages: [EPackage], relativeTo documentURL: URL? = nil) -> String {
+        guard !packages.isEmpty else { return "" }
+        let uri = documentURL.map { URIReference.canonicalise($0.absoluteString) } ?? packages.first?.origin?.documentURI
+        var writer = MetamodelWriter(roots: packages, documentURI: uri,
+            lineWidth: options.lineWidth, rootLayout: options.rootLayout)
+        return writer.document()
+    }
+
     /// Serialises a metamodel package to an `.ecore` file.
     ///
     /// References to classifiers of other documents are written relative to the file.
@@ -119,20 +135,47 @@ private struct MetamodelWriter {
     private var paths: [EUUID: String] = [:]
 
     private let root: EPackage
+
+    /// The root packages in document order.
+    private let roots: [EPackage]
     private let documentURI: String?
     private let lineWidth: Int?
     private let rootLayout: XMIRootLayout
     private var output = WrittenText()
 
+    /// The source metadata shared by the root packages.
+    private var metadata: EcoreDocumentMetadata { root.origin?.documentMetadata ?? EcoreDocumentMetadata() }
+
+    /// The declaration and leading comments of the document.
+    private var documentPreamble: String {
+        "<?xml version=\"1.0\" encoding=\"" + XMISerializer.escapeAttribute(metadata.encoding)
+            + "\"?>\n" + metadata.leadingComments.map { $0 + "\n" }.joined()
+    }
+
     /// The depth of the element whose attributes are being written.
     private var elementDepth = 0
 
     init(root: EPackage, documentURI: String?, lineWidth: Int?, rootLayout: XMIRootLayout = .standard) {
-        self.root = root
+        self.init(roots: [root], documentURI: documentURI, lineWidth: lineWidth, rootLayout: rootLayout)
+    }
+
+    /// Creates a writer with a shared index for all document roots.
+    ///
+    /// - Parameters:
+    ///   - roots: The non-empty list of root packages.
+    ///   - documentURI: The URI against which references are made relative.
+    ///   - lineWidth: The preferred line width, or `nil` to disable wrapping.
+    ///   - rootLayout: The layout of the namespace declarations.
+    init(roots: [EPackage], documentURI: String?, lineWidth: Int?, rootLayout: XMIRootLayout) {
+        self.root = roots[0]
+        self.roots = roots
         self.documentURI = documentURI
         self.lineWidth = lineWidth
         self.rootLayout = rootLayout
-        indexPaths(of: root, prefix: "//")
+        for (index, package) in roots.enumerated() {
+            paths[package.id] = roots.count == 1 ? "/" : "/\(index)"
+            indexPaths(of: package, prefix: roots.count == 1 ? "//" : "/\(index)/")
+        }
     }
 
     // MARK: Fragment paths
@@ -235,12 +278,13 @@ private struct MetamodelWriter {
 
     mutating func document() -> String {
         output = WrittenText()
-        output += "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        output += documentPreamble
+        if roots.count > 1 { return multipleRootDocument() }
         let metaclass = EcorePackage.metaClass(.ePackage).name
         elementDepth = 0
         output += "<\(ecorePrefixed(metaclass))"
         let declarations = [
-            (XMIAttribute.xmiVersion.rawValue, "2.0"),
+            (XMIAttribute.xmiVersion.rawValue, CrossReferenceSyntax.xmiVersion),
             (XMLNamespace.prefixed("xmi"), EcoreURI.xmiNamespace.rawValue),
             (XMLNamespace.prefixed("xsi"), EcoreURI.xsiNamespace.rawValue),
             (XMLNamespace.prefixed(EcorePackage.nsPrefix), EcoreURI.ecoreNamespace.rawValue),
@@ -258,7 +302,7 @@ private struct MetamodelWriter {
                 declarations: declarations.map { "\($0.0)=\"\(XMISerializer.escapeAttribute($0.1))\"" },
                 attributes: packageAttributeTexts(root))
             output = WrittenText()
-            output += "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" + tag + ">\n"
+            output += documentPreamble + tag + ">\n"
             return finish(metaclass)
         }
 
@@ -275,10 +319,37 @@ private struct MetamodelWriter {
         return finish(metaclass)
     }
 
+    /// Writes an XMI wrapper holding each native package.
+    ///
+    /// - Returns: The completed multi-root document text.
+    private mutating func multipleRootDocument() -> String {
+        openTag(CrossReferenceSyntax.xmiPrefix + ":" + XMIDocumentSyntax.multipleRootElement, depth: 0)
+        rawAttribute(XMIAttribute.xmiVersion.rawValue, CrossReferenceSyntax.xmiVersion)
+        for (prefix, uri) in [("xmi", EcoreURI.xmiNamespace.rawValue),
+            ("xsi", EcoreURI.xsiNamespace.rawValue), (EcorePackage.nsPrefix, EcoreURI.ecoreNamespace.rawValue)] {
+            rawAttribute(XMLNamespace.prefixed(prefix), uri)
+        }
+        output += ">\n"
+        let tag = ecorePrefixed(EcoreClassifier.ePackage.rawValue)
+        for package in roots {
+            openTag(tag, depth: 1, identifier: package.id, writesIdentifier: false)
+            writePackageAttributes(package)
+            output += ">\n"
+            writePackageContents(package, depth: 2)
+            indent(1)
+            output += "</\(tag)>\n"
+        }
+        writeComments(metadata.wrapperTrailingComments, depth: 1)
+        output += "</\(CrossReferenceSyntax.xmiPrefix):\(XMIDocumentSyntax.multipleRootElement)>\n"
+        writeComments(metadata.trailingComments, depth: 0)
+        return output.text
+    }
+
     /// Completes the document after its root start tag.
     private mutating func finish(_ metaclass: String) -> String {
         writePackageContents(root, depth: 1)
         output += "</\(ecorePrefixed(metaclass))>\n"
+        writeComments(metadata.trailingComments, depth: 0)
         return output.text
     }
 
@@ -304,13 +375,16 @@ private struct MetamodelWriter {
 
     /// The attributes of a package as `name="value"` texts.
     private func packageAttributeTexts(_ package: EPackage) -> [String] {
-        [
-            (EcoreFeatureName.name, package.name), (EcoreFeatureName.nsURI, package.nsURI),
-            (EcoreFeatureName.nsPrefix, package.nsPrefix),
-        ].map { "\($0.0.rawValue)=\"\(XMISerializer.escapeAttribute($0.1))\"" }
+        var attributes = [(EcoreFeatureName.name.rawValue, package.name), (EcoreFeatureName.nsURI.rawValue, package.nsURI),
+            (EcoreFeatureName.nsPrefix.rawValue, package.nsPrefix)]
+        if let identifier = metadata.xmlIdentifiers[package.id] {
+            attributes.insert((XMIAttribute.xmiId.rawValue, identifier), at: 0)
+        }
+        return attributes.map { "\($0.0)=\"\(XMISerializer.escapeAttribute($0.1))\"" }
     }
 
     private mutating func writePackageAttributes(_ package: EPackage) {
+        if let identifier = metadata.xmlIdentifiers[package.id] { rawAttribute(XMIAttribute.xmiId.rawValue, identifier) }
         attribute(EcoreFeatureName.name, package.name)
         attribute(EcoreFeatureName.nsURI, package.nsURI)
         attribute(EcoreFeatureName.nsPrefix, package.nsPrefix)
@@ -329,7 +403,7 @@ private struct MetamodelWriter {
         }
         for subpackage in package.eSubpackages {
             let tag = EcoreFeatureName.eSubpackages.rawValue
-            openTag(tag, depth: depth)
+            openTag(tag, depth: depth, identifier: subpackage.id, writesIdentifier: false)
             writePackageAttributes(subpackage)
             if subpackage.eAnnotations.isEmpty && subpackage.eClassifiers.isEmpty
                 && subpackage.eSubpackages.isEmpty
@@ -342,13 +416,14 @@ private struct MetamodelWriter {
                 output += "</\(tag)>\n"
             }
         }
+        writeComments(metadata.commentsAtEnd[package.id] ?? [], depth: depth)
     }
 
     // MARK: Classifiers
 
     private mutating func writeClass(_ eClass: EClass, depth: Int) {
         let tag = EcoreFeatureName.eClassifiers.rawValue
-        openTag(tag, depth: depth, type: .eClass)
+        openTag(tag, depth: depth, type: .eClass, identifier: eClass.id)
         attribute(EcoreFeatureName.name, eClass.name)
         if let instanceClassName = eClass.instanceClassName {
             attribute(EcoreFeatureName.instanceClassName, instanceClassName)
@@ -356,14 +431,16 @@ private struct MetamodelWriter {
         if let name = eClass.instanceTypeName { attribute(.instanceTypeName, name) }
         if eClass.isAbstract { attribute(EcoreFeatureName.abstract, true) }
         if eClass.isInterface { attribute(EcoreFeatureName.interface, true) }
-        let genericSuperTypes = eClass.eGenericSuperTypes.filter(\.isParameterised)
-        if genericSuperTypes.isEmpty && !eClass.eSuperTypes.isEmpty {
+        let genericSuperTypes = eClass.eGenericSuperTypes.filter { $0.isParameterised
+            || metadata.xmlIdentifiers[$0.id] != nil || metadata.commentsBefore[$0.id] != nil || hasEndComments($0.id) }
+        if genericSuperTypes.isEmpty && (!eClass.eSuperTypes.isEmpty || !retainedReferences(of: eClass.id, feature: .eSuperTypes).isEmpty) {
             attribute(
                 EcoreFeatureName.eSuperTypes,
-                eClass.eSuperTypes.map { reference(to: $0, expecting: .exactType) }.joined(separator: " "))
+                (eClass.eSuperTypes.map { reference(to: $0, expecting: .exactType) }
+                    + retainedReferences(of: eClass.id, feature: .eSuperTypes)).joined(separator: " "))
         }
         if eClass.eAnnotations.isEmpty && eClass.eStructuralFeatures.isEmpty
-            && eClass.eOperations.isEmpty && eClass.eTypeParameters.isEmpty && genericSuperTypes.isEmpty
+            && eClass.eOperations.isEmpty && eClass.eTypeParameters.isEmpty && genericSuperTypes.isEmpty && !hasEndComments(eClass.id)
         {
             output += "/>\n"
             return
@@ -384,22 +461,24 @@ private struct MetamodelWriter {
         for type in eClass.eGenericSuperTypes where !genericSuperTypes.isEmpty {
             writeGenericType(type, tag: .eGenericSuperTypes, depth: depth + 1)
         }
+        writeComments(metadata.commentsAtEnd[eClass.id] ?? [], depth: depth + 1)
         indent(depth)
         output += "</\(tag)>\n"
     }
 
     private mutating func writeOperation(_ operation: EOperation, depth: Int) {
         let tag = EcoreFeatureName.eOperations.rawValue
-        openTag(tag, depth: depth)
+        openTag(tag, depth: depth, identifier: operation.id)
         writeTypedElementAttributes(operation)
-        if operation.eGenericExceptions.isEmpty && !operation.eExceptions.isEmpty {
+        if operation.eGenericExceptions.isEmpty && (!operation.eExceptions.isEmpty || !retainedReferences(of: operation.id, feature: .eExceptions).isEmpty) {
             attribute(
                 EcoreFeatureName.eExceptions,
-                operation.eExceptions.map { reference(to: $0) }.joined(separator: " "))
+                (operation.eExceptions.map { reference(to: $0) }
+                    + retainedReferences(of: operation.id, feature: .eExceptions)).joined(separator: " "))
         }
         if operation.eAnnotations.isEmpty && operation.eParameters.isEmpty
             && operation.eTypeParameters.isEmpty && explicitGenericType(of: operation) == nil
-            && operation.eGenericExceptions.isEmpty {
+            && operation.eGenericExceptions.isEmpty && !hasEndComments(operation.id) {
             output += "/>\n"
             return
         }
@@ -411,9 +490,9 @@ private struct MetamodelWriter {
         writeTypeParameters(operation.eTypeParameters, depth: depth + 1)
         for parameter in operation.eParameters {
             let parameterTag = EcoreFeatureName.eParameters.rawValue
-            openTag(parameterTag, depth: depth + 1)
+            openTag(parameterTag, depth: depth + 1, identifier: parameter.id)
             writeTypedElementAttributes(parameter)
-            if parameter.eAnnotations.isEmpty && explicitGenericType(of: parameter) == nil {
+            if parameter.eAnnotations.isEmpty && explicitGenericType(of: parameter) == nil && !hasEndComments(parameter.id) {
                 output += "/>\n"
             } else {
                 output += ">\n"
@@ -421,6 +500,7 @@ private struct MetamodelWriter {
                 if let type = explicitGenericType(of: parameter) {
                     writeGenericType(type, tag: .eGenericType, depth: depth + 2)
                 }
+                writeComments(metadata.commentsAtEnd[parameter.id] ?? [], depth: depth + 2)
                 indent(depth + 1)
                 output += "</\(parameterTag)>\n"
             }
@@ -428,6 +508,7 @@ private struct MetamodelWriter {
         for type in operation.eGenericExceptions {
             writeGenericType(type, tag: .eGenericExceptions, depth: depth + 1)
         }
+        writeComments(metadata.commentsAtEnd[operation.id] ?? [], depth: depth + 1)
         indent(depth)
         output += "</\(tag)>\n"
     }
@@ -448,12 +529,12 @@ private struct MetamodelWriter {
 
     private mutating func writeEnum(_ eEnum: EEnum, depth: Int) {
         let tag = EcoreFeatureName.eClassifiers.rawValue
-        openTag(tag, depth: depth, type: .eEnum)
+        openTag(tag, depth: depth, type: .eEnum, identifier: eEnum.id)
         attribute(EcoreFeatureName.name, eEnum.name)
         if let name = eEnum.instanceClassName { attribute(.instanceClassName, name) }
-        if !eEnum.serialisable { attribute(.serializable, false) }
-        if let name = eEnum.instanceTypeName { attribute(.instanceTypeName, name) }
-        if eEnum.eAnnotations.isEmpty && eEnum.literals.isEmpty && eEnum.eTypeParameters.isEmpty {
+        writeDataTypeFlags(identifier: eEnum.id, instanceTypeName: eEnum.instanceTypeName,
+            serialisable: eEnum.serialisable)
+        if eEnum.eAnnotations.isEmpty && eEnum.literals.isEmpty && eEnum.eTypeParameters.isEmpty && !hasEndComments(eEnum.id) {
             output += "/>\n"
             return
         }
@@ -461,61 +542,100 @@ private struct MetamodelWriter {
         writeAnnotations(eEnum.eAnnotations, depth: depth + 1)
         writeTypeParameters(eEnum.eTypeParameters, depth: depth + 1)
         for literal in eEnum.literals {
-            openTag(EcoreFeatureName.eLiterals.rawValue, depth: depth + 1)
+            openTag(EcoreFeatureName.eLiterals.rawValue, depth: depth + 1, identifier: literal.id)
             attribute(EcoreFeatureName.name, literal.name)
             if literal.value != 0 { attribute(EcoreFeatureName.value, literal.value) }
             if let text = literal.literal, text != literal.name {
                 attribute(EcoreFeatureName.literal, text)
             }
-            if literal.eAnnotations.isEmpty {
+            if literal.eAnnotations.isEmpty && !hasEndComments(literal.id) {
                 output += "/>\n"
             } else {
                 output += ">\n"
                 writeAnnotations(literal.eAnnotations, depth: depth + 2)
+                writeComments(metadata.commentsAtEnd[literal.id] ?? [], depth: depth + 2)
                 indent(depth + 1)
                 output += "</\(EcoreFeatureName.eLiterals.rawValue)>\n"
             }
         }
+        writeComments(metadata.commentsAtEnd[eEnum.id] ?? [], depth: depth + 1)
         indent(depth)
         output += "</\(tag)>\n"
     }
 
     private mutating func writeDataType(_ dataType: EDataType, depth: Int) {
         let tag = EcoreFeatureName.eClassifiers.rawValue
-        openTag(tag, depth: depth, type: .eDataType)
+        openTag(tag, depth: depth, type: .eDataType, identifier: dataType.id)
         attribute(EcoreFeatureName.name, dataType.name)
         if let name = dataType.instanceClassName {
             attribute(EcoreFeatureName.instanceClassName, name)
         }
-        if !dataType.serialisable { attribute(EcoreFeatureName.serializable, false) }
-        if let name = dataType.instanceTypeName { attribute(.instanceTypeName, name) }
-        if dataType.eAnnotations.isEmpty && dataType.eTypeParameters.isEmpty {
+        writeDataTypeFlags(identifier: dataType.id, instanceTypeName: dataType.instanceTypeName,
+            serialisable: dataType.serialisable)
+        if dataType.eAnnotations.isEmpty && dataType.eTypeParameters.isEmpty && !hasEndComments(dataType.id) {
             output += "/>\n"
         } else {
             output += ">\n"
             writeAnnotations(dataType.eAnnotations, depth: depth + 1)
             writeTypeParameters(dataType.eTypeParameters, depth: depth + 1)
+            writeComments(metadata.commentsAtEnd[dataType.id] ?? [], depth: depth + 1)
             indent(depth)
             output += "</\(tag)>\n"
         }
+    }
+
+    /// Writes classifier and data type attributes in their retained source order.
+    ///
+    /// - Parameters:
+    ///   - identifier: The classifier identity.
+    ///   - instanceTypeName: The optional instance type name.
+    ///   - serialisable: Whether the data type supports literal serialisation.
+    private mutating func writeDataTypeFlags(identifier: EUUID, instanceTypeName: String?, serialisable: Bool) {
+        if sourcePlaces(.serializable, before: .instanceTypeName, on: identifier, default: false) {
+            if !serialisable { attribute(.serializable, false) }
+            if let instanceTypeName { attribute(.instanceTypeName, instanceTypeName) }
+        } else {
+            if let instanceTypeName { attribute(.instanceTypeName, instanceTypeName) }
+            if !serialisable { attribute(.serializable, false) }
+        }
+    }
+
+    /// Whether a pair of attributes appeared in the given order in the source document.
+    ///
+    /// - Parameters:
+    ///   - first: The attribute that may precede the other.
+    ///   - second: The attribute that may follow the first.
+    ///   - identifier: The model element holding the attributes.
+    ///   - defaultOrder: The order to use when either attribute was absent.
+    /// - Returns: Whether the first attribute should precede the second.
+    private func sourcePlaces(_ first: EcoreFeatureName, before second: EcoreFeatureName,
+        on identifier: EUUID, default defaultOrder: Bool) -> Bool {
+        guard let names = metadata.attributeNames[identifier], let a = names.firstIndex(of: first.rawValue),
+            let b = names.firstIndex(of: second.rawValue) else { return defaultOrder }
+        return a < b
     }
 
     // MARK: Features
 
     private mutating func writeAttribute(_ attribute: EAttribute, depth: Int) {
         let tag = EcoreFeatureName.eStructuralFeatures.rawValue
-        openTag(tag, depth: depth, type: .eAttribute)
+        openTag(tag, depth: depth, type: .eAttribute, identifier: attribute.id)
         writeCommonFeatureAttributes(attribute)
         if attribute.isID { self.attribute(EcoreFeatureName.iD, true) }
-        finishFeature(tag: tag, annotations: attribute.eAnnotations, generic: explicitGenericType(of: attribute), depth: depth)
+        finishFeature(tag: tag, identifier: attribute.id, annotations: attribute.eAnnotations, generic: explicitGenericType(of: attribute), depth: depth)
     }
 
     private mutating func writeReference(_ reference: EReference, depth: Int) {
         let tag = EcoreFeatureName.eStructuralFeatures.rawValue
-        openTag(tag, depth: depth, type: .eReference)
+        openTag(tag, depth: depth, type: .eReference, identifier: reference.id)
         writeCommonFeatureAttributes(reference)
-        if !reference.resolveProxies { attribute(EcoreFeatureName.resolveProxies, false) }
-        if reference.containment { attribute(EcoreFeatureName.containment, true) }
+        if sourcePlaces(.containment, before: .resolveProxies, on: reference.id, default: false) {
+            if reference.containment { attribute(.containment, true) }
+            if !reference.resolveProxies { attribute(.resolveProxies, false) }
+        } else {
+            if !reference.resolveProxies { attribute(.resolveProxies, false) }
+            if reference.containment { attribute(.containment, true) }
+        }
         if let opposite = reference.opposite, let path = paths[opposite] {
             attribute(EcoreFeatureName.eOpposite, "#" + path)
         } else if let proxy = root.origin?.externalOpposites[reference.id] {
@@ -523,24 +643,27 @@ private struct MetamodelWriter {
             attribute(EcoreFeatureName.eOpposite, "\(relativeURI(proxy.uri))#\(fragment)")
         }
         let keys = reference.eKeys.compactMap { paths[$0].map { "#" + $0 } }
+            + retainedReferences(of: reference.id, feature: .eKeys)
         if !keys.isEmpty { attribute(.eKeys, keys.joined(separator: " ")) }
-        finishFeature(tag: tag, annotations: reference.eAnnotations, generic: explicitGenericType(of: reference), depth: depth)
+        finishFeature(tag: tag, identifier: reference.id, annotations: reference.eAnnotations, generic: explicitGenericType(of: reference), depth: depth)
     }
 
     /// Completes a structural feature with its annotations and explicit generic type.
     ///
     /// - Parameters:
     ///   - tag: The containing feature tag.
+    ///   - identifier: The feature identity used for its XML metadata.
     ///   - annotations: The feature's annotations.
     ///   - generic: The generic type, if the feature uses one.
     ///   - depth: The feature's nesting depth.
-    private mutating func finishFeature(tag: String, annotations: [EAnnotation], generic: EGenericType?, depth: Int) {
-        if annotations.isEmpty && generic == nil {
+    private mutating func finishFeature(tag: String, identifier: EUUID, annotations: [EAnnotation], generic: EGenericType?, depth: Int) {
+        if annotations.isEmpty && generic == nil && !hasEndComments(identifier) {
             output += "/>\n"
         } else {
             output += ">\n"
             writeAnnotations(annotations, depth: depth + 1)
             if let generic { writeGenericType(generic, tag: .eGenericType, depth: depth + 1) }
+            writeComments(metadata.commentsAtEnd[identifier] ?? [], depth: depth + 1)
             indent(depth)
             output += "</\(tag)>\n"
         }
@@ -595,7 +718,8 @@ private struct MetamodelWriter {
         case let value as EParameter: type = value.eGenericType
         default: type = nil
         }
-        return type.flatMap { $0.isParameterised ? $0 : nil }
+        return type.flatMap { $0.isParameterised || metadata.xmlIdentifiers[$0.id] != nil
+            || metadata.commentsBefore[$0.id] != nil || hasEndComments($0.id) ? $0 : nil }
     }
 
     /// Writes the type parameters of a classifier or operation.
@@ -606,15 +730,16 @@ private struct MetamodelWriter {
     private mutating func writeTypeParameters(_ parameters: [ETypeParameter], depth: Int) {
         for parameter in parameters {
             let tag = EcoreFeatureName.eTypeParameters.rawValue
-            openTag(tag, depth: depth)
+            openTag(tag, depth: depth, identifier: parameter.id)
             attribute(.name, parameter.name)
-            if parameter.eAnnotations.isEmpty && parameter.eBounds.isEmpty {
+            if parameter.eAnnotations.isEmpty && parameter.eBounds.isEmpty && !hasEndComments(parameter.id) {
                 output += "/>\n"
                 continue
             }
             output += ">\n"
             writeAnnotations(parameter.eAnnotations, depth: depth + 1)
             for bound in parameter.eBounds { writeGenericType(bound, tag: .eBounds, depth: depth + 1) }
+            writeComments(metadata.commentsAtEnd[parameter.id] ?? [], depth: depth + 1)
             indent(depth)
             output += "</\(tag)>\n"
         }
@@ -627,14 +752,16 @@ private struct MetamodelWriter {
     ///   - tag: The containment feature that names the XML element.
     ///   - depth: The nesting depth of the element.
     private mutating func writeGenericType(_ type: EGenericType, tag: EcoreFeatureName, depth: Int) {
-        openTag(tag.rawValue, depth: depth)
+        openTag(tag.rawValue, depth: depth, identifier: type.id)
         if let parameter = type.eTypeParameter, let path = paths[parameter] {
             attribute(.eTypeParameter, "#" + path)
+        } else if let proxy = retainedReferences(of: type.id, feature: .eTypeParameter).first {
+            attribute(.eTypeParameter, proxy)
         }
         if let classifier = type.eClassifier {
             attribute(.eClassifier, typeReference(of: type.id, type: classifier))
         }
-        if type.containedTypes.isEmpty {
+        if type.containedTypes.isEmpty && !hasEndComments(type.id) {
             output += "/>\n"
             return
         }
@@ -642,11 +769,24 @@ private struct MetamodelWriter {
         for child in type.containedTypes {
             writeGenericType(child.object, tag: child.feature, depth: depth + 1)
         }
+        writeComments(metadata.commentsAtEnd[type.id] ?? [], depth: depth + 1)
         indent(depth)
         output += "</\(tag.rawValue)>\n"
     }
 
     // MARK: Annotations
+
+    /// The saved spelling of retained proxies in a reference family.
+    ///
+    /// - Parameters:
+    ///   - identifier: The element holding the reference.
+    ///   - feature: The reference feature.
+    /// - Returns: The retained cross-document references in source order.
+    private func retainedReferences(of identifier: EUUID, feature: EcoreFeatureName) -> [String] {
+        (root.origin?.unresolvedReferences[identifier]?[feature] ?? []).map {
+            "\(relativeURI($0.uri))#\($0.fragment)"
+        }
+    }
 
     /// The reference text of an annotation's references, or `nil` if none can be written.
     private func referenceText(of annotation: EAnnotation) -> String? {
@@ -666,25 +806,31 @@ private struct MetamodelWriter {
     private mutating func writeAnnotations(_ annotations: [EAnnotation], depth: Int) {
         for annotation in annotations {
             let tag = EcoreFeatureName.eAnnotations.rawValue
-            openTag(tag, depth: depth)
+            openTag(tag, depth: depth, identifier: annotation.id)
             if !annotation.source.isEmpty { attribute(EcoreFeatureName.source, annotation.source) }
             if let references = referenceText(of: annotation) {
                 attribute(EcoreFeatureName.references, references)
             }
             let entries = annotation.detailEntries
-            if entries.isEmpty && annotation.eAnnotations.isEmpty && annotation.contents.isEmpty {
+            if entries.isEmpty && annotation.eAnnotations.isEmpty && annotation.contents.isEmpty && !hasEndComments(annotation.id) {
                 output += "/>\n"
                 continue
             }
             output += ">\n"
             writeAnnotations(annotation.eAnnotations, depth: depth + 1)
             for entry in entries {
-                openTag(EcoreFeatureName.details.rawValue, depth: depth + 1)
+                openTag(EcoreFeatureName.details.rawValue, depth: depth + 1, identifier: entry.id)
                 attribute(EcoreFeatureName.key, entry.key)
                 attribute(EcoreFeatureName.value, entry.value)
-                output += "/>\n"
+                if hasEndComments(entry.id) {
+                    output += ">\n"
+                    writeComments(metadata.commentsAtEnd[entry.id] ?? [], depth: depth + 2)
+                    indent(depth + 1)
+                    output += "</\(EcoreFeatureName.details.rawValue)>\n"
+                } else { output += "/>\n" }
             }
             for content in annotation.contents { writeContent(content, depth: depth + 1) }
+            writeComments(metadata.commentsAtEnd[annotation.id] ?? [], depth: depth + 1)
             indent(depth)
             output += "</\(tag)>\n"
         }
@@ -695,7 +841,7 @@ private struct MetamodelWriter {
     /// The object is written with the metaclass in `xsi:type` and its single-valued
     /// primitive attributes. Objects that the content itself contains are not written.
     private mutating func writeContent(_ content: any EObject, depth: Int) {
-        openTag(EcoreFeatureName.contents.rawValue, depth: depth)
+        openTag(EcoreFeatureName.contents.rawValue, depth: depth, identifier: content.id)
         if let metaclass = content.eClass as? EClass {
             let qualified = EcoreClassifier(rawValue: metaclass.name) != nil
                 ? ecorePrefixed(metaclass.name) : metaclass.name
@@ -735,12 +881,41 @@ private struct MetamodelWriter {
         output += String(repeating: " ", count: depth * Self.indentWidth)
     }
 
-    /// Starts an element: its indentation, name, and optionally its metaclass.
-    private mutating func openTag(_ tag: String, depth: Int, type: EcoreClassifier? = nil) {
+    /// Whether a model element has comments after its final child.
+    ///
+    /// - Parameter identifier: The element identity.
+    /// - Returns: Whether the owner requires a closing tag for its comments.
+    private func hasEndComments(_ identifier: EUUID) -> Bool {
+        !(metadata.commentsAtEnd[identifier] ?? []).isEmpty
+    }
+
+    /// Starts an element with its indentation, name, metadata and optional metaclass.
+    ///
+    /// - Parameters:
+    ///   - tag: The element's XML tag.
+    ///   - depth: The element's nesting depth.
+    ///   - type: The optional Ecore metaclass qualifier.
+    ///   - identifier: The identity associated with retained XML metadata.
+    ///   - writesIdentifier: Whether to include an explicit XML identifier here.
+    private mutating func openTag(_ tag: String, depth: Int, type: EcoreClassifier? = nil,
+        identifier: EUUID? = nil, writesIdentifier: Bool = true) {
+        if let identifier { writeComments(metadata.commentsBefore[identifier] ?? [], depth: depth) }
         indent(depth)
         elementDepth = depth
         output += "<\(tag)"
         if let type { rawAttribute(typeAttribute, ecorePrefixed(type.rawValue)) }
+        if writesIdentifier, let identifier, let text = metadata.xmlIdentifiers[identifier] {
+            rawAttribute(XMIAttribute.xmiId.rawValue, text)
+        }
+    }
+
+    /// Writes XML comments at a model element's nesting depth.
+    ///
+    /// - Parameters:
+    ///   - comments: Comments including their XML delimiters.
+    ///   - depth: The nesting depth of the comments.
+    private mutating func writeComments(_ comments: [String], depth: Int) {
+        for comment in comments { indent(depth); output += comment + "\n" }
     }
 
     /// Writes an attribute, starting a new line first if the current line is already too wide.

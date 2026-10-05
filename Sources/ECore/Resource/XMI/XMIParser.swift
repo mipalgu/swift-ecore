@@ -94,19 +94,101 @@ public actor XMIParser {
     /// Debug mode flag for systematic tracing
     private var debug: Bool = false
 
+    /// The policies used when parsing a native Ecore document.
+    private let ecoreLoadOptions: EcoreLoadOptions
+
+    /// Parsed object identities keyed by their source XML elements.
+    private var parsedElementIDs: [ObjectIdentifier: EUUID] = [:]
+
+    /// Diagnostics collected while retaining incomplete model elements.
+    private var loadDiagnostics: [SourceDiagnostic] = []
+
     /// Initialises a new XMI parser.
     ///
     /// - Parameters:
     ///   - resourceSet: Optional ResourceSet for cross-resource reference resolution
     ///   - enableDebugging: Whether to enable debug output for systematic tracing
-    ///   - referenceParsing: How reference attribute values are read (default ``XMIReferenceParsing/interpreted``)
+    ///   - referenceParsing: How reference attribute values are read (default ``XMIReferenceParsing/interpreted``).
+    ///   - ecoreLoadOptions: The policies for incomplete Ecore elements.
     public init(
         resourceSet: ResourceSet? = nil, enableDebugging: Bool = false,
-        referenceParsing: XMIReferenceParsing = .interpreted
+        referenceParsing: XMIReferenceParsing = .interpreted,
+        ecoreLoadOptions: EcoreLoadOptions = EcoreLoadOptions()
     ) {
         self.resourceSet = resourceSet
         self.referenceParsing = referenceParsing
+        self.ecoreLoadOptions = ecoreLoadOptions
         debug = enableDebugging
+    }
+
+    /// Reads a required Ecore attribute or reports its absence in tolerant mode.
+    ///
+    /// - Parameters:
+    ///   - attribute: The attribute to read.
+    ///   - element: The XML element holding the attribute.
+    ///   - package: Whether the element is a package.
+    ///   - uri: The document URI used by the diagnostic.
+    /// - Returns: The attribute text, or an empty value in tolerant mode.
+    /// - Throws: ``XMIError/missingRequiredAttribute(_:)`` in strict mode.
+    private func requiredAttribute(_ attribute: EcoreFeatureName, on element: XElement,
+        package: Bool = false, uri: String) throws -> String {
+        if let value = element[attribute.rawValue] { return value }
+        guard ecoreLoadOptions.tolerant else { throw XMIError.missingRequiredAttribute(attribute.rawValue) }
+        let code: String
+        switch attribute {
+        case .nsURI: code = EcoreLoadDiagnostic.missingNamespaceURI
+        case .nsPrefix: code = EcoreLoadDiagnostic.missingNamespacePrefix
+        default: code = package ? EcoreLoadDiagnostic.missingPackageName : EcoreLoadDiagnostic.missingElementName
+        }
+        loadDiagnostics.append(SourceDiagnostic(severity: .error, code: code,
+            message: "Missing required attribute '\(attribute.rawValue)'", document: uri))
+        return ""
+    }
+
+    /// Collects comments and explicit identities from the parsed XML tree.
+    ///
+    /// - Parameter document: The parsed source document.
+    /// - Returns: Metadata associated with the retained model elements.
+    private func documentMetadata(_ document: XDocument) -> EcoreDocumentMetadata {
+        var metadata = EcoreDocumentMetadata(encoding: document.encoding ?? EcoreDocumentMetadata.defaultEncoding)
+        metadata.xmlIdentifiers = Dictionary(xmiIdMap.map { ($0.value, $0.key) }, uniquingKeysWith: { first, _ in first })
+        var encounteredRoot = false
+        for content in document.content {
+            if let comment = content as? XComment {
+                let text = "<!--" + comment.value + "-->"
+                if encounteredRoot { metadata.trailingComments.append(text) }
+                else { metadata.leadingComments.append(text) }
+            } else if content is XElement { encounteredRoot = true }
+        }
+        func visit(_ element: XElement) {
+            if let identifier = parsedElementIDs[ObjectIdentifier(element)] {
+                let names = attributeOrder.names(for: element)
+                let referenceOrder = names.contains(EcoreFeatureName.containment.rawValue)
+                    && names.contains(EcoreFeatureName.resolveProxies.rawValue)
+                let dataTypeOrder = names.contains(EcoreFeatureName.instanceTypeName.rawValue)
+                    && names.contains(EcoreFeatureName.serializable.rawValue)
+                if referenceOrder || dataTypeOrder { metadata.attributeNames[identifier] = names }
+            }
+            var pending: [String] = []
+            for content in element.content {
+                if let comment = content as? XComment { pending.append("<!--" + comment.value + "-->") }
+                else if let child = content as? XElement {
+                    if let identifier = parsedElementIDs[ObjectIdentifier(child)], !pending.isEmpty {
+                        metadata.commentsBefore[identifier] = pending
+                    }
+                    pending.removeAll()
+                    visit(child)
+                }
+            }
+            if let identifier = parsedElementIDs[ObjectIdentifier(element)], !pending.isEmpty {
+                metadata.commentsAtEnd[identifier] = pending
+            } else if element.name == XMIDocumentSyntax.multipleRootElement
+                || element.name == CrossReferenceSyntax.xmiPrefix + ":" + XMIDocumentSyntax.multipleRootElement {
+                metadata.wrapperTrailingComments = pending
+            }
+        }
+        for element in document.children { visit(element) }
+        return metadata
     }
 
     /// Enable or disable debug mode for systematic tracing
@@ -194,7 +276,7 @@ public actor XMIParser {
             throw XMIError.invalidEncoding
         }
 
-        let document = try parseXML(fromText: xmlString)
+        let document = try parseXML(fromText: xmlString, keepComments: true)
         attributeOrder = XMIAttributeOrder(document: document, source: xmlString)
 
         if debug {
@@ -210,8 +292,11 @@ public actor XMIParser {
         }
 
         // Parse XMI content
+        loadDiagnostics.removeAll()
+        parsedElementIDs.removeAll()
         try await parseXMIContent(document, into: resource)
-
+        await resource.setLoadDiagnostics(loadDiagnostics)
+        await resource.setEcoreDocumentMetadata(documentMetadata(document))
         return resource
     }
 
@@ -443,9 +528,8 @@ public actor XMIParser {
         var instance = DynamicEObject(eClass: enhancedEClass)
 
         // Register with xmi:id if present
-        if let xmiId = element[.xmiId] {
-            xmiIdMap[xmiId] = instance.id
-        }
+        parsedElementIDs[ObjectIdentifier(element)] = instance.id
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = instance.id }
 
         // Parse all attributes dynamically in document order
         let attributeNames = getAttributeNamesInDocumentOrder(for: element)
@@ -644,6 +728,7 @@ public actor XMIParser {
     private func parseAnnotation(_ element: XElement, in resource: Resource) async throws -> DynamicEObject {
         let metaclass = await getOrCreateEClass(EcoreClassifier.eAnnotation.rawValue, in: resource)
         var annotation = DynamicEObject(eClass: metaclass)
+        parsedElementIDs[ObjectIdentifier(element)] = annotation.id
         if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = annotation.id }
         if let source = element[EcoreFeatureName.source.rawValue] {
             annotation.eSet(EcoreFeatureName.source.rawValue, value: source)
@@ -652,8 +737,11 @@ public actor XMIParser {
         let entryClass = await getOrCreateEClass(EcoreClassifier.eStringToStringMapEntry.rawValue, in: resource)
         var entryIdentifiers: [EUUID] = []
         for entryElement in element.children(EcoreFeatureName.details.rawValue) {
-            var entry = DynamicEObject(eClass: entryClass)
-            entry.eSet(EcoreFeatureName.key.rawValue, value: entryElement[EcoreFeatureName.key.rawValue] ?? "")
+            let key = entryElement[EcoreFeatureName.key.rawValue] ?? ""
+            var entry = DynamicEObject(id: ReflectiveValues.derivedID(from: annotation.id, key: key), eClass: entryClass)
+            parsedElementIDs[ObjectIdentifier(entryElement)] = entry.id
+            if let xmiId = entryElement[.xmiId] { xmiIdMap[xmiId] = entry.id }
+            entry.eSet(EcoreFeatureName.key.rawValue, value: key)
             entry.eSet(EcoreFeatureName.value.rawValue, value: entryElement[EcoreFeatureName.value.rawValue] ?? "")
             await resource.register(entry)
             entryIdentifiers.append(entry.id)
@@ -709,24 +797,19 @@ public actor XMIParser {
     private func parseEPackage(_ element: XElement, in resource: Resource, isSubpackage: Bool = false)
         async throws -> DynamicEObject
     {
-        guard let name = element[.name] else {
-            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
-        }
-        guard let nsURI = element["nsURI"] ?? (isSubpackage ? "" : nil) else {
-            throw XMIError.missingRequiredAttribute("nsURI")
-        }
-        guard let nsPrefix = element["nsPrefix"] ?? (isSubpackage ? "" : nil) else {
-            throw XMIError.missingRequiredAttribute("nsPrefix")
-        }
+        let name = try requiredAttribute(.name, on: element, package: true, uri: resource.uri)
+        let nsURI = isSubpackage ? element[EcoreFeatureName.nsURI.rawValue] ?? ""
+            : try requiredAttribute(.nsURI, on: element, package: true, uri: resource.uri)
+        let nsPrefix = isSubpackage ? element[EcoreFeatureName.nsPrefix.rawValue] ?? ""
+            : try requiredAttribute(.nsPrefix, on: element, package: true, uri: resource.uri)
 
         // Create EPackage class if not already in resource
         let ePackageClass = await getOrCreateEClass(EcoreClassifier.ePackage.rawValue, in: resource)
         var pkg = DynamicEObject(eClass: ePackageClass)
 
         // Register with xmi:id if present
-        if let xmiId = element[.xmiId] {
-            xmiIdMap[xmiId] = pkg.id
-        }
+        parsedElementIDs[ObjectIdentifier(element)] = pkg.id
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = pkg.id }
 
         // Set basic attributes BEFORE registering
         pkg.eSet(.name, name)
@@ -790,16 +873,14 @@ public actor XMIParser {
     private func parseEClass(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element[.name] else {
-            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
-        }
+        let name = try requiredAttribute(.name, on: element, uri: resource.uri)
 
         let eClassClass = await getOrCreateEClass(EcoreClassifier.eClass.rawValue, in: resource)
         var eClass = DynamicEObject(eClass: eClassClass)
 
-        if let xmiId = element[.xmiId] {
-            xmiIdMap[xmiId] = eClass.id
-        }
+        parsedElementIDs[ObjectIdentifier(element)] = eClass.id
+
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = eClass.id }
 
         // Set basic attributes BEFORE registering
         eClass.eSet(.name, name)
@@ -879,6 +960,7 @@ public actor XMIParser {
         for child in element.children(EcoreFeatureName.eTypeParameters.rawValue) {
             let metaclass = await getOrCreateEClass(EcoreClassifier.eTypeParameter.rawValue, in: resource)
             var parameter = DynamicEObject(eClass: metaclass)
+            parsedElementIDs[ObjectIdentifier(child)] = parameter.id
             if let xmiId = child[.xmiId] { xmiIdMap[xmiId] = parameter.id }
             parameter.eSet(.name, child[.name] ?? "")
             try await attachAnnotations(to: &parameter, from: child, in: resource)
@@ -929,6 +1011,7 @@ public actor XMIParser {
     private func parseGenericType(_ element: XElement, in resource: Resource) async -> DynamicEObject {
         let metaclass = await getOrCreateEClass(EcoreClassifier.eGenericType.rawValue, in: resource)
         var type = DynamicEObject(eClass: metaclass)
+        parsedElementIDs[ObjectIdentifier(element)] = type.id
         if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = type.id }
         if let classifier = element[EcoreFeatureName.eClassifier.rawValue] {
             type.eSet(EcoreClassifier.XMIParsingConstants.tempEClassifierRef, value: classifier)
@@ -990,14 +1073,11 @@ public actor XMIParser {
     private func parseTypedElement(
         _ element: XElement, metaclass: EcoreClassifier, in resource: Resource
     ) async throws -> DynamicEObject {
-        guard let name = element[.name] else {
-            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
-        }
+        let name = try requiredAttribute(.name, on: element, uri: resource.uri)
         let metaclassObject = await getOrCreateEClass(metaclass.rawValue, in: resource)
         var object = DynamicEObject(eClass: metaclassObject)
-        if let xmiId = element[.xmiId] {
-            xmiIdMap[xmiId] = object.id
-        }
+        parsedElementIDs[ObjectIdentifier(element)] = object.id
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = object.id }
         object.eSet(.name, name)
         if let eType = typeReference(of: element) {
             object.eSet(EcoreClassifier.XMIParsingConstants.tempETypeRef, value: eType)
@@ -1034,16 +1114,14 @@ public actor XMIParser {
     private func parseEEnum(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element[.name] else {
-            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
-        }
+        let name = try requiredAttribute(.name, on: element, uri: resource.uri)
 
         let eEnumClass = await getOrCreateEClass(EcoreClassifier.eEnum.rawValue, in: resource)
         var eEnum = DynamicEObject(eClass: eEnumClass)
 
-        if let xmiId = element[.xmiId] {
-            xmiIdMap[xmiId] = eEnum.id
-        }
+        parsedElementIDs[ObjectIdentifier(element)] = eEnum.id
+
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = eEnum.id }
 
         // Set name before registering
         eEnum.eSet(.name, name)
@@ -1090,13 +1168,13 @@ public actor XMIParser {
     private func parseEEnumLiteral(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element[.name] else {
-            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
-        }
+        let name = try requiredAttribute(.name, on: element, uri: resource.uri)
 
         let eEnumLiteralClass = await getOrCreateEClass(
             EcoreClassifier.eEnumLiteral.rawValue, in: resource)
         var literal = DynamicEObject(eClass: eEnumLiteralClass)
+        parsedElementIDs[ObjectIdentifier(element)] = literal.id
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = literal.id }
 
         // Set features before registering
         literal.eSet(.name, name)
@@ -1130,17 +1208,15 @@ public actor XMIParser {
     private func parseEDataType(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element[.name] else {
-            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
-        }
+        let name = try requiredAttribute(.name, on: element, uri: resource.uri)
 
         let eDataTypeClass = await getOrCreateEClass(
             EcoreClassifier.eDataType.rawValue, in: resource)
         var dataType = DynamicEObject(eClass: eDataTypeClass)
 
-        if let xmiId = element[.xmiId] {
-            xmiIdMap[xmiId] = dataType.id
-        }
+        parsedElementIDs[ObjectIdentifier(element)] = dataType.id
+
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = dataType.id }
 
         // Set features before registering
         dataType.eSet(.name, name)
@@ -1180,13 +1256,13 @@ public actor XMIParser {
     private func parseEAttribute(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element[.name] else {
-            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
-        }
+        let name = try requiredAttribute(.name, on: element, uri: resource.uri)
 
         let eAttributeClass = await getOrCreateEClass(
             EcoreClassifier.eAttribute.rawValue, in: resource)
         var attribute = DynamicEObject(eClass: eAttributeClass)
+        parsedElementIDs[ObjectIdentifier(element)] = attribute.id
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = attribute.id }
 
         // Set features before registering
         attribute.eSet(.name, name)
@@ -1253,13 +1329,13 @@ public actor XMIParser {
     private func parseEReference(_ element: XElement, in resource: Resource) async throws
         -> DynamicEObject
     {
-        guard let name = element[.name] else {
-            throw XMIError.missingRequiredAttribute(ErrorMessage.missingNameAttribute.rawValue)
-        }
+        let name = try requiredAttribute(.name, on: element, uri: resource.uri)
 
         let eReferenceClass = await getOrCreateEClass(
             EcoreClassifier.eReference.rawValue, in: resource)
         var reference = DynamicEObject(eClass: eReferenceClass)
+        parsedElementIDs[ObjectIdentifier(element)] = reference.id
+        if let xmiId = element[.xmiId] { xmiIdMap[xmiId] = reference.id }
 
         // Set features before registering
         reference.eSet(.name, name)
@@ -1537,6 +1613,9 @@ public actor XMIParser {
                 return await FragmentNavigator(resource: resource).resolve(fragment)?.id
             }
 
+            if fragment.hasPrefix("/"), let resolved = await FragmentNavigator(resource: resource).resolve(fragment) {
+                return resolved.id
+            }
             // Fall back to fragment map or xmi:id map
             return fragmentMap[fragment] ?? xmiIdMap[fragment]
         }

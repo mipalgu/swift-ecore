@@ -59,11 +59,32 @@ public actor Resource {
     /// Maintains insertion order.
     var rootObjects: [EUUID]
 
-    /// Metamodel objects contained, directly or indirectly, by native metamodel objects
-    /// registered with this resource, indexed by identifier.
+    /// The XML metadata retained for native package conversion.
+    var ecoreDocumentMetadata = EcoreDocumentMetadata()
+
+    /// The diagnostics produced while loading a native Ecore document.
     ///
-    /// Native metamodel types are value types that hold their contents inline, so their
-    /// contents are indexed here to make them resolvable by identifier.
+    /// Tolerant loading retains incomplete elements and records missing attributes here.
+    public internal(set) var loadDiagnostics: [SourceDiagnostic] = []
+
+    /// Records metadata retained by the XML parser.
+    ///
+    /// - Parameter metadata: The source document's comments and explicit identifiers.
+    func setEcoreDocumentMetadata(_ metadata: EcoreDocumentMetadata) {
+        ecoreDocumentMetadata = metadata
+    }
+
+    /// Records the diagnostics produced by a document parser.
+    ///
+    /// - Parameter diagnostics: The findings in source order.
+    func setLoadDiagnostics(_ diagnostics: [SourceDiagnostic]) {
+        loadDiagnostics = diagnostics
+    }
+
+    /// Native metamodel objects indexed by identifier.
+    ///
+    /// Native value types hold their contents inline. This index makes those contained
+    /// objects resolvable by identifier after their roots have been registered.
     var nativeContents: OrderedDictionary<EUUID, any EObject> = [:]
 
     /// The identifier of the container of each indexed native object.
