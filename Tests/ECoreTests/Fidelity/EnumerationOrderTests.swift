@@ -52,7 +52,7 @@ struct TreeFixture {
         directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try Self.metamodel.write(
-            to: directory.appendingPathComponent("tree.ecore"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("tree.ecore"), atomically: testWritesAtomically, encoding: .utf8)
 
         var names: [String] = []
         func element(_ tag: String, _ name: String, level: Int, indent: String) -> String {
@@ -87,7 +87,7 @@ struct TreeFixture {
             body += "</xmi:XMI>\n"
         }
         try body.write(
-            to: directory.appendingPathComponent("instance.xmi"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("instance.xmi"), atomically: testWritesAtomically, encoding: .utf8)
         self.names = names
     }
 

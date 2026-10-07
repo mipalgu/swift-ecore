@@ -175,7 +175,7 @@ struct GenModelResourceTests {
               <foreignModel>missing.ecore</foreignModel>
             </genmodel:GenModel>
             """
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         do {
             _ = try await GenModelResource.load(url: url)
             Issue.record("expected an error")
@@ -194,7 +194,7 @@ struct GenModelResourceTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         try "<not-closed".write(
-            to: directory.appendingPathComponent("bad.ecore"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("bad.ecore"), atomically: testWritesAtomically, encoding: .utf8)
         let url = directory.appendingPathComponent("bad.genmodel")
         let text = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -203,7 +203,7 @@ struct GenModelResourceTests {
               <foreignModel>bad.ecore</foreignModel>
             </genmodel:GenModel>
             """
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         await #expect(throws: GenModelError.self) {
             _ = try await GenModelResource.load(url: url)
         }
@@ -223,7 +223,7 @@ struct GenModelResourceTests {
                   usedGenPackages="Ecore.genmodel#//ecore"/>
             </genmodel:GenModel>
             """
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         let document = try await GenModelResource.loadDocument(url: url)
         #expect(document.foreignPackages.isEmpty)
     }

@@ -45,7 +45,7 @@ struct MetamodelDocumentLayoutTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("demo.ecore")
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         let resourceSet = ResourceSet()
         let resource = try await resourceSet.loadEcoreResource(
             uri: URIReference.canonicalise(url.absoluteString))
@@ -83,7 +83,7 @@ struct MetamodelDocumentLayoutTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("demo.ecore")
-        try Self.standard.write(to: url, atomically: true, encoding: .utf8)
+        try Self.standard.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         let resourceSet = ResourceSet()
         let resource = try await resourceSet.loadEcoreResource(
             uri: URIReference.canonicalise(url.absoluteString))

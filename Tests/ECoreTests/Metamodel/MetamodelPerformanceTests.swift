@@ -56,7 +56,12 @@ struct MetamodelPerformanceTests {
         return EPackage(name: "synthetic", nsURI: "http://example.org/synthetic", nsPrefix: "syn", eClassifiers: built)
     }
 
+    // Timeout traits block the WASI executor; keep the explicit timing assertions.
+    #if os(WASI)
+    @Test("an index of 5,000 elements builds and answers queries in bounded time")
+    #else
     @Test("an index of 5,000 elements builds and answers queries in bounded time", .timeLimit(.minutes(2)))
+    #endif
     func indexTiming() {
         let package = Self.syntheticPackage(elements: Self.elementCount)
         let clock = ContinuousClock()
@@ -76,7 +81,11 @@ struct MetamodelPerformanceTests {
         #expect(query < Self.bound)
     }
 
+    #if os(WASI)
+    @Test("relinking 5,000 elements takes bounded time")
+    #else
     @Test("relinking 5,000 elements takes bounded time", .timeLimit(.minutes(2)))
+    #endif
     func relinkTiming() throws {
         let package = Self.syntheticPackage(elements: Self.elementCount)
         let clock = ContinuousClock()

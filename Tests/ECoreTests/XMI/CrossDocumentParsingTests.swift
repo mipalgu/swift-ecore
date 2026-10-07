@@ -174,7 +174,7 @@ struct CrossDocumentParsingTests {
     private func parse(_ xml: String, with fixtures: CrossDocumentFixtures) async throws -> Resource {
         let scratch = FileManager.default.temporaryDirectory
             .appendingPathComponent("xmi-parse-\(UUID().uuidString).xml")
-        try xml.write(to: scratch, atomically: true, encoding: .utf8)
+        try xml.write(to: scratch, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: scratch) }
         let parser = XMIParser(resourceSet: fixtures.resourceSet)
         return try await parser.parse(scratch)

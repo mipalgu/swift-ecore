@@ -50,7 +50,12 @@ struct EditPerformanceTests {
         return EPackage(name: "synthetic", nsURI: "http://example.org/synthetic", nsPrefix: "syn", eClassifiers: built)
     }
 
+    // Timeout traits block the WASI executor; keep the explicit timing assertions.
+    #if os(WASI)
+    @Test("100 edits of a 5,000-element metamodel complete in bounded time")
+    #else
     @Test("100 edits of a 5,000-element metamodel complete in bounded time", .timeLimit(.minutes(5)))
+    #endif
     func hundredEdits() throws {
         let package = Self.syntheticPackage()
         let clock = ContinuousClock()
@@ -93,7 +98,11 @@ struct EditPerformanceTests {
         #expect(undone == Self.editCount)
     }
 
+    #if os(WASI)
+    @Test("copying and pasting a class in a 5,000-element metamodel is quick")
+    #else
     @Test("copying and pasting a class in a 5,000-element metamodel is quick", .timeLimit(.minutes(2)))
+    #endif
     func pasteTiming() throws {
         let package = Self.syntheticPackage()
         var document = MetamodelDocument(roots: MetamodelLinker.relinked([package]))

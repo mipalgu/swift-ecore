@@ -332,7 +332,7 @@ struct CrossDocumentSerialisationTests {
 
             """
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("mixed-\(UUID().uuidString).mapping")
-        try xml.write(to: file, atomically: true, encoding: .utf8)
+        try xml.write(to: file, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: file) }
         let resource = try await fixtures.resourceSet.loadXMIResource(uri: file.absoluteString)
         let written = try await XMISerializer(options: .emf).serialize(resource)

@@ -114,6 +114,15 @@ public struct FileURIHandler: URIHandler {
     ///
     /// Native runtimes replace files atomically. WASI writes directly to its available
     /// file system without requiring a temporary directory.
+    public static var writesAtomically: Bool {
+        #if os(WASI)
+        false
+        #else
+        true
+        #endif
+    }
+
+    /// Data write options for this runtime.
     static var writingOptions: Data.WritingOptions {
         #if os(WASI)
         []

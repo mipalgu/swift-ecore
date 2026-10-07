@@ -123,7 +123,7 @@ struct EcoreRoundTripFidelityTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("round-trip.ecore")
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         return (text, try await EPackage(url: url))
     }
 

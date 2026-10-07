@@ -63,9 +63,9 @@ struct GenModelLayoutTests {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         try ecore.write(
-            to: directory.appendingPathComponent("shop.ecore"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("shop.ecore"), atomically: testWritesAtomically, encoding: .utf8)
         let url = directory.appendingPathComponent("shop.genmodel")
-        try genModel.write(to: url, atomically: true, encoding: .utf8)
+        try genModel.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         return url
     }
 

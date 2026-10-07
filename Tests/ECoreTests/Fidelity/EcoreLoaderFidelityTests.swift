@@ -39,7 +39,7 @@ enum FidelityFixtures {
             \(body)
             </ecore:EPackage>
             """
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         return url
     }
 
@@ -402,9 +402,9 @@ struct NativeLoaderFidelityTests {
             """
         }
         try document("ping", other: "pong").write(
-            to: directory.appendingPathComponent("ping.ecore"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("ping.ecore"), atomically: testWritesAtomically, encoding: .utf8)
         try document("pong", other: "ping").write(
-            to: directory.appendingPathComponent("pong.ecore"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("pong.ecore"), atomically: testWritesAtomically, encoding: .utf8)
         let package = try await EPackage(url: directory.appendingPathComponent("ping.ecore"))
         let peer = try #require(package.getEClass("Own")?.reference("peer"))
         #expect((peer.eType as? EClass)?.name == "Own")

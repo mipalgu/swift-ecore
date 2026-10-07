@@ -72,7 +72,7 @@ struct GenModelCrossDocumentTests {
                 xmlns:genmodel="http://www.eclipse.org/emf/2002/GenModel" modelName="Missing">
               <genPackages prefix="M" ecorePackage="missing.ecore#/"/>
             </genmodel:GenModel>
-            """.write(to: url, atomically: true, encoding: .utf8)
+            """.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         let resource = try await GenModelResource.load(
             url: url, resolution: .nameFragments)
         let package = try #require(
@@ -131,12 +131,12 @@ struct GenModelCrossDocumentTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         try Self.usedEcoreText.write(
-            to: directory.appendingPathComponent("Used.ecore"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("Used.ecore"), atomically: testWritesAtomically, encoding: .utf8)
         try Self.usedModelText.write(
-            to: directory.appendingPathComponent("Used.genmodel"), atomically: true, encoding: .utf8)
+            to: directory.appendingPathComponent("Used.genmodel"), atomically: testWritesAtomically, encoding: .utf8)
         let usingURL = directory.appendingPathComponent("Using.genmodel")
         try Self.usingModelText(used: "Used.genmodel#//shared")
-            .write(to: usingURL, atomically: true, encoding: .utf8)
+            .write(to: usingURL, atomically: testWritesAtomically, encoding: .utf8)
 
         let resourceSet = ResourceSet()
         let resource = try await GenModelResource.load(

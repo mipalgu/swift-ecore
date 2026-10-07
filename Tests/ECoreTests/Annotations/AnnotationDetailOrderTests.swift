@@ -84,7 +84,7 @@ struct AnnotationDetailOrderTests {
             """
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("dynamic-\(UUID().uuidString).ecore")
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: url) }
         let native = try await EPackage(url: url)
         #expect(native.eAnnotations.first?.details.keys.elements == Self.keys)

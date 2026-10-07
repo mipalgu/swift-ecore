@@ -57,7 +57,7 @@ public struct XMISerializer: Sendable {
     ///   - url: The URL where the XMI file should be written
     /// - Throws: `XMIError` if serialisation fails or I/O errors occur
     public func serialize(_ resource: Resource, to url: URL) async throws {
-        try await serialize(resource, relativeTo: url).write(to: url, atomically: true, encoding: .utf8)
+        try await serialize(resource, relativeTo: url).write(to: url, atomically: FileURIHandler.writesAtomically, encoding: .utf8)
     }
 
     /// Serialise a Resource to an XMI string for a document at a given location

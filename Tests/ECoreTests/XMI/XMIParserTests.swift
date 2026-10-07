@@ -73,7 +73,7 @@ struct XMIParserTests {
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".ecore")
-        try xmi.write(to: tempURL, atomically: true, encoding: .utf8)
+        try xmi.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         let parser = XMIParser()
@@ -374,7 +374,7 @@ struct XMIParserTests {
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        try xmiContent.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse with ResourceSet - should use registered metamodel
@@ -412,7 +412,7 @@ struct XMIParserTests {
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        try xmiContent.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse with ResourceSet - should fall back to dynamic creation
@@ -447,7 +447,7 @@ struct XMIParserTests {
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        try xmiContent.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse without ResourceSet - should create dynamic EClass
@@ -501,7 +501,7 @@ struct XMIParserTests {
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        try xmiContent.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse with ResourceSet
@@ -566,7 +566,7 @@ struct XMIParserTests {
 
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        try xmiContent.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse with ResourceSet
@@ -651,7 +651,7 @@ struct XMIParserTests {
         // Write to temporary file
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-reference-types.xmi")
-        try xmiContent.write(to: tempURL, atomically: true, encoding: .utf8)
+        try xmiContent.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Register metamodel in ResourceSet

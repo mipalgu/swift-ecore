@@ -67,7 +67,7 @@ enum SyntheticDocuments {
             UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent("big.ecore")
-        try ecore(classes: classes).write(to: url, atomically: true, encoding: .utf8)
+        try ecore(classes: classes).write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         return url
     }
 }

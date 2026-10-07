@@ -139,7 +139,7 @@ struct OppositeReferenceTests {
         </xmi:XMI>
         """
 
-        try xmiContent.write(to: modelURL, atomically: true, encoding: .utf8)
+        try xmiContent.write(to: modelURL, atomically: testWritesAtomically, encoding: .utf8)
 
         defer {
             try? FileManager.default.removeItem(at: modelURL)
@@ -367,7 +367,7 @@ struct OppositeReferenceTests {
         </ecore:EPackage>
         """
 
-        try xmiContent.write(to: testURL, atomically: true, encoding: .utf8)
+        try xmiContent.write(to: testURL, atomically: testWritesAtomically, encoding: .utf8)
 
         defer {
             try? FileManager.default.removeItem(at: testURL)

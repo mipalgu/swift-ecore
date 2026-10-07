@@ -82,7 +82,7 @@ extension XMISerializer {
     ///   - url: The location of the file to write.
     /// - Throws: An error if the file cannot be written.
     public func serialize(_ package: EPackage, to url: URL) throws {
-        try serialize(package, relativeTo: url).write(to: url, atomically: true, encoding: .utf8)
+        try serialize(package, relativeTo: url).write(to: url, atomically: FileURIHandler.writesAtomically, encoding: .utf8)
     }
 }
 

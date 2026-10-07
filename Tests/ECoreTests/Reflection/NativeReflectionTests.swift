@@ -475,7 +475,7 @@ struct NativeReflectionTests {
               </eClassifiers>
             </ecore:EPackage>
             """
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         let package = try await EPackage(url: url)
         let c = try #require(package.getEClass("C"))
         let a = try #require(c.getStructuralFeature(name: "a") as? EAttribute)

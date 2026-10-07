@@ -81,7 +81,7 @@ struct RoundTripTests {
         // Write to temporary file
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try outputXMI.write(to: tempURL, atomically: true, encoding: .utf8)
+        try outputXMI.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse the serialised XMI
@@ -139,7 +139,7 @@ struct RoundTripTests {
         // Write to temporary file
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try outputXMI.write(to: tempURL, atomically: true, encoding: .utf8)
+        try outputXMI.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse the serialised XMI
@@ -213,7 +213,7 @@ struct RoundTripTests {
         // Write to temporary file
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try outputXMI.write(to: tempURL, atomically: true, encoding: .utf8)
+        try outputXMI.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse the serialised XMI
@@ -278,7 +278,7 @@ struct RoundTripTests {
         // Write to temporary file
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".json")
-        try outputJSON.write(to: tempURL, atomically: true, encoding: .utf8)
+        try outputJSON.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse the serialized JSON
@@ -333,7 +333,7 @@ struct RoundTripTests {
         // Write JSON to temporary file
         let jsonTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".json")
-        try jsonString.write(to: jsonTempURL, atomically: true, encoding: .utf8)
+        try jsonString.write(to: jsonTempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: jsonTempURL) }
 
         // Parse JSON
@@ -360,7 +360,7 @@ struct RoundTripTests {
         // Write XMI to temporary file
         let xmiTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try finalXMI.write(to: xmiTempURL, atomically: true, encoding: .utf8)
+        try finalXMI.write(to: xmiTempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: xmiTempURL) }
 
         // Parse final XMI
@@ -411,7 +411,7 @@ struct RoundTripTests {
         // Write XMI to temporary file
         let xmiTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiString.write(to: xmiTempURL, atomically: true, encoding: .utf8)
+        try xmiString.write(to: xmiTempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: xmiTempURL) }
 
         // Parse XMI
@@ -438,7 +438,7 @@ struct RoundTripTests {
         // Write JSON to temporary file
         let jsonTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".json")
-        try finalJSON.write(to: jsonTempURL, atomically: true, encoding: .utf8)
+        try finalJSON.write(to: jsonTempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: jsonTempURL) }
 
         // Parse final JSON
@@ -498,7 +498,7 @@ struct RoundTripTests {
 
         let xmiTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiString.write(to: xmiTempURL, atomically: true, encoding: .utf8)
+        try xmiString.write(to: xmiTempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: xmiTempURL) }
 
         let xmiResource = try await xmiParser.parse(xmiTempURL)
@@ -508,7 +508,7 @@ struct RoundTripTests {
         // Write final JSON and verify it can be parsed again
         let finalTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".json")
-        try finalJSON.write(to: finalTempURL, atomically: true, encoding: .utf8)
+        try finalJSON.write(to: finalTempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: finalTempURL) }
 
         let finalResource = try await jsonParser.parse(finalTempURL)
@@ -536,7 +536,7 @@ struct RoundTripTests {
 
         let xmiTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiString.write(to: xmiTempURL, atomically: true, encoding: .utf8)
+        try xmiString.write(to: xmiTempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: xmiTempURL) }
 
         // Parse XMI back
@@ -550,7 +550,7 @@ struct RoundTripTests {
         // Verify numeric precision is preserved
         let finalTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".json")
-        try finalJSON.write(to: finalTempURL, atomically: true, encoding: .utf8)
+        try finalJSON.write(to: finalTempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: finalTempURL) }
 
         // Parse final JSON to verify structure
@@ -587,7 +587,7 @@ struct RoundTripTests {
 
         let xmiTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiString.write(to: xmiTempURL, atomically: true, encoding: .utf8)
+        try xmiString.write(to: xmiTempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: xmiTempURL) }
 
         let xmiParser = XMIParser()
@@ -599,7 +599,7 @@ struct RoundTripTests {
         // Verify final JSON can be parsed
         let finalTempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".json")
-        try finalJSON.write(to: finalTempURL, atomically: true, encoding: .utf8)
+        try finalJSON.write(to: finalTempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: finalTempURL) }
 
         let finalResource = try await jsonParser.parse(finalTempURL)
@@ -643,7 +643,7 @@ struct RoundTripTests {
             let xmiString = try await xmiSerializer.serialize(originalResource)
             let xmiTempURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("test-\(UUID().uuidString).xmi")
-            try xmiString.write(to: xmiTempURL, atomically: true, encoding: .utf8)
+            try xmiString.write(to: xmiTempURL, atomically: testWritesAtomically, encoding: .utf8)
             defer { try? FileManager.default.removeItem(at: xmiTempURL) }
 
             // Debug XMI serialization for multiple roots
@@ -662,7 +662,7 @@ struct RoundTripTests {
             let finalJSONString = try await jsonSerializer.serialize(xmiResource)
             let jsonTempURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("test-\(UUID().uuidString).json")
-            try finalJSONString.write(to: jsonTempURL, atomically: true, encoding: .utf8)
+            try finalJSONString.write(to: jsonTempURL, atomically: testWritesAtomically, encoding: .utf8)
             defer { try? FileManager.default.removeItem(at: jsonTempURL) }
 
             let finalResource = try await parser.parse(jsonTempURL)
@@ -706,7 +706,7 @@ struct RoundTripTests {
             let jsonString = try await jsonSerializer.serialize(originalResource)
             let jsonTempURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("test-\(UUID().uuidString).json")
-            try jsonString.write(to: jsonTempURL, atomically: true, encoding: .utf8)
+            try jsonString.write(to: jsonTempURL, atomically: testWritesAtomically, encoding: .utf8)
             defer { try? FileManager.default.removeItem(at: jsonTempURL) }
 
             let jsonResource = try await jsonParser.parse(jsonTempURL)
@@ -715,7 +715,7 @@ struct RoundTripTests {
             let finalXMIString = try await xmiSerializer.serialize(jsonResource)
             let xmiTempURL = FileManager.default.temporaryDirectory
                 .appendingPathComponent("test-\(UUID().uuidString).xmi")
-            try finalXMIString.write(to: xmiTempURL, atomically: true, encoding: .utf8)
+            try finalXMIString.write(to: xmiTempURL, atomically: testWritesAtomically, encoding: .utf8)
             defer { try? FileManager.default.removeItem(at: xmiTempURL) }
 
             let finalResource = try await xmiParser.parse(xmiTempURL)
@@ -757,7 +757,7 @@ struct RoundTripTests {
         // Write and re-parse to verify round-trip
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".json")
-        try serializedJSON.write(to: tempURL, atomically: true, encoding: .utf8)
+        try serializedJSON.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         let finalResource = try await jsonParser.parse(tempURL)
@@ -796,7 +796,7 @@ struct RoundTripTests {
         #expect(json1.contains("30"), "Serialized JSON should contain age")
 
         let tempURL1 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
-        try json1.write(to: tempURL1, atomically: true, encoding: .utf8)
+        try json1.write(to: tempURL1, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL1) }
 
         // Step 3: Parse round-trip JSON
@@ -874,7 +874,7 @@ struct RoundTripTests {
         #expect(json2.contains("Test Record"), "Serialized JSON should contain Test Record")
 
         let tempURL2 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
-        try json2.write(to: tempURL2, atomically: true, encoding: .utf8)
+        try json2.write(to: tempURL2, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL2) }
 
         // Step 3: Parse round-trip JSON
@@ -948,7 +948,7 @@ struct RoundTripTests {
         #expect(json3.contains("Charlie"), "Serialized JSON should contain child 2 name")
 
         let tempURL3 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
-        try json3.write(to: tempURL3, atomically: true, encoding: .utf8)
+        try json3.write(to: tempURL3, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL3) }
 
         // Step 3: Parse round-trip JSON
@@ -1006,7 +1006,7 @@ struct RoundTripTests {
         #expect(jsonFromXMI.contains("Animal"), "JSON should contain eClass reference")
 
         let tempJSONURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
-        try jsonFromXMI.write(to: tempJSONURL, atomically: true, encoding: .utf8)
+        try jsonFromXMI.write(to: tempJSONURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempJSONURL) }
 
         // Step 3: Parse JSON representation
@@ -1030,7 +1030,7 @@ struct RoundTripTests {
         #expect(xmiFromJSON.contains("cat"), "Final XMI should contain species")
 
         let tempXMIURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiFromJSON.write(to: tempXMIURL, atomically: true, encoding: .utf8)
+        try xmiFromJSON.write(to: tempXMIURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempXMIURL) }
 
         // Step 5: Parse final XMI
@@ -1066,7 +1066,7 @@ struct RoundTripTests {
         let resource1 = try await parser.parse(simpleURL)
         let json1 = try await serializer.serialize(resource1)
         let tempURL1 = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
-        try json1.write(to: tempURL1, atomically: true, encoding: .utf8)
+        try json1.write(to: tempURL1, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL1) }
 
         let resource1Round = try await parser.parse(tempURL1)
@@ -1078,13 +1078,13 @@ struct RoundTripTests {
         let xmiResource = try await xmiParser.parse(xmiURL)
         let jsonFromXMI = try await serializer.serialize(xmiResource)
         let tempJSONURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
-        try jsonFromXMI.write(to: tempJSONURL, atomically: true, encoding: .utf8)
+        try jsonFromXMI.write(to: tempJSONURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempJSONURL) }
 
         let jsonResourceFromXMI = try await parser.parse(tempJSONURL)
         let xmiFromJSON = try await xmiSerializer.serialize(jsonResourceFromXMI)
         let tempXMIURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiFromJSON.write(to: tempXMIURL, atomically: true, encoding: .utf8)
+        try xmiFromJSON.write(to: tempXMIURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempXMIURL) }
 
         let finalXMIResource = try await xmiParser.parse(tempXMIURL)
@@ -1123,7 +1123,7 @@ struct RoundTripTests {
             let minimalResource = try await parser.parse(minimalURL)
             let minimalJSON = try await serializer.serialize(minimalResource)
             let tempMinimalURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".json")
-            try minimalJSON.write(to: tempMinimalURL, atomically: true, encoding: .utf8)
+            try minimalJSON.write(to: tempMinimalURL, atomically: testWritesAtomically, encoding: .utf8)
             defer { try? FileManager.default.removeItem(at: tempMinimalURL) }
 
             let minimalRound = try await parser.parse(tempMinimalURL)

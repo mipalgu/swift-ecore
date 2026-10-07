@@ -381,6 +381,10 @@ public actor XMIParser {
     private func parseElement(_ element: XElement, in resource: Resource) async throws -> (
         any EObject
     )? {
+        #if os(WASI)
+        // Bound the cooperative executor's continuation stack while parsing siblings.
+        await Task.yield()
+        #endif
         let elementName = element.name
 
         if debug {
@@ -507,6 +511,10 @@ public actor XMIParser {
         parentEClass: EClass? = nil,
         referenceName: String? = nil
     ) async throws -> DynamicEObject {
+        #if os(WASI)
+        // Containment parsing calls this method directly, bypassing parseElement.
+        await Task.yield()
+        #endif
         // First pass: collect all structural information for this class
         let structureInfo = collectStructuralInfo(from: element)
         let className = structureInfo.className
@@ -1414,6 +1422,11 @@ public actor XMIParser {
         let xpathResolver = XPathResolver(resource: resource)
 
         for object in allObjects {
+            #if os(WASI)
+            // Actor hops on the cooperative executor can run inline. Yield between
+            // objects so large documents do not accumulate continuation frames.
+            await Task.yield()
+            #endif
             // Resolve eType references (metamodel)
             if let eTypeRef = await resource.eGet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempETypeRef)
                 as? String

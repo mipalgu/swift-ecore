@@ -34,7 +34,7 @@ struct EcoreReaderTests {
         </ecore:EPackage>
         """
 
-        try ecoreContent.write(to: ecoreFile, atomically: true, encoding: .utf8)
+        try ecoreContent.write(to: ecoreFile, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: ecoreFile) }
 
         // When - read the package
@@ -67,7 +67,7 @@ struct EcoreReaderTests {
         </ecore:EPackage>
         """
 
-        try ecoreContent.write(to: ecoreFile, atomically: true, encoding: .utf8)
+        try ecoreContent.write(to: ecoreFile, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: ecoreFile) }
 
         // When
@@ -114,7 +114,7 @@ struct EcoreReaderTests {
         </ecore:EPackage>
         """
 
-        try ecoreContent.write(to: ecoreFile, atomically: true, encoding: .utf8)
+        try ecoreContent.write(to: ecoreFile, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: ecoreFile) }
 
         // When
@@ -170,7 +170,7 @@ struct EcoreReaderTests {
         </ecore:EPackage>
         """
 
-        try ecoreContent.write(to: ecoreFile, atomically: true, encoding: .utf8)
+        try ecoreContent.write(to: ecoreFile, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: ecoreFile) }
 
         // When
@@ -220,7 +220,7 @@ struct EcoreReaderTests {
         </ecore:EPackage>
         """
 
-        try ecoreContent.write(to: ecoreFile, atomically: true, encoding: .utf8)
+        try ecoreContent.write(to: ecoreFile, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: ecoreFile) }
 
         // When
@@ -264,7 +264,7 @@ struct EcoreReaderTests {
         </ecore:EPackage>
         """
 
-        try ecoreContent.write(to: ecoreFile, atomically: true, encoding: .utf8)
+        try ecoreContent.write(to: ecoreFile, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: ecoreFile) }
 
         // When
@@ -307,7 +307,7 @@ struct EcoreReaderTests {
         </ecore:EPackage>
         """
 
-        try ecoreContent.write(to: ecoreFile, atomically: true, encoding: .utf8)
+        try ecoreContent.write(to: ecoreFile, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: ecoreFile) }
 
         // When
@@ -360,7 +360,7 @@ struct EcoreReaderTests {
         </ecore:EPackage>
         """
 
-        try ecoreContent.write(to: ecoreFile, atomically: true, encoding: .utf8)
+        try ecoreContent.write(to: ecoreFile, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: ecoreFile) }
 
         // When/Then

@@ -73,6 +73,6 @@ enum EclipseOracle {
         let name = relativePath.replacingOccurrences(of: "/", with: "__")
         try? FileManager.default.createDirectory(
             atPath: path, withIntermediateDirectories: true)
-        try? text.write(toFile: path + "/" + name, atomically: true, encoding: .utf8)
+        try? text.write(toFile: path + "/" + name, atomically: testWritesAtomically, encoding: .utf8)
     }
 }

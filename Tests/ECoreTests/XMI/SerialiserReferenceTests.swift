@@ -155,7 +155,7 @@ struct SerialiserReferenceTests {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("club.xmi")
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         let reloaded = try await set.loadXMIResource(uri: url.absoluteString)
         let root = try #require(await reloaded.getRootObjects().first as? DynamicEObject)
         let members = try #require(root.eGet("members") as? [EUUID])

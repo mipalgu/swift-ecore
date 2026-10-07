@@ -54,7 +54,7 @@ public struct JSONSerializer: Sendable {
     /// - Throws: `JSONError` if serialization fails or I/O errors occur
     public func serialize(_ resource: Resource, to url: URL) async throws {
         let jsonString = try await serialize(resource)
-        try jsonString.write(to: url, atomically: true, encoding: .utf8)
+        try jsonString.write(to: url, atomically: FileURIHandler.writesAtomically, encoding: .utf8)
     }
 
     /// Serialize a Resource to a JSON string

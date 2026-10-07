@@ -298,7 +298,7 @@ struct OrderPreservationTests {
         // Write to temporary file
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiString.write(to: tempURL, atomically: true, encoding: .utf8)
+        try xmiString.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse back from XMI
@@ -369,7 +369,7 @@ struct OrderPreservationTests {
         // Write to temporary file
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString + ".xmi")
-        try xmiString.write(to: tempURL, atomically: true, encoding: .utf8)
+        try xmiString.write(to: tempURL, atomically: testWritesAtomically, encoding: .utf8)
         defer { try? FileManager.default.removeItem(at: tempURL) }
 
         // Parse back from XMI

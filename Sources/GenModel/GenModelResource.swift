@@ -240,7 +240,7 @@ public enum GenModelResource {
         _ resource: Resource, to url: URL, rootLayout: XMIRootLayout = .standard
     ) async throws {
         try await serialised(resource, for: url, rootLayout: rootLayout)
-            .write(to: url, atomically: true, encoding: .utf8)
+            .write(to: url, atomically: FileURIHandler.writesAtomically, encoding: .utf8)
     }
 
     /// Renders a generator model as the text that ``save(_:to:)`` writes.
