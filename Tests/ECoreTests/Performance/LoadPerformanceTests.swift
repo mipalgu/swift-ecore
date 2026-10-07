@@ -77,8 +77,12 @@ struct LoadPerformanceTests {
     /// The classes of the large document; with nine elements each, the document has 5,400.
     private static let classCount = 600
 
-    /// A bound that debug builds meet by a wide margin, even on a slow shared machine.
+    /// Native and interpreted WebAssembly hosts have separate load budgets.
+    #if os(WASI)
+    private static let loadBound = Duration.seconds(45)
+    #else
     private static let loadBound = Duration.seconds(15)
+    #endif
 
     @Test("a document of 5,400 elements loads natively in bounded time")
     func nativeLoad() async throws {

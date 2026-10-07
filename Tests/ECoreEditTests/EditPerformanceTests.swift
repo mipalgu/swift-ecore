@@ -24,8 +24,12 @@ struct EditPerformanceTests {
     private static let elementCount = 5_000
     private static let editCount = 100
 
-    /// The time that the 100 edits may take, per build configuration.
+    /// The edit budget accounts for interpretation on WebAssembly CI hosts.
+    #if os(WASI)
+    private static let bound = Duration.seconds(180)
+    #else
     private static let bound = Duration.seconds(60)
+    #endif
 
     private static func syntheticPackage() -> EPackage {
         let count = elementCount / elementsPerClass
