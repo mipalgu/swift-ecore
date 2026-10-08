@@ -42,7 +42,7 @@ public enum GenModelPackage {
     /// - Returns: The file URL of the bundled generator metamodel, or `nil` if the
     ///   resource bundle does not contain it.
     public static var resourceURL: URL? {
-        Bundle.module.url(
+        GenModelResources.url(
             forResource: GenModelConstants.metamodelResourceName,
             withExtension: GenModelConstants.metamodelResourceExtension,
             subdirectory: GenModelConstants.resourceDirectory)
