@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jsonlibrary:Library xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:jsonlibrary="http://example.org/jsonlibrary/1.0" name="City Library"
+    featured="//@items.0">
+  <authors name="Ada"/>
+  <authors name="Brian"/>
+  <items xsi:type="jsonlibrary:Book" title="Engines" pages="320" price="24.5"
+      available="true" genre="SCIENCE" author="//@authors.0" coauthors="//@authors.1">
+    <chapters heading="One" number="1"/>
+    <chapters heading="Two" number="2"/>
+  </items>
+  <items xsi:type="jsonlibrary:Periodical" title="Monthly" issue="7"/>
+</jsonlibrary:Library>

@@ -154,6 +154,13 @@ let documentation = book?.getEAnnotationDetail(
 - [x] JSON serialiser with sorted keys
 - [x] Round-trip tests for all data types
 - [x] Comprehensive error handling
+- [x] Metamodel-aware loading: with a `ResourceSet` that has the metamodel registered, `eClass`
+  values (`"<nsURI>#//<Name>"` or a bare name) select the registered classes, attributes are
+  converted by their data types, enumerations hold literal names, and `$ref` values
+  (`//@authors.0`, `#/authors/0`, `other.json#//@authors.0`) resolve to objects or proxies
+- [x] Metamodel-aware saving: package-qualified `eClass` values and `{"$ref": ...}` references
+- [x] `JSONParseOptions.requiresMetamodel` turns an unknown class into an error instead of
+  falling back to a class fabricated from the document
 
 ### XMI Serialisation ✅
 

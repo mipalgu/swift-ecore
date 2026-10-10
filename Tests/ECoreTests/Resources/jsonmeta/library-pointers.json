@@ -1,0 +1,31 @@
+{
+  "eClass": "http://example.org/jsonlibrary/1.0#//Library",
+  "name": "City Library",
+  "authors": [
+    { "eClass": "http://example.org/jsonlibrary/1.0#//Author", "name": "Ada" },
+    { "eClass": "http://example.org/jsonlibrary/1.0#//Author", "name": "Brian" }
+  ],
+  "items": [
+    {
+      "eClass": "http://example.org/jsonlibrary/1.0#//Book",
+      "title": "Engines",
+      "pages": 320,
+      "price": 24.5,
+      "available": true,
+      "genre": "SCIENCE",
+      "tags": ["maths", "history"],
+      "author": { "$ref": "#/authors/0" },
+      "coauthors": [ { "$ref": "#/authors/1" } ],
+      "chapters": [
+        { "heading": "One", "number": 1 },
+        { "eClass": "http://example.org/jsonlibrary/1.0#//Chapter", "heading": "Two", "number": 2 }
+      ]
+    },
+    {
+      "eClass": "http://example.org/jsonlibrary/1.0#//Periodical",
+      "title": "Monthly",
+      "issue": 7
+    }
+  ],
+  "featured": { "$ref": "#/items/0" }
+}

@@ -24,7 +24,8 @@ a modern, type-safe Swift API.
   and ``EPackage``
 - **Dynamic instances**: Create model instances at runtime with ``DynamicEObject``
 - **XMI serialisation**: Load and save models in XMI format using ``XMIParser``
-- **JSON serialisation**: Alternative JSON format with ``JSONParser``
+- **JSON serialisation**: Alternative JSON format with ``JSONParser``, which builds objects
+  from the metamodels registered with a ``ResourceSet`` and resolves `$ref` references
 - **Cross-resource references**: Support for models spanning multiple files via
   ``ResourceSet``
 - **Command pattern**: Undoable operations with ``EMFCommand`` and ``CommandStack``
@@ -89,6 +90,9 @@ try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "employee
 - ``XMISerializer``
 - ``JSONParser``
 - ``JSONSerializer``
+- ``JSONParseOptions``
+- ``JSONFragments``
+- ``JSONSyntax``
 
 ### Commands and Editing
 
