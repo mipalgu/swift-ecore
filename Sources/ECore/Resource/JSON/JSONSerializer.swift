@@ -59,6 +59,11 @@ public struct JSONSerializer: Sendable {
 
     /// Serialize a Resource to a JSON string
     ///
+    /// Every `eClass` is written as `"<nsURI>#//<Name>"` when the class belongs to a metamodel
+    /// registered with the resource's resource set. Non-containment references are written as
+    /// `{"$ref": "<fragment>"}` (an array of such objects for many-valued features), and
+    /// references to objects of other documents as `{"$ref": "<uri>#<fragment>"}`. Keys are sorted.
+    ///
     /// - Parameter resource: The Resource containing objects to serialize
     /// - Returns: JSON string
     /// - Throws: `JSONError` if serialization fails
@@ -68,27 +73,20 @@ public struct JSONSerializer: Sendable {
         guard !roots.isEmpty else {
             throw JSONError.emptyResource
         }
-
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        encoder.dateEncodingStrategy = .iso8601
-
-        let data: Data
-        if roots.count == 1 {
-            // Single root object
-            guard let dynamicObject = roots[0] as? DynamicEObject else {
-                throw JSONError.unsupportedObjectType
-            }
-            data = try encoder.encode(dynamicObject)
-        } else {
-            // Multiple root objects
-            let dynamicObjects = roots.compactMap { $0 as? DynamicEObject }
-            guard dynamicObjects.count == roots.count else {
-                throw JSONError.unsupportedObjectType
-            }
-            data = try encoder.encode(dynamicObjects)
+        let dynamicRoots = roots.compactMap { $0 as? DynamicEObject }
+        guard dynamicRoots.count == roots.count else {
+            throw JSONError.unsupportedObjectType
         }
 
+        var context = await JSONWritingContext(resource: resource)
+        var documents: [[String: Any]] = []
+        for root in dynamicRoots {
+            documents.append(try await context.dictionary(for: root))
+        }
+        let document: Any = documents.count == 1 ? documents[0] : documents
+
+        let data = try JSONSerialization.data(
+            withJSONObject: document, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
         guard let jsonString = String(data: data, encoding: .utf8) else {
             throw JSONError.encodingFailed
         }
