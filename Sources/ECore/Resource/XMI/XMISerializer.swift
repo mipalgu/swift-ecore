@@ -92,13 +92,17 @@ public struct XMISerializer: Sendable {
             throw XMIError.parseError("No root object to serialise")
         }
 
+        // The writer of references computes the fragments of each resource once
+        var references = EMFDocumentWriter(resource: resource, options: options)
+        await references.prepare()
+
         // Build XML document
         var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
 
         if roots.count == 1 {
             // Single root object - serialize directly as the root element
             let rootObject = roots[0]
-            xml += try await serializeObject(rootObject, in: resource, indentLevel: 0)
+            xml += try await serializeObject(rootObject, in: resource, indentLevel: 0, references: &references)
         } else {
             // Multiple root objects - wrap in xmi:XMI element like pyecore
             xml += "<xmi:XMI xmi:version=\"2.0\" xmlns:xmi=\"http://www.omg.org/XMI\""
@@ -118,7 +122,7 @@ public struct XMISerializer: Sendable {
 
             // Serialize each root object as a child of xmi:XMI
             for rootObject in roots {
-                xml += try await serializeObject(rootObject, in: resource, indentLevel: 1)
+                xml += try await serializeObject(rootObject, in: resource, indentLevel: 1, references: &references)
                 xml += "\n"
             }
 
@@ -137,11 +141,12 @@ public struct XMISerializer: Sendable {
     ///   - object: The object to serialise
     ///   - resource: The Resource for context and navigation
     ///   - indentLevel: Current indentation level for formatting
+    ///   - references: The writer that computes the text of references
     /// - Returns: XML string representation
     /// - Throws: `XMIError` if serialisation fails
-    private func serializeObject(_ object: any EObject, in resource: Resource, indentLevel: Int)
-        async throws -> String
-    {
+    private func serializeObject(
+        _ object: any EObject, in resource: Resource, indentLevel: Int, references writer: inout EMFDocumentWriter
+    ) async throws -> String {
         let indent = String(repeating: "    ", count: indentLevel)
 
         // Get object's class name
@@ -185,7 +190,7 @@ public struct XMISerializer: Sendable {
                         // Contained child as nested element
                         xml += try await serializeContainedChild(
                             childObject, featureName: featureName, in: resource,
-                            indentLevel: indentLevel + 1)
+                            indentLevel: indentLevel + 1, references: &writer)
                     }
                 }
             }
@@ -194,7 +199,7 @@ public struct XMISerializer: Sendable {
             for (featureName, target) in references {
                 xml += try await serializeCrossReference(
                     featureName: featureName, target: target, in: resource,
-                    indentLevel: indentLevel + 1)
+                    indentLevel: indentLevel + 1, references: &writer)
             }
 
             // Close element
@@ -211,9 +216,13 @@ public struct XMISerializer: Sendable {
     ///   - featureName: The feature name for the child
     ///   - resource: The Resource for context
     ///   - indentLevel: Current indentation level
+    ///   - writer: The writer that computes the text of references
     /// - Returns: XML string
     /// - Throws: `XMIError` if serialisation fails
-    private func serializeContainedChild(_ object: any EObject, featureName: String, in resource: Resource, indentLevel: Int) async throws -> String {
+    private func serializeContainedChild(
+        _ object: any EObject, featureName: String, in resource: Resource, indentLevel: Int,
+        references writer: inout EMFDocumentWriter
+    ) async throws -> String {
         let indent = String(repeating: "    ", count: indentLevel)
 
         guard let dynamicObject = object as? DynamicEObject else {
@@ -268,7 +277,7 @@ public struct XMISerializer: Sendable {
                 for childObject in childObjects {
                     xml += try await serializeContainedChild(
                         childObject, featureName: childFeatureName, in: resource,
-                        indentLevel: indentLevel + 1)
+                        indentLevel: indentLevel + 1, references: &writer)
                 }
             }
 
@@ -276,7 +285,7 @@ public struct XMISerializer: Sendable {
             for (refFeatureName, target) in references {
                 xml += try await serializeCrossReference(
                     featureName: refFeatureName, target: target, in: resource,
-                    indentLevel: indentLevel + 1)
+                    indentLevel: indentLevel + 1, references: &writer)
             }
 
             xml += "\(indent)</\(featureName)>\n"
@@ -292,9 +301,13 @@ public struct XMISerializer: Sendable {
     ///   - target: Target of the reference (EUUID for same-resource, ResourceProxy for cross-resource)
     ///   - resource: The Resource for context
     ///   - indentLevel: Current indentation level
+    ///   - writer: The writer that computes the text of references
     /// - Returns: XML string
     /// - Throws: `XMIError` if serialisation fails
-    private func serializeCrossReference(featureName: String, target: any EcoreValue, in resource: Resource, indentLevel: Int) async throws -> String {
+    private func serializeCrossReference(
+        featureName: String, target: any EcoreValue, in resource: Resource, indentLevel: Int,
+        references writer: inout EMFDocumentWriter
+    ) async throws -> String {
         let indent = String(repeating: "    ", count: indentLevel)
 
         // Many-valued references are written as one element per target, in order
@@ -302,7 +315,8 @@ public struct XMISerializer: Sendable {
             var xml = ""
             for single in referenceTargets(of: target) {
                 xml += try await serializeCrossReference(
-                    featureName: featureName, target: single, in: resource, indentLevel: indentLevel)
+                    featureName: featureName, target: single, in: resource, indentLevel: indentLevel,
+                    references: &writer)
             }
             return xml
         }
@@ -310,15 +324,8 @@ public struct XMISerializer: Sendable {
         let href: String
 
         if let targetId = target as? EUUID {
-            if await resource.contains(id: targetId) {
-                // Same-resource reference: Generate XPath
-                href = try await generateXPath(for: targetId, in: resource)
-            } else {
-                // Object of another resource in the same resource set
-                var writer = EMFDocumentWriter(resource: resource, options: options)
-                await writer.prepare()
-                href = try await writer.reference(to: targetId).href
-            }
+            // Positional fragment in this resource or URI and fragment in another resource of the set
+            href = try await writer.reference(to: targetId).href
         } else if let proxy = target as? ResourceProxy {
             // Cross-resource reference: Use proxy's URI and fragment
             let fragment = proxy.fragment.hasPrefix("#") ? proxy.fragment : "#\(proxy.fragment)"
@@ -332,135 +339,28 @@ public struct XMISerializer: Sendable {
 
     /// Generate XPath reference for an object
     ///
+    /// The reference is the positional fragment of the object (see ``PositionalFragments``):
+    /// `#/` or `#//@members.0` in a resource with one root, `#/1` or `#/1/@members.0` in a
+    /// resource with several roots.
+    ///
     /// - Parameters:
     ///   - objectId: The target object ID
     ///   - resource: The Resource containing the object
-    /// - Returns: XPath string (e.g., "#//@members.0")
-    /// - Throws: `XMIError` if path generation fails
-    func generateXPath(for objectId: EUUID, in resource: Resource) async throws -> String {
-        let roots = await resource.getRootObjects()
-
-        guard let targetObject = await resource.resolve(objectId) else {
+    ///   - index: The positional fragments of the resource, if already computed
+    /// - Returns: XPath string (e.g., "#//@members.0"), or the object ID after `#` if the
+    ///   object cannot be reached through containment from a root
+    /// - Throws: `XMIError` if the object cannot be resolved
+    func generateXPath(for objectId: EUUID, in resource: Resource, index: [EUUID: String]? = nil) async throws -> String {
+        guard await resource.resolve(objectId) != nil else {
             throw XMIError.invalidReference("Cannot resolve object \(objectId)")
         }
-
-        // If target is a root object, use simple fragment
-        if roots.contains(where: { $0.id == objectId }) {
-            return "#/"
+        let fragments: [EUUID: String]
+        if let index {
+            fragments = index
+        } else {
+            fragments = await PositionalFragments.index(of: resource)
         }
-
-        // Build path from root to target
-        // This is a simplified implementation - in full EMF, we'd track containment hierarchy
-        // For now, try to find the path by examining all objects
-
-        if let path = await findPath(to: targetObject, in: resource) {
-            return "#\(path)"
-        }
-
-        // Fallback: use object ID as fragment
-        return "#\(objectId.uuidString)"
-    }
-
-    /// Find XPath from root to target object
-    ///
-    /// - Parameters:
-    ///   - target: The target object
-    ///   - resource: The Resource
-    /// - Returns: XPath string (e.g., "//@members.0")
-    private func findPath(to target: any EObject, in resource: Resource) async -> String? {
-        let roots = await resource.getRootObjects()
-
-        for root in roots {
-            if let path = await findPath(to: target, from: root, currentPath: "//", in: resource) {
-                return path
-            }
-        }
-
-        return nil
-    }
-
-    /// Recursively find path from current object to target
-    ///
-    /// - Parameters:
-    ///   - target: The target object
-    ///   - current: Current object in traversal
-    ///   - currentPath: Path accumulated so far
-    ///   - resource: The Resource
-    /// - Returns: Complete path if found
-    private func findPath(to target: any EObject, from current: any EObject, currentPath: String, in resource: Resource) async -> String? {
-        // Get all features of current object
-        guard let dynamicObject = current as? DynamicEObject else {
-            return nil
-        }
-
-        let allFeatures = await resource.getFeatureNames(objectId: dynamicObject.id)
-
-        for featureName in allFeatures {
-            // Only consider containment relationships for XPath generation
-            // Use metamodel information to determine if this is a containment feature
-            if let feature = dynamicObject.eClass.getStructuralFeature(name: featureName),
-                let reference = feature as? EReference
-            {
-                // Skip non-containment references - only traverse containment relationships
-                guard reference.containment else { continue }
-
-                // Skip features that are opposites of containment relationships
-                if let oppositeId = reference.opposite,
-                    let oppositeRef = dynamicObject.eClass.allReferences.first(where: {
-                        $0.id == oppositeId
-                    }),
-                    oppositeRef.containment
-                {
-                    continue
-                }
-            } else {
-                // For dynamic features without metamodel info, assume non-containment
-                // In proper EMF, all structural features should have metamodel definitions
-                continue
-            }
-
-            guard let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName)
-            else {
-                continue
-            }
-
-            // Check if this is a containment feature
-            if let childId = value as? EUUID {
-                // Single-valued feature
-                if childId == target.id {
-                    return "\(currentPath)@\(featureName)"
-                }
-
-                // Recurse
-                if let childObject = await resource.resolve(childId) {
-                    if let path = await findPath(
-                        to: target, from: childObject,
-                        currentPath: "\(currentPath)@\(featureName)/", in: resource)
-                    {
-                        return path
-                    }
-                }
-            } else if let childIds = value as? [EUUID] {
-                // Multi-valued feature
-                for (index, childId) in childIds.enumerated() {
-                    if childId == target.id {
-                        return "\(currentPath)@\(featureName).\(index)"
-                    }
-
-                    // Recurse
-                    if let childObject = await resource.resolve(childId) {
-                        if let path = await findPath(
-                            to: target, from: childObject,
-                            currentPath: "\(currentPath)@\(featureName).\(index)/", in: resource)
-                        {
-                            return path
-                        }
-                    }
-                }
-            }
-        }
-
-        return nil
+        return String(CrossReferenceSyntax.fragmentSeparator) + (fragments[objectId] ?? objectId.uuidString)
     }
 
     /// Add namespace declarations to root element
@@ -567,18 +467,8 @@ public struct XMISerializer: Sendable {
             if let feature = dynamicObject.eClass.getStructuralFeature(name: featureName),
                 let reference = feature as? EReference
             {
-                // Only include containment references
-                guard reference.containment else { continue }
-
-                // Skip features that are opposites of containment relationships
-                if let oppositeId = reference.opposite,
-                    let oppositeRef = dynamicObject.eClass.allReferences.first(where: {
-                        $0.id == oppositeId
-                    }),
-                    oppositeRef.containment
-                {
-                    continue
-                }
+                // Only include containment references, never the container side of one
+                guard reference.containment, !reference.isContainerSide else { continue }
             } else if let feature = dynamicObject.eClass.getStructuralFeature(name: featureName),
                 feature is EAttribute
             {
@@ -643,18 +533,8 @@ public struct XMISerializer: Sendable {
             if let feature = dynamicObject.eClass.getStructuralFeature(name: featureName),
                 let reference = feature as? EReference
             {
-                // Only include non-containment references
-                guard !reference.containment else { continue }
-
-                // Skip features that are opposites of containment relationships
-                if let oppositeId = reference.opposite,
-                    let oppositeRef = dynamicObject.eClass.allReferences.first(where: {
-                        $0.id == oppositeId
-                    }),
-                    oppositeRef.containment
-                {
-                    continue
-                }
+                // Only include non-containment references, never the container side of a containment
+                guard !reference.containment, !reference.isContainerSide else { continue }
 
                 if let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName)
                 {

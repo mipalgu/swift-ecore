@@ -31,6 +31,12 @@ extension XMISerializer {
 /// the document needs, then assembles the namespace declarations of the root element in
 /// a fixed order: `xmi`, `xsi` (only if a type is written), `ecore`, the prefix of the
 /// root object's package, then any other prefixes alphabetically.
+///
+/// Same-document references are written in EMF's encoded attribute style, that is,
+/// as a fragment with a leading `#` (`type="#//@classifiers.0"`, or
+/// `type="#/1/@classifiers.0"` in a resource with several roots), both in attributes
+/// and in `href` child elements. The loader also accepts the plain idref form
+/// without `#`.
 struct EMFDocumentWriter {
     /// A namespace prefix and URI.
     struct PackageInfo: Equatable {
@@ -61,6 +67,7 @@ struct EMFDocumentWriter {
     private var usedPrefixes: [String: String] = [:]
     private var needsXSI = false
     private var rootAttributes: [String] = []
+    private var fragmentIndices: [ObjectIdentifier: [EUUID: String]] = [:]
 
     private static let ecorePackage = PackageInfo(
         prefix: CrossReferenceSyntax.ecorePrefix, nsURI: EcoreURI.ecoreNamespace.rawValue)
@@ -113,6 +120,7 @@ struct EMFDocumentWriter {
         guard !roots.isEmpty else {
             throw XMIError.parseError("No root object to serialise")
         }
+        fragmentIndices[ObjectIdentifier(resource)] = await PositionalFragments.index(of: resource)
         var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         let rootPrefix: String
         if roots.count == 1 {
@@ -151,16 +159,18 @@ struct EMFDocumentWriter {
 
     /// Computes the reference text that points at an object.
     ///
-    /// Objects of the written resource yield a same-document fragment (`#//@entries.0`).
+    /// Objects of the written resource yield a same-document fragment (`#//@entries.0`
+    /// in a resource with one root, `#/1/@entries.0` in one with several roots).
     /// Objects of another resource in the same resource set yield the URI of that resource
-    /// (relative if the options ask for it) and a fragment within it.
+    /// (relative if the options ask for it) and a fragment within it. The positional
+    /// fragments of each resource are computed once and reused for later references.
     ///
     /// - Parameter id: The identifier of the referenced object.
     /// - Returns: The reference text and the referenced object.
     /// - Throws: ``XMIError/resourceSetReleased(_:)`` if the object is not in the written
     ///   resource and the resource set that might hold it has been released;
     ///   ``XMIError/invalidReference(_:)`` if no resource of the set holds the object.
-    func reference(to id: EUUID) async throws -> ResolvedReference {
+    mutating func reference(to id: EUUID) async throws -> ResolvedReference {
         if let object = await resource.resolve(id) {
             let fragment = try await fragment(for: object, in: resource)
             return ResolvedReference(href: fragment, target: object)
@@ -302,14 +312,30 @@ struct EMFDocumentWriter {
     /// - Returns: A name-based fragment for Ecore elements if the options ask for it,
     ///   otherwise a positional fragment.
     /// - Throws: ``XMIError/invalidReference(_:)`` if a positional fragment cannot be built.
-    private func fragment(for object: any EObject, in target: Resource) async throws -> String {
+    private mutating func fragment(for object: any EObject, in target: Resource) async throws -> String {
         let navigator = FragmentNavigator(resource: target)
         if options.nameBasedFragments, await navigator.segmentName(of: object) != nil,
             let name = await navigator.fragment(for: object.id)
         {
             return String(CrossReferenceSyntax.fragmentSeparator) + name
         }
-        return try await XMISerializer().generateXPath(for: object.id, in: target)
+        let index = await positionalIndex(of: target)
+        return try await XMISerializer().generateXPath(for: object.id, in: target, index: index)
+    }
+
+    /// Returns the positional fragments of the objects of a resource.
+    ///
+    /// The fragments of each resource are computed on first use and kept for the
+    /// rest of the serialisation.
+    ///
+    /// - Parameter target: The resource whose objects are referenced.
+    /// - Returns: The ``PositionalFragments`` index of the resource.
+    private mutating func positionalIndex(of target: Resource) async -> [EUUID: String] {
+        let key = ObjectIdentifier(target)
+        if let index = fragmentIndices[key] { return index }
+        let index = await PositionalFragments.index(of: target)
+        fragmentIndices[key] = index
+        return index
     }
 
     /// Renders an object and its descendants.
@@ -339,7 +365,7 @@ struct EMFDocumentWriter {
                     attribute, value: value, of: object, into: &attributes, children: &children,
                     indentation: childIndentation)
             case let reference as EReference where !reference.transient:
-                if isContainerOpposite(reference, of: object.eClass) { continue }
+                if reference.isContainerSide { continue }
                 if reference.containment {
                     children += try await renderContainment(reference, value: value, indent: indent + 1)
                 } else {
@@ -373,17 +399,6 @@ struct EMFDocumentWriter {
         let tag = "\(indentation)<\(elementName)"
         return tag + layout.attributes(allAttributes, afterColumn: tag.utf16.count, indentation: indentation.utf16.count)
             + ending
-    }
-
-    /// Whether a reference is the container side of a containment reference.
-    ///
-    /// - Parameters:
-    ///   - reference: The reference to test.
-    ///   - eClass: The class that owns the reference.
-    /// - Returns: `true` if the opposite of the reference is a containment.
-    private func isContainerOpposite(_ reference: EReference, of eClass: EClass) -> Bool {
-        guard let oppositeId = reference.opposite else { return false }
-        return eClass.allReferences.first(where: { $0.id == oppositeId })?.containment ?? false
     }
 
     /// Writes an attribute value as an XML attribute or, for many-valued attributes, child elements.

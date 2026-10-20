@@ -16,6 +16,8 @@ import Foundation
 /// classifier of a nested package, `#//BookCategory/Mystery` an enumeration
 /// literal, and `#//Book/borrow/days` a parameter of an operation. Elements
 /// that share a name with an earlier sibling carry a trailing `.n` index.
+/// In a resource with several roots, `#/n` is root `n` and `#/n/Book` a
+/// classifier of that root; `#//Book` searches the roots in order.
 ///
 /// The navigator understands both representations of Ecore models in this
 /// package: native values (``EPackage``, ``EClass``, ``EEnum``,
@@ -46,8 +48,8 @@ public struct FragmentNavigator: Sendable {
 
     /// Resolves a name-based fragment path to an object.
     ///
-    /// - Parameter fragment: A fragment such as `/`, `//Book`, or `//Book/title`,
-    ///   with or without a leading `#`.
+    /// - Parameter fragment: A fragment such as `/`, `//Book`, `//Book/title`, `/1`,
+    ///   or `/1/Book`, with or without a leading `#`.
     /// - Returns: The identified object, or `nil` if no element has that path.
     public func resolve(_ fragment: String) async -> (any EObject)? {
         var path = fragment

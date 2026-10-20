@@ -200,10 +200,8 @@ struct WrappedDocumentLoadingTests {
         let shop = try await Self.objects("classifiers", of: roots[1], in: reloaded)
         #expect(library.first?.eClass.name == "DataType")
         #expect(library.dropFirst().first?.eGet("isAbstract") as? Bool == true)
-        withKnownIssue("References to objects of a later root are written relative to the first root") {
-            #expect(library.map(\.eClass.name) == ["DataType", "Class"])
-            #expect(shop.map(\.eClass.name) == ["Class", "DataType"])
-        }
+        #expect(library.map(\.eClass.name) == ["DataType", "Class"])
+        #expect(shop.map(\.eClass.name) == ["Class", "DataType"])
     }
 
     @Test("saving a single root writes no wrapper")

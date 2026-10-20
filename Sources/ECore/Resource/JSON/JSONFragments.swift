@@ -36,17 +36,14 @@ public enum JSONFragments {
     ///
     /// The fragments are those that ``JSONSerializer`` writes: `//` for the only root,
     /// `/r` for root `r` of several, and `@feature` or `@feature.n` segments below it.
+    /// They are the ``PositionalFragments`` of the resource, except that the only root
+    /// of a resource is spelt `//` (where EMF's XMI writer uses `/`), which is the
+    /// spelling JSON documents use.
     ///
     /// - Parameter resource: The resource whose objects to index.
     /// - Returns: The fragment of each contained object, without a leading `#`.
     public static func index(of resource: Resource) async -> [EUUID: String] {
-        let roots = await resource.getRootObjects()
-        var result: [EUUID: String] = [:]
-        for (position, root) in roots.enumerated() {
-            let prefix = roots.count == 1 ? CrossReferenceSyntax.fragmentPathPrefix : rootSegment(position)
-            await collect(root, path: prefix, in: resource, into: &result)
-        }
-        return result
+        await PositionalFragments.index(of: resource, singleRootFragment: CrossReferenceSyntax.fragmentPathPrefix)
     }
 
     /// Computes the fragment of one object.
@@ -170,33 +167,6 @@ public enum JSONFragments {
     }
 
     // MARK: - Private Helpers
-
-    /// The fragment segment of the root at a position of a multi-root resource.
-    private static func rootSegment(_ position: Int) -> String {
-        String(CrossReferenceSyntax.segmentSeparator) + String(position)
-    }
-
-    /// Records the fragments of an object and of everything it contains.
-    private static func collect(
-        _ object: any EObject, path: String, in resource: Resource,
-        into result: inout [EUUID: String]
-    ) async {
-        guard result[object.id] == nil else { return }
-        result[object.id] = path
-        guard let dynamic = object as? DynamicEObject else { return }
-        let separator = String(CrossReferenceSyntax.segmentSeparator)
-        let marker = String(CrossReferenceSyntax.positionalMarker)
-        for reference in dynamic.eClass.allReferences where reference.containment {
-            let children = identifiers(of: dynamic.eGet(reference))
-            for (position, identifier) in children.enumerated() {
-                guard let child = await resource.resolve(identifier) else { continue }
-                var segment = marker + reference.name
-                if reference.isMany { segment += String(CrossReferenceSyntax.indexSeparator) + String(position) }
-                let childPath = (path.hasSuffix(separator) ? path : path + separator) + segment
-                await collect(child, path: childPath, in: resource, into: &result)
-            }
-        }
-    }
 
     /// The object identifiers that a stored reference value holds.
     private static func identifiers(of value: (any EcoreValue)?) -> [EUUID] {

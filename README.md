@@ -175,6 +175,7 @@ let documentation = book?.getEAnnotationDetail(
 - [x] Cross-resource references (Step 4.6)
 - [x] Cross-document reference attributes - `ecoreFeature="ecore:EAttribute library.ecore#//Book/title"`, space-separated lists, and `href` child elements, for references declared by a registered metamodel
 - [x] Name-based Ecore fragments - `#/`, `#//Book`, `#//Book/title`, `#//sub/Class`, `#//Enum/Literal`, operations and parameters (`FragmentNavigator`, `XPathResolver`)
+- [x] Multi-root positional fragments - as in EMF, the only root of a resource is `#/` and its contents `#//@feature.index`, while root `n` of a resource with several roots is `#/n` and its contents `#/n/@feature.index` (`PositionalFragments`, `XPathResolver`); the container side of a containment is never written
 - [x] Proxy resolution - `Resource.resolveProxies()`, `ResourceSet.resolveAllProxies()` and `Resource.eGetResolving(objectId:feature:)` load target resources on demand
 - [x] EMF-style serialisation - `XMISerializer(options: .emf)` writes attribute-style references, type qualifiers, relative URIs, name-based fragments, omits defaults, and writes many-valued attributes as child elements
 

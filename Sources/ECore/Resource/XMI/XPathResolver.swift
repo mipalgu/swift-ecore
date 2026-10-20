@@ -11,16 +11,19 @@ import Foundation
 /// Resolves XPath-style fragment identifiers to object IDs
 ///
 /// XPath resolution handles XMI fragment identifiers like:
-/// - `#//@members.0` - Navigate to first member from root
+/// - `#//@members.0` - Navigate to the first member of the first (or only) root
 /// - `#//Person.0/@children.2` - Navigate through multiple containment levels
-/// - `#/0/@children.1` - Index-based navigation
+/// - `#/1` - The second root of a resource with several roots
+/// - `#/1/@children.0` - Navigate from the second root of a resource with several roots
 /// - `#//Book/title` - Name-based navigation of Ecore elements (see ``FragmentNavigator``)
 ///
 /// ## XPath Fragment Format
 ///
-/// XMI uses a simplified XPath syntax for same-resource references:
+/// XMI uses a simplified XPath syntax for same-resource references
+/// (see ``PositionalFragments`` for the fragments that writers produce):
 /// - `#` - Same resource reference indicator
-/// - `//` - Navigate from root object
+/// - `//` - Navigate from the first (or only) root object
+/// - `/n` - Navigate from root `n` of a resource with several roots
 /// - `@feature` - Navigate through containment feature named "feature"
 /// - `.index` - Array index for multi-valued features
 /// - `/` - Path separator for nested navigation
@@ -46,38 +49,48 @@ public struct XPathResolver: Sendable {
     /// Resolve an XPath expression to an object ID
     ///
     /// Parses the XPath expression and navigates the containment hierarchy
-    /// to locate the target object.
+    /// to locate the target object. A path that starts with `//` navigates from
+    /// the first root; a path that starts with `/n` navigates from root `n`.
     ///
-    /// - Parameter path: XPath expression (e.g., "#//@members.0")
+    /// - Parameter path: XPath expression (e.g., "#//@members.0" or "#/1/@members.0")
     /// - Returns: The EUUID of the target object, or nil if not found
     public func resolve(_ path: String) async -> EUUID? {
         // Remove leading # if present (same-resource indicator)
-        let cleanPath = path.hasPrefix("#") ? String(path.dropFirst()) : path
+        let cleanPath = path.first == CrossReferenceSyntax.fragmentSeparator ? String(path.dropFirst()) : path
 
-        // Empty path or just "/" means root object
-        if cleanPath.isEmpty || cleanPath == "/" || cleanPath == "//" {
-            let roots = await resource.getRootObjects()
-            return roots.first?.id
+        // Empty path, "/" or "//" means the first root object
+        if cleanPath.isEmpty || cleanPath == CrossReferenceSyntax.rootFragment
+            || cleanPath == CrossReferenceSyntax.fragmentPathPrefix
+        {
+            return await resource.getRootObjects().first?.id
         }
 
-        // Name-based fragments (//Book/title) identify Ecore elements by name
-        if cleanPath.hasPrefix(CrossReferenceSyntax.fragmentPathPrefix),
-            !cleanPath.contains(CrossReferenceSyntax.positionalMarker)
-        {
+        // Paths without positional segments (//Book/title, /1, /1/Book) identify elements by name or root
+        guard cleanPath.contains(CrossReferenceSyntax.positionalMarker) else {
             return await FragmentNavigator(resource: resource).resolve(cleanPath)?.id
         }
 
-        // Parse the path components
-        let components = parsePathComponents(cleanPath)
-
-        // Start navigation from root
+        // Find the root to start from and the positional steps below it
         let roots = await resource.getRootObjects()
-        guard let rootObject = roots.first else {
+        let start: (any EObject)?
+        let steps: Substring
+        if cleanPath.hasPrefix(CrossReferenceSyntax.fragmentPathPrefix) {
+            start = roots.first
+            steps = cleanPath.dropFirst(CrossReferenceSyntax.fragmentPathPrefix.count)
+        } else if let (position, remainder) = rootPosition(in: cleanPath) {
+            guard roots.indices.contains(position) else { return nil }
+            start = roots[position]
+            steps = remainder
+        } else {
+            start = roots.first
+            steps = Substring(cleanPath)
+        }
+        guard let rootObject = start else {
             return nil
         }
 
         // Navigate through the path
-        return await navigate(from: rootObject.id, components: components)
+        return await navigate(from: rootObject.id, components: parsePathComponents(steps))
     }
 
     /// Resolve XPath to object directly (convenience method)
@@ -93,30 +106,40 @@ public struct XPathResolver: Sendable {
 
     /// Parse XPath components from a path string
     ///
-    /// Converts "#//@members.0/@children.1" into structured components:
+    /// Converts "@members.0/@children.1" into structured components:
     /// - ["@members", "0", "@children", "1"]
     ///
-    /// - Parameter path: The cleaned XPath string (without leading #)
+    /// - Parameter path: The positional steps below the root (without a leading `#` or root segment)
     /// - Returns: Array of path components
-    private func parsePathComponents(_ path: String) -> [String] {
+    private func parsePathComponents(_ path: Substring) -> [String] {
         var components: [String] = []
 
-        // Remove leading // if present
-        let workingPath = path.hasPrefix("//") ? String(path.dropFirst(2)) : path
-
         // Split by / and process each segment
-        let segments = workingPath.split(separator: "/")
+        let segments = path.split(separator: CrossReferenceSyntax.segmentSeparator)
 
         for segment in segments {
             // Split by . to separate feature names from indices
             // e.g., "@members.0" → ["@members", "0"]
-            let parts = segment.split(separator: ".")
+            let parts = segment.split(separator: CrossReferenceSyntax.indexSeparator)
             for part in parts {
                 components.append(String(part))
             }
         }
 
         return components
+    }
+
+    /// Splits a leading root segment (`/n`) off a path.
+    ///
+    /// - Parameter path: The cleaned path (without a leading `#`).
+    /// - Returns: The position of the root and the rest of the path, or `nil` if the path
+    ///   does not start with `/` followed by a root position.
+    private func rootPosition(in path: String) -> (Int, Substring)? {
+        guard path.first == CrossReferenceSyntax.segmentSeparator else { return nil }
+        let body = path.dropFirst()
+        let end = body.firstIndex(of: CrossReferenceSyntax.segmentSeparator) ?? body.endIndex
+        guard let position = Int(body[..<end]) else { return nil }
+        return (position, body[end...])
     }
 
     /// Navigate from a starting object through path components
@@ -133,7 +156,7 @@ public struct XPathResolver: Sendable {
             let component = components[index]
 
             // Check if it's a feature name or an index
-            if component.hasPrefix("@") {
+            if component.first == CrossReferenceSyntax.positionalMarker {
                 // It's a feature name - navigate through it
                 let featureName = String(component.dropFirst())  // Remove @
 
@@ -161,16 +184,8 @@ public struct XPathResolver: Sendable {
                     currentId = nextId
                     index += 1
                 }
-            } else if let arrayIndex = Int(component) {
-                // It's a bare index without @ prefix (less common)
-                // Treat as index into the current object's children
-                guard let nextId = await navigateIndex(from: currentId, index: arrayIndex) else {
-                    return nil
-                }
-                currentId = nextId
-                index += 1
             } else {
-                // Unknown component format
+                // Unknown component format (root positions are only valid at the start)
                 return nil
             }
         }
@@ -206,21 +221,5 @@ public struct XPathResolver: Sendable {
             // Not a reference type
             return nil
         }
-    }
-
-    /// Navigate to a child by index
-    ///
-    /// - Parameters:
-    ///   - objectId: Current object ID
-    ///   - index: Index of child to navigate to
-    /// - Returns: The ID of the child object, or nil if not found
-    private func navigateIndex(from objectId: EUUID, index: Int) async -> EUUID? {
-        // This is a simplified implementation
-        // In a full EMF implementation, we'd need to know which containment
-        // feature to use. For now, we'll try to get all contained children
-        // and index into them.
-
-        // TODO: Implement proper child enumeration if needed
-        return nil
     }
 }
