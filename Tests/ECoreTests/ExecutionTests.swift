@@ -44,7 +44,7 @@ struct ExecutionTests {
         #expect(ageResult as? Int == 30)
     }
 
-    @Test func testNavigationWithNullValues() async throws {
+    @Test func testNavigationWithUnsetValues() async throws {
         let (sourceResource, _, executionEngine, testPackage) = try await createExecutionEnvironment()
 
         guard let personClass = testPackage.getEClass("Person") else {
@@ -55,9 +55,9 @@ struct ExecutionTests {
         let testPerson = try TestObjectFactory.createTestPerson(name: "Bob", age: 25, personClass: personClass)
         await sourceResource.add(testPerson)
 
-        // Test navigation of unset optional property
+        // An unset optional EDouble reads as its EMF default, zero
         let salaryResult = try await executionEngine.navigate(from: testPerson, property: "salary")
-        #expect(salaryResult == nil)
+        #expect(salaryResult as? Double == 0.0)
     }
 
     @Test func testNavigationCachingBehaviour() async throws {

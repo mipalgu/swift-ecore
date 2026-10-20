@@ -215,8 +215,8 @@ struct SimpleExecutionTests {
         let nameResult = try await executionEngine.evaluate(nameExpr, context: nameContext)
         #expect(nameResult as? Bool == false, "oclIsUndefined on non-nil 'name' should return false")
 
-        // Test oclIsUndefined on nil/undefined value (should return true)
-        // Person was created without salary, so it should be nil
+        // Test oclIsUndefined on an unset EDouble (should return false)
+        // Person was created without salary, which reads as its EMF default, zero
         let salaryExpr = ECoreExpression.methodCall(
             receiver: .navigation(source: .variable(name: "self"), property: "salary"),
             methodName: "oclIsUndefined",
@@ -224,7 +224,9 @@ struct SimpleExecutionTests {
         )
         let salaryContext: [String: any EcoreValue] = ["self": person]
         let salaryResult = try await executionEngine.evaluate(salaryExpr, context: salaryContext)
-        #expect(salaryResult as? Bool == true, "oclIsUndefined on nil 'salary' should return true")
+        #expect(
+            salaryResult as? Bool == false,
+            "oclIsUndefined on unset 'salary' should return false, as it reads as zero")
     }
 }
 

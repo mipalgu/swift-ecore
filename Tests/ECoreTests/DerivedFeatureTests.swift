@@ -26,7 +26,9 @@ struct DerivedFeatureTests {
         let derivedBooks: EReference
         let derivedFlag: EAttribute
 
-        init(readsDefaults: Bool = false) async {
+        init(
+            readsDefaults: Bool = false, unsetFeatureReads: UnsetFeatureReads = .defaults
+        ) async {
             let booksID = EUUID()
             let shelfID = EUUID()
             let stub = EClass(name: "Shelf")
@@ -63,7 +65,7 @@ struct DerivedFeatureTests {
             self.second = second
             self.shelf = shelf
             for object in [shelf, first, second] { _ = await resource.add(object) }
-            engine = ECoreExecutionEngine(models: [:])
+            engine = ECoreExecutionEngine(models: [:], unsetFeatureReads: unsetFeatureReads)
             await engine.registerResource(resource, alias: "lib")
             if readsDefaults { await engine.enableDefaultValues() }
         }
@@ -148,7 +150,7 @@ struct DerivedFeatureTests {
 
     @Test("navigation reads unset attributes as nil unless defaults are enabled")
     func engineDefaults() async throws {
-        let plain = await Library()
+        let plain = await Library(unsetFeatureReads: .undefined)
         let bare = DynamicEObject(eClass: plain.bookClass)
         _ = await plain.resource.add(bare)
         #expect(try await plain.engine.navigate(from: bare, property: "weight") == nil)
@@ -163,5 +165,61 @@ struct DerivedFeatureTests {
         let off = DynamicEObject(eClass: defaulting.bookClass)
         _ = await defaulting.resource.add(off)
         #expect(try await defaulting.engine.navigate(from: off, property: "weight") == nil)
+    }
+
+    @Test("a plain engine reads an unset attribute as its default")
+    func engineReadsDefaultsByDefault() async throws {
+        let library = await Library()
+        let bare = DynamicEObject(eClass: library.bookClass)
+        _ = await library.resource.add(bare)
+        #expect(await library.engine.unsetFeatureReads == .defaults)
+        let value = try await library.engine.navigate(from: bare, property: "weight")
+        #expect(value as? Int == 0)
+    }
+
+    @Test("the engine reports the unset feature reads mode it was created with")
+    func engineReportsMode() async throws {
+        for mode in UnsetFeatureReads.allCases {
+            let engine = ECoreExecutionEngine(models: [:], unsetFeatureReads: mode)
+            #expect(await engine.unsetFeatureReads == mode)
+        }
+    }
+
+    @Test("setting the unset feature reads mode switches navigation both ways")
+    func setUnsetFeatureReadsSwitches() async throws {
+        let library = await Library()
+        let bare = DynamicEObject(eClass: library.bookClass)
+        _ = await library.resource.add(bare)
+        await library.engine.setUnsetFeatureReads(.undefined)
+        #expect(await library.engine.unsetFeatureReads == .undefined)
+        #expect(try await library.engine.navigate(from: bare, property: "weight") == nil)
+        await library.engine.setUnsetFeatureReads(.defaults)
+        #expect(await library.engine.unsetFeatureReads == .defaults)
+        let value = try await library.engine.navigate(from: bare, property: "weight")
+        #expect(value as? Int == 0)
+        await library.engine.setUnsetFeatureReads(.undefined)
+        #expect(try await library.engine.navigate(from: bare, property: "weight") == nil)
+    }
+
+    @Test("the Boolean default value switch maps onto the unset feature reads mode")
+    func enableDefaultValuesMapsMode() async throws {
+        let library = await Library()
+        await library.engine.enableDefaultValues(false)
+        #expect(await library.engine.unsetFeatureReads == .undefined)
+        await library.engine.enableDefaultValues()
+        #expect(await library.engine.unsetFeatureReads == .defaults)
+        await library.engine.enableDefaultValues(false)
+        let bare = DynamicEObject(eClass: library.bookClass)
+        _ = await library.resource.add(bare)
+        #expect(try await library.engine.navigate(from: bare, property: "weight") == nil)
+    }
+
+    @Test("unset feature reads modes have command-line spellings")
+    func unsetFeatureReadsSpellings() {
+        for mode in UnsetFeatureReads.allCases {
+            #expect(UnsetFeatureReads(rawValue: mode.rawValue) == mode)
+        }
+        #expect(UnsetFeatureReads.allCases.count == 2)
+        #expect(UnsetFeatureReads(rawValue: "") == nil)
     }
 }

@@ -17,6 +17,10 @@ import OrderedCollections
 /// It maintains performance optimisations through caching whilst ensuring consistency
 /// across concurrent operations.
 ///
+/// Navigation reads an unset feature the way the Eclipse Modeling Framework's `eGet` does,
+/// as its default value. Pass ``UnsetFeatureReads/undefined`` to the initialiser, or to
+/// ``setUnsetFeatureReads(_:)``, to read unset features as `nil` instead.
+///
 /// ## Architecture
 ///
 /// The engine follows a layered approach:
@@ -59,20 +63,32 @@ public actor ECoreExecutionEngine: Sendable {
     /// Debug mode flag for systematic tracing.
     private var debug: Bool = false
 
-    /// Whether unset features read as their defaults during navigation.
-    private var readsDefaults: Bool = false
+    /// How navigation reads features that have not been set.
+    ///
+    /// The default, ``UnsetFeatureReads/defaults``, reads an unset feature as its default
+    /// value, as the Eclipse Modeling Framework does. Use ``setUnsetFeatureReads(_:)`` to
+    /// change it.
+    public private(set) var unsetFeatureReads: UnsetFeatureReads
 
     // MARK: - Initialisation
 
     /// Creates a new execution engine with the specified models.
     ///
+    /// Unless told otherwise, the engine reads unset features as their defaults, as the
+    /// Eclipse Modeling Framework does.
+    ///
     /// - Parameters:
     ///   - models: Dictionary of model aliases to IModel instances
     ///   - enableDebugging: Whether to enable debug output for systematic tracing
-    public init(models: [String: IModel], enableDebugging: Bool = false) {
+    ///   - unsetFeatureReads: How navigation reads features that have not been set
+    public init(
+        models: [String: IModel], enableDebugging: Bool = false,
+        unsetFeatureReads: UnsetFeatureReads = .defaults
+    ) {
         self.models = models
         typeProvider = EcoreTypeProvider()
         debug = enableDebugging
+        self.unsetFeatureReads = unsetFeatureReads
     }
 
     // MARK: - Debug Configuration
@@ -87,18 +103,31 @@ public actor ECoreExecutionEngine: Sendable {
         debug = enabled
     }
 
+    /// Chooses how navigation reads features that have not been set.
+    ///
+    /// With ``UnsetFeatureReads/defaults``, navigating to an unset attribute yields what the
+    /// Eclipse Modeling Framework yields: the default value of the attribute, such as `false`,
+    /// zero, or the converted default value literal, and an empty list for a many-valued feature
+    /// (see ``DynamicEObject/eGetWithDefault(_:)-(String)``). With
+    /// ``UnsetFeatureReads/undefined``, it yields `nil`. Previously navigated values are
+    /// discarded so that the change takes effect immediately.
+    ///
+    /// - Parameter mode: How unset features are read from now on.
+    public func setUnsetFeatureReads(_ mode: UnsetFeatureReads) {
+        unsetFeatureReads = mode
+        navigationCache.removeAll()
+    }
+
     /// Chooses whether navigation reads unset features as their defaults.
     ///
-    /// By default, navigating to an unset attribute yields `nil`. When enabled, it yields what the
-    /// Eclipse Modeling Framework yields: the default value of the attribute, such as `false`, zero,
-    /// or the converted default value literal, and an empty list for a many-valued feature (see
-    /// ``DynamicEObject/eGetWithDefault(_:)-(String)``). Previously navigated values are discarded
-    /// so that the change takes effect immediately.
+    /// Navigation reads unset features as their defaults unless told otherwise. This method
+    /// is the Boolean form of ``setUnsetFeatureReads(_:)``: `true` selects
+    /// ``UnsetFeatureReads/defaults`` and `false` selects ``UnsetFeatureReads/undefined``.
+    /// Previously navigated values are discarded so that the change takes effect immediately.
     ///
     /// - Parameter enabled: Whether unset features read as their defaults.
     public func enableDefaultValues(_ enabled: Bool = true) {
-        readsDefaults = enabled
-        navigationCache.removeAll()
+        setUnsetFeatureReads(enabled ? .defaults : .undefined)
     }
 
     /// Registers a model with the execution engine.
@@ -174,7 +203,9 @@ public actor ECoreExecutionEngine: Sendable {
         if rawResult == nil, let computed = await derivedValue(of: currentObject, feature: feature.name) {
             rawResult = computed
         }
-        if rawResult == nil, readsDefaults, let dynamic = currentObject as? DynamicEObject {
+        if rawResult == nil, unsetFeatureReads == .defaults,
+            let dynamic = currentObject as? DynamicEObject
+        {
             rawResult = dynamic.eGetWithDefault(feature)
         }
 
