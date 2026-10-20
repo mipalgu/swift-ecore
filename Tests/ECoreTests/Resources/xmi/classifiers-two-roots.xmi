@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:cls="http://example.org/classifiers"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cls:Package name="library">
+    <classifiers xsi:type="cls:DataType" name="String"/>
+    <classifiers xsi:type="cls:Class" name="Book" isAbstract="true">
+      <attributes name="title" type="//@classifiers.0"/>
+    </classifiers>
+  </cls:Package>
+  <cls:Package name="shop">
+    <classifiers xsi:type="cls:Class" name="Order"/>
+    <classifiers xsi:type="cls:DataType" name="Money"/>
+  </cls:Package>
+</xmi:XMI>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="http://example.org/classifiers">
+  <Package name="library">
+    <classifiers xsi:type="DataType" name="Integer"/>
+    <classifiers xsi:type="DataType" name="String"/>
+    <classifiers xsi:type="Class" name="Author">
+      <attributes name="surname" type="//@classifiers.1"/>
+    </classifiers>
+    <classifiers xsi:type="Class" name="Book" isAbstract="true" rank="3">
+      <attributes name="title" type="//@classifiers.1"/>
+      <attributes name="pages" type="//@classifiers.0"/>
+      <attributes name="authors" multiValued="true" type="//@classifiers.2"/>
+    </classifiers>
+  </Package>
+</xmi:XMI>
