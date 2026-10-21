@@ -103,6 +103,17 @@ public actor XMIParser {
     /// Diagnostics collected while retaining incomplete model elements.
     private var loadDiagnostics: [SourceDiagnostic] = []
 
+    /// The warnings recorded while the most recent document was parsed.
+    ///
+    /// A ``ConversionWarning/Kind/untypedClass(name:)`` warning names each class that no
+    /// registered metamodel defines and that the parser therefore fabricated from the
+    /// document. The warnings belong to the most recent parse only: each parse starts with
+    /// no warnings and fabricates its classes afresh.
+    public private(set) var diagnostics = ConversionDiagnostics()
+
+    /// The names of the classes that the most recent parse fabricated from the document.
+    private var fabricatedClassNames: Set<String> = []
+
     /// Initialises a new XMI parser.
     ///
     /// - Parameters:
@@ -223,6 +234,7 @@ public actor XMIParser {
 
         // Create new EClass for this classifier type
         let eClass = EClass(name: classifierName)
+        diagnostics.record(.untypedClass(name: classifierName))
 
         // Cache and register the EClass
         eClassCache[classifierName] = eClass
@@ -292,6 +304,9 @@ public actor XMIParser {
         }
 
         // Parse XMI content
+        diagnostics = ConversionDiagnostics()
+        fabricatedClassNames.removeAll()
+        eClassCache.removeAll()
         loadDiagnostics.removeAll()
         parsedElementIDs.removeAll()
         try await parseXMIContent(document, into: resource)
@@ -559,6 +574,15 @@ public actor XMIParser {
             {
                 declaredReferenceMap[instance.id, default: [:]][attributeName, default: []]
                     .append(contentsOf: CrossReference.parseList(attributeValue))
+                continue
+            }
+
+            // A fabricated class holds references as positional paths, possibly with type qualifiers
+            if referenceParsing == .interpreted, fabricatedClassNames.contains(enhancedEClass.name),
+                let references = Self.positionalReferences(attributeValue)
+            {
+                declaredReferenceMap[instance.id, default: [:]][attributeName, default: []]
+                    .append(contentsOf: references)
                 continue
             }
 
@@ -1895,6 +1919,8 @@ public actor XMIParser {
         }
         let eClass = EClass(name: effectiveName)
         eClassCache[effectiveName] = eClass
+        fabricatedClassNames.insert(effectiveName)
+        diagnostics.record(.untypedClass(name: effectiveName))
         return eClass
     }
 
@@ -2090,6 +2116,40 @@ public actor XMIParser {
             containmentRefs: containmentRefs,
             crossRefs: crossRefs
         )
+    }
+
+    /// Reads an attribute value of a fabricated class as same-document references.
+    ///
+    /// Without a metamodel the parser cannot tell references from text by their feature, so
+    /// a value is taken as references only if every reference it holds is a positional
+    /// fragment of the document (`/`, `//@entries.0`, `/1`, `/1/@entries.0`, each with or
+    /// without a leading `#`), optionally preceded by a type qualifier such as `cls:Class`.
+    ///
+    /// - Parameter value: The attribute value.
+    /// - Returns: The references, or `nil` if the value is not made of such references.
+    static func positionalReferences(_ value: String) -> [CrossReference]? {
+        let references = CrossReference.parseList(value)
+        guard !references.isEmpty,
+            references.allSatisfy({ $0.uri.isEmpty && isPositionalFragment($0.fragment) })
+        else { return nil }
+        return references
+    }
+
+    /// Whether a fragment is a positional path into the document.
+    ///
+    /// - Parameter fragment: The fragment without `#`.
+    /// - Returns: `true` for `/`, a path starting with `//@`, or `/` followed by the position of a root.
+    private static func isPositionalFragment(_ fragment: String) -> Bool {
+        let marker = String(CrossReferenceSyntax.segmentSeparator) + String(CrossReferenceSyntax.positionalMarker)
+        if fragment == CrossReferenceSyntax.rootFragment { return true }
+        if fragment.hasPrefix(CrossReferenceSyntax.fragmentPathPrefix) {
+            return fragment.dropFirst().hasPrefix(marker)
+        }
+        guard fragment.first == CrossReferenceSyntax.segmentSeparator else { return false }
+        let position = fragment.dropFirst().prefix { $0 != CrossReferenceSyntax.segmentSeparator }
+        guard !position.isEmpty, position.allSatisfy({ $0.isASCII && $0.isNumber }) else { return false }
+        let rest = fragment.dropFirst(1 + position.count)
+        return rest.isEmpty || rest.hasPrefix(marker)
     }
 
     /// Enhance an EClass with features discovered during parsing

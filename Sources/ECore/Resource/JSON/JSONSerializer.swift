@@ -62,17 +62,38 @@ public struct JSONSerializer: Sendable {
     /// Every `eClass` is written as `"<nsURI>#//<Name>"` when the class belongs to a metamodel
     /// registered with the resource's resource set. Non-containment references are written as
     /// `{"$ref": "<fragment>"}` (an array of such objects for many-valued features), and
-    /// references to objects of other documents as `{"$ref": "<uri>#<fragment>"}`. Keys are sorted.
+    /// references to objects of other documents as `{"$ref": "<uri>#<fragment>"}`. The
+    /// container side of a containment reference is implied by the nesting and left out of
+    /// nested objects.
+    /// Keys are sorted.
+    ///
+    /// A resource without root objects is written as an empty array (`[]`).
     ///
     /// - Parameter resource: The Resource containing objects to serialize
     /// - Returns: JSON string
     /// - Throws: `JSONError` if serialization fails
     public func serialize(_ resource: Resource) async throws -> String {
+        var diagnostics = ConversionDiagnostics()
+        return try await serialize(resource, diagnostics: &diagnostics)
+    }
+
+    /// Serialise a Resource to a JSON string, recording what cannot be kept
+    ///
+    /// The document is the one that ``serialize(_:)`` writes. The serialiser records a
+    /// ``ConversionWarning`` wherever it writes a value less faithfully than it is held: a
+    /// class of no registered package by its name alone, a reference to an object without a
+    /// fragment as the object's identifier, a contained object that the resource does not
+    /// hold, and a proxy into the written document that names no object.
+    ///
+    /// - Parameters:
+    ///   - resource: The Resource containing objects to serialise
+    ///   - diagnostics: Receives the warnings, in the order in which they first occur
+    /// - Returns: JSON string
+    /// - Throws: `JSONError` if serialisation fails
+    public func serialize(_ resource: Resource, diagnostics: inout ConversionDiagnostics) async throws -> String {
         let roots = await resource.getRootObjects()
 
-        guard !roots.isEmpty else {
-            throw JSONError.emptyResource
-        }
+        guard !roots.isEmpty else { return JSONSyntax.emptyDocument }
         let dynamicRoots = roots.compactMap { $0 as? DynamicEObject }
         guard dynamicRoots.count == roots.count else {
             throw JSONError.unsupportedObjectType
@@ -83,6 +104,7 @@ public struct JSONSerializer: Sendable {
         for root in dynamicRoots {
             documents.append(try await context.dictionary(for: root))
         }
+        diagnostics.merge(context.diagnostics)
         let document: Any = documents.count == 1 ? documents[0] : documents
 
         let data = try JSONSerialization.data(
@@ -97,6 +119,7 @@ public struct JSONSerializer: Sendable {
 
 /// Errors that can occur during JSON serialization
 public enum JSONSerializationError: Error, Sendable {
+    @available(*, deprecated, message: "An empty resource is written as an empty array, so this error is never thrown")
     case emptyResource
     case unsupportedObjectType
     case encodingFailed
@@ -104,6 +127,7 @@ public enum JSONSerializationError: Error, Sendable {
 
 // Extend JSONError to include serialization errors
 extension JSONError {
+    @available(*, deprecated, message: "An empty resource is written as an empty array, so this error is never thrown")
     static let emptyResource = JSONError.parseError("Resource contains no root objects")
     static let unsupportedObjectType = JSONError.parseError("Resource contains non-DynamicEObject objects")
     static let encodingFailed = JSONError.parseError("Failed to encode JSON to string")

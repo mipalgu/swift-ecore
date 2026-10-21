@@ -1,0 +1,70 @@
+[
+  {
+    "eClass": "http://www.example.org/catalogue#//Catalogue",
+    "featured": [
+      {
+        "$ref": "/0/@sections.0/@items.0"
+      },
+      "6F1C2B4E-0D0A-4C47-9E6B-2B8E7B5C9A21"
+    ],
+    "highlight": {
+      "$ref": "/0/@sections.0/@items.1"
+    },
+    "sections": [
+      {
+        "catalogue": {
+          "$ref": "/0"
+        },
+        "eClass": "http://www.example.org/catalogue#//Section",
+        "items": [
+          {
+            "code": "C1",
+            "eClass": "http://www.example.org/catalogue#//Item",
+            "label": "Rug",
+            "section": {
+              "$ref": "/0/@sections.0"
+            }
+          },
+          {
+            "code": "C2",
+            "eClass": "http://www.example.org/catalogue#//Item",
+            "label": "Mirror",
+            "related": [
+              {
+                "$ref": "/1/@sections.0/@items.0"
+              }
+            ],
+            "section": {
+              "$ref": "/0/@sections.0"
+            }
+          }
+        ],
+        "name": "Decor"
+      }
+    ],
+    "title": "Autumn"
+  },
+  {
+    "eClass": "http://www.example.org/catalogue#//Catalogue",
+    "sections": [
+      {
+        "catalogue": {
+          "$ref": "/1"
+        },
+        "eClass": "http://www.example.org/catalogue#//Section",
+        "items": [
+          {
+            "code": "D1",
+            "eClass": "http://www.example.org/catalogue#//Item",
+            "label": "Vase",
+            "section": {
+              "$ref": "/1/@sections.0"
+            }
+          }
+        ],
+        "name": "Ceramics"
+      }
+    ],
+    "title": "Winter"
+  }
+]

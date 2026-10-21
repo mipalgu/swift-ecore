@@ -919,8 +919,8 @@ struct RoundTripTests {
         let children = await resource3.eGet(objectId: parent!.id, feature: "children")
         #expect(children != nil, "Children feature should exist")
 
-        if let childArray = children as? [DynamicEObject] {
-            #expect(childArray.count == 2, "Should have 2 children")
+        let childArray = await containedObjects(children, in: resource3)
+        if childArray.count == 2 {
 
             // Validate first child
             let child1 = childArray[0]
@@ -937,8 +937,13 @@ struct RoundTripTests {
             let child2Age = child2.eGet("age") as? Int
             #expect(child2Name == "Charlie", "Child 2 name should be Charlie")
             #expect(child2Age == 8, "Child 2 age should be 8")
+
+            // The children contain nothing themselves
+            for child in childArray {
+                #expect(await containedObjects(child.eGet("children"), in: resource3).isEmpty, "Grandchildren should not exist")
+            }
         } else {
-            #expect(Bool(false), "Children should be array of DynamicEObject, got: \(type(of: children))")
+            #expect(Bool(false), "Should have 2 children registered with the resource, got: \(childArray.count)")
         }
 
         // Step 2: Serialize to JSON
@@ -967,11 +972,31 @@ struct RoundTripTests {
 
         // Validate round-trip children
         let childrenRound = await resource3Round.eGet(objectId: parentRound!.id, feature: "children")
-        if let childArrayRound = childrenRound as? [DynamicEObject] {
-            #expect(childArrayRound.count == 2, "Round-trip should preserve 2 children")
-        } else {
-            #expect(Bool(false), "Round-trip children should be array of DynamicEObject")
+        let childArrayRound = await containedObjects(childrenRound, in: resource3Round)
+        #expect(childArrayRound.count == 2, "Round-trip should preserve 2 children")
+        #expect(
+            childArrayRound.map { $0.eGet("name") as? String } == ["Bob", "Charlie"],
+            "Round-trip should preserve the children's names in order")
+        for child in childArrayRound {
+            #expect(child.eClass.name == "Person", "Round-trip child should be Person")
+            #expect(
+                await containedObjects(child.eGet("children"), in: resource3Round).isEmpty,
+                "Round-trip grandchildren should not exist")
         }
+    }
+
+    /// Resolves the objects that a containment value holds by their identifiers.
+    ///
+    /// - Parameters:
+    ///   - value: The stored containment value.
+    ///   - resource: The resource that holds the contained objects.
+    /// - Returns: The contained objects in order; empty if the value holds none.
+    private func containedObjects(_ value: (any EcoreValue)?, in resource: Resource) async -> [DynamicEObject] {
+        var result: [DynamicEObject] = []
+        for identifier in ReferenceValues.identifiers(value) {
+            if let object = await resource.resolve(identifier) as? DynamicEObject { result.append(object) }
+        }
+        return result
     }
 
     /// Test 4: Cross-format XMI → JSON → XMI validation

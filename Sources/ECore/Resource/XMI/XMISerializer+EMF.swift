@@ -16,12 +16,32 @@ extension XMISerializer {
     ///   - documentURI: The URI that relative references are computed against; the URI of the
     ///     resource if `nil`.
     /// - Returns: The XMI document text.
-    /// - Throws: ``XMIError`` if the resource has no root object, a root object is not a
-    ///   ``DynamicEObject``, or a reference cannot be resolved.
+    /// - Throws: ``XMIError`` if a root object is not a ``DynamicEObject`` or a reference
+    ///   cannot be resolved.
     func serializeEMFStyle(_ resource: Resource, documentURI: String? = nil) async throws -> String {
+        var diagnostics = ConversionDiagnostics()
+        return try await serializeEMFStyle(resource, documentURI: documentURI, diagnostics: &diagnostics)
+    }
+
+    /// Serialises a resource using the EMF-style layout and records what cannot be kept.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource to serialise.
+    ///   - documentURI: The URI that relative references are computed against; the URI of the
+    ///     resource if `nil`.
+    ///   - diagnostics: Receives a warning for every value that is written less faithfully
+    ///     than it is held.
+    /// - Returns: The XMI document text.
+    /// - Throws: ``XMIError`` if a root object is not a ``DynamicEObject`` or a reference
+    ///   cannot be resolved.
+    func serializeEMFStyle(
+        _ resource: Resource, documentURI: String? = nil, diagnostics: inout ConversionDiagnostics
+    ) async throws -> String {
         var writer = EMFDocumentWriter(resource: resource, options: options, documentURI: documentURI)
         await writer.prepare()
-        return try await writer.document()
+        let text = try await writer.document()
+        diagnostics.merge(writer.diagnostics)
+        return text
     }
 }
 
@@ -32,11 +52,11 @@ extension XMISerializer {
 /// a fixed order: `xmi`, `xsi` (only if a type is written), `ecore`, the prefix of the
 /// root object's package, then any other prefixes alphabetically.
 ///
-/// Same-document references are written in EMF's encoded attribute style, that is,
-/// as a fragment with a leading `#` (`type="#//@classifiers.0"`, or
+/// Same-document references are written in EMF's encoded attribute style by default, that
+/// is, as a fragment with a leading `#` (`type="#//@classifiers.0"`, or
 /// `type="#/1/@classifiers.0"` in a resource with several roots), both in attributes
-/// and in `href` child elements. The loader also accepts the plain idref form
-/// without `#`.
+/// and in `href` child elements. With ``XMIReferenceStyle/plain``, attribute values hold
+/// the fragment alone (`type="//@classifiers.0"`). The loader accepts both forms.
 struct EMFDocumentWriter {
     /// A namespace prefix and URI.
     struct PackageInfo: Equatable {
@@ -52,7 +72,12 @@ struct EMFDocumentWriter {
         var href: String
         /// The referenced object, if it could be found.
         var target: (any EObject)?
+        /// Whether the fragment locates the object; `false` if it holds the object's identifier.
+        var located = true
     }
+
+    /// The warnings recorded while the document was written.
+    var diagnostics = ConversionDiagnostics()
 
     /// The marker in the root start tag where the namespace declarations are inserted.
     private static let namespacePlaceholder = "\u{0}namespaces\u{0}"
@@ -64,8 +89,8 @@ struct EMFDocumentWriter {
     private var packagesByClassId: [EUUID: PackageInfo] = [:]
     private var packagesByClassName: [String: PackageInfo] = [:]
     private var packagesByPrefix: [String: PackageInfo] = [:]
-    private var usedPrefixes: [String: String] = [:]
-    private var needsXSI = false
+    private(set) var usedPrefixes: [String: String] = [:]
+    private(set) var needsXSI = false
     private var rootAttributes: [String] = []
     private var fragmentIndices: [ObjectIdentifier: [EUUID: String]] = [:]
 
@@ -112,20 +137,19 @@ struct EMFDocumentWriter {
 
     /// Renders the whole document.
     ///
+    /// A resource without root objects is written as ``XMIDocumentSyntax/emptyDocument``.
+    ///
     /// - Returns: The XMI text, ending in a newline.
-    /// - Throws: ``XMIError`` if there is no root object, a root is not a dynamic object,
-    ///   or a reference cannot be resolved.
+    /// - Throws: ``XMIError`` if a root is not a dynamic object or a reference cannot be resolved.
     mutating func document() async throws -> String {
         let roots = await resource.getRootObjects()
-        guard !roots.isEmpty else {
-            throw XMIError.parseError("No root object to serialise")
-        }
+        guard !roots.isEmpty else { return XMIDocumentSyntax.emptyDocument }
         fragmentIndices[ObjectIdentifier(resource)] = await PositionalFragments.index(of: resource)
-        var xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        var xml = XMIDocumentSyntax.xmlDeclaration + "\n"
         let rootPrefix: String
         if roots.count == 1 {
             let root = try dynamicObject(roots[0])
-            let info = packageInfo(for: root.eClass)
+            let info = namespace(for: root.eClass)
             markUsed(info)
             rootPrefix = info.prefix
             let body = try await render(
@@ -140,7 +164,7 @@ struct EMFDocumentWriter {
             var firstPrefix = CrossReferenceSyntax.ecorePrefix
             for (index, rootObject) in roots.enumerated() {
                 let root = try dynamicObject(rootObject)
-                let info = packageInfo(for: root.eClass)
+                let info = namespace(for: root.eClass)
                 markUsed(info)
                 if index == 0 { firstPrefix = info.prefix }
                 bodies += try await render(
@@ -173,13 +197,13 @@ struct EMFDocumentWriter {
     mutating func reference(to id: EUUID) async throws -> ResolvedReference {
         if let object = await resource.resolve(id) {
             let fragment = try await fragment(for: object, in: resource)
-            return ResolvedReference(href: fragment, target: object)
+            return ResolvedReference(href: fragment.text, target: object, located: fragment.located)
         }
         if let resourceSet, let found = await resourceSet.resolve(id) {
             let fragment = try await fragment(for: found.object, in: found.resource)
             let targetURI = found.resource.uri
             let uri = options.relativeURIs ? URIReference.relativise(targetURI, against: documentURI) : targetURI
-            return ResolvedReference(href: uri + fragment, target: found.object)
+            return ResolvedReference(href: uri + fragment.text, target: found.object, located: fragment.located)
         }
         if await resource.lostResourceSet { throw XMIError.resourceSetReleased(resource.uri) }
         throw XMIError.invalidReference("Cannot resolve object \(id)")
@@ -228,14 +252,65 @@ struct EMFDocumentWriter {
 
     /// Finds the namespace of a class.
     ///
+    /// The namespace is that of the registered package holding the class. Ecore's own
+    /// metaclasses take the Ecore namespace. A class of no registered package takes the
+    /// namespace of a registered class of the same name, and failing that the namespace
+    /// that ``fallbackPackageInfo(for:)`` derives from its name.
+    ///
     /// - Parameter eClass: The class (or Ecore metaclass).
-    /// - Returns: The namespace of the registered package that holds the class.
-    private func packageInfo(for eClass: any EClassifier) -> PackageInfo {
+    /// - Returns: The namespace of the class and whether it was derived from the class name.
+    func packageInfo(for eClass: any EClassifier) -> (info: PackageInfo, derived: Bool) {
         let identifier = (eClass as? EClass)?.id
-        if let identifier, let info = packagesByClassId[identifier] { return info }
-        if FragmentNavigator.isEcoreMetaclass(eClass.name) { return Self.ecorePackage }
-        if let info = packagesByClassName[eClass.name] { return info }
-        let prefix = eClass.name.lowercased()
+        if let identifier, let info = packagesByClassId[identifier] { return (info, false) }
+        if FragmentNavigator.isEcoreMetaclass(eClass.name) { return (Self.ecorePackage, false) }
+        if let info = packagesByClassName[eClass.name] { return (info, false) }
+        return (Self.fallbackPackageInfo(for: eClass.name), true)
+    }
+
+    /// Finds the namespace of a class for writing.
+    ///
+    /// A namespace derived from the class name is recorded as a
+    /// ``ConversionWarning/Kind/untypedClass(name:)`` warning.
+    ///
+    /// - Parameter eClass: The class (or Ecore metaclass).
+    /// - Returns: The namespace that ``packageInfo(for:)`` finds.
+    mutating func namespace(for eClass: any EClassifier) -> PackageInfo {
+        let found = packageInfo(for: eClass)
+        if found.derived { diagnostics.record(.untypedClass(name: eClass.name)) }
+        return found.info
+    }
+
+    /// Records a warning for a proxy into the written document that names no object of it.
+    ///
+    /// - Parameter proxy: The proxy that is written.
+    mutating func checkDangling(_ proxy: ResourceProxy) async {
+        guard await Self.isDangling(proxy, in: resource) else { return }
+        diagnostics.record(.unresolvedProxy(uri: proxy.uri, fragment: proxy.fragment))
+    }
+
+    /// Whether a proxy refers to a resource without naming any of its objects.
+    ///
+    /// A proxy to another document is never dangling, since that document is not examined. A
+    /// proxy to the resource itself is dangling unless its fragment locates an object (see
+    /// ``JSONFragments/resolve(fragment:in:)``) or is the XML identifier of one.
+    ///
+    /// - Parameters:
+    ///   - proxy: The proxy.
+    ///   - resource: The resource that holds the proxy.
+    /// - Returns: `true` if the proxy refers to the resource and names none of its objects.
+    static func isDangling(_ proxy: ResourceProxy, in resource: Resource) async -> Bool {
+        guard proxy.uri.isEmpty || proxy.uri == resource.uri else { return false }
+        if await JSONFragments.resolve(fragment: proxy.fragment, in: resource) != nil { return false }
+        return await !resource.ecoreDocumentMetadata.xmlIdentifiers.values.contains(proxy.fragment)
+    }
+
+    /// Derives a namespace for a class that belongs to no known package.
+    ///
+    /// - Parameter className: The name of the class.
+    /// - Returns: The lower-cased class name as prefix, appended to
+    ///   ``XMIDocumentSyntax/fallbackNamespaceBase`` as URI.
+    static func fallbackPackageInfo(for className: String) -> PackageInfo {
+        let prefix = className.lowercased()
         return PackageInfo(prefix: prefix, nsURI: XMIDocumentSyntax.fallbackNamespaceBase + prefix)
     }
 
@@ -310,17 +385,21 @@ struct EMFDocumentWriter {
     ///   - object: The object.
     ///   - target: The resource that holds the object.
     /// - Returns: A name-based fragment for Ecore elements if the options ask for it,
-    ///   otherwise a positional fragment.
+    ///   otherwise a positional fragment, and whether the fragment locates the object
+    ///   rather than holding its identifier.
     /// - Throws: ``XMIError/invalidReference(_:)`` if a positional fragment cannot be built.
-    private mutating func fragment(for object: any EObject, in target: Resource) async throws -> String {
+    private mutating func fragment(for object: any EObject, in target: Resource) async throws
+        -> (text: String, located: Bool)
+    {
         let navigator = FragmentNavigator(resource: target)
         if options.nameBasedFragments, await navigator.segmentName(of: object) != nil,
             let name = await navigator.fragment(for: object.id)
         {
-            return String(CrossReferenceSyntax.fragmentSeparator) + name
+            return (String(CrossReferenceSyntax.fragmentSeparator) + name, true)
         }
         let index = await positionalIndex(of: target)
-        return try await XMISerializer().generateXPath(for: object.id, in: target, index: index)
+        let text = try await XMISerializer().generateXPath(for: object.id, in: target, index: index)
+        return (text, index[object.id] != nil)
     }
 
     /// Returns the positional fragments of the objects of a resource.
@@ -361,15 +440,23 @@ struct EMFDocumentWriter {
             guard let value = await resource.eGet(objectId: object.id, feature: feature.name) else { continue }
             switch feature {
             case let attribute as EAttribute where !attribute.transient:
+                if Self.holdsReferences(value) {
+                    try await renderReference(
+                        named: attribute.name, declared: nil, value: value, of: object, into: &attributes,
+                        children: &children, indentation: childIndentation)
+                    continue
+                }
                 renderAttribute(
                     attribute, value: value, of: object, into: &attributes, children: &children,
                     indentation: childIndentation)
             case let reference as EReference where !reference.transient:
                 if reference.isContainerSide { continue }
                 if reference.containment {
-                    children += try await renderContainment(reference, value: value, indent: indent + 1)
+                    children += try await renderContainment(reference, value: value, of: object, indent: indent + 1)
                 } else {
-                    try await renderReference(reference, value: value, into: &attributes, children: &children, indentation: childIndentation)
+                    try await renderReference(
+                        named: reference.name, declared: reference.eType, value: value, of: object,
+                        into: &attributes, children: &children, indentation: childIndentation)
                 }
             default:
                 break
@@ -378,9 +465,17 @@ struct EMFDocumentWriter {
 
         for name in await resource.getFeatureNames(objectId: object.id)
         where !handled.contains(name) && !name.hasPrefix("_") && name != XMIDocumentSyntax.classFeatureName {
-            guard let value = await resource.eGet(objectId: object.id, feature: name),
-                value is String || value is Int || value is Double || value is Bool
-            else { continue }
+            guard let value = await resource.eGet(objectId: object.id, feature: name) else { continue }
+            if Self.holdsReferences(value) {
+                try await renderReference(
+                    named: name, declared: nil, value: value, of: object, into: &attributes, children: &children,
+                    indentation: childIndentation)
+                continue
+            }
+            guard value is String || value is Int || value is Double || value is Bool else {
+                diagnostics.record(.droppedFeature(name: name, className: object.eClass.name))
+                continue
+            }
             attributes.append("\(name)=\"\(XMISerializer.escapeAttribute(convertToString(value)))\"")
         }
 
@@ -405,7 +500,8 @@ struct EMFDocumentWriter {
     ///
     /// With the option to omit default values, an attribute whose value equals its default is
     /// left out unless the attribute is unsettable: an unsettable attribute has a value only
-    /// if it was set, so a value that is present is always written.
+    /// if it was set, so a value that is present is always written. Dates are written in the
+    /// form that EMF writes and reads (see ``EcoreDateCoding/emfString(from:)``).
     ///
     /// - Parameters:
     ///   - attribute: The declared attribute.
@@ -434,7 +530,8 @@ struct EMFDocumentWriter {
         }
         let text = convertToString(value)
         if options.omitDefaultValues && !attribute.unsettable && isDefault(text, of: attribute) { return }
-        let written = serialiser.attributeText(value, feature: attribute.name, of: object)
+        let written = (value as? Date).map(EcoreDateCoding.emfString(from:))
+            ?? serialiser.attributeText(value, feature: attribute.name, of: object)
         attributes.append("\(attribute.name)=\"\(XMISerializer.escapeAttribute(written))\"")
     }
 
@@ -474,45 +571,91 @@ struct EMFDocumentWriter {
 
     /// Renders the children of a containment reference.
     ///
+    /// Only children registered with the resource are written. A child that cannot be found,
+    /// or that is held inline rather than by its identifier, is recorded as a
+    /// ``ConversionWarning/Kind/unregisteredContainedObject(className:)`` warning.
+    ///
     /// - Parameters:
     ///   - reference: The containment reference.
     ///   - value: The stored identifier or identifiers.
+    ///   - object: The object that holds the reference.
     ///   - indent: The indentation level of the children.
     /// - Returns: The text of the child elements.
-    private mutating func renderContainment(_ reference: EReference, value: any EcoreValue, indent: Int) async throws -> String {
+    private mutating func renderContainment(
+        _ reference: EReference, value: any EcoreValue, of object: DynamicEObject, indent: Int
+    ) async throws -> String {
         let identifiers: [EUUID]
         if let single = value as? EUUID {
             identifiers = [single]
         } else if let many = value as? [EUUID] {
             identifiers = many
         } else {
+            let inline = (value as? [any EObject]) ?? (value as? any EObject).map { [$0] }
+            guard let inline else {
+                diagnostics.record(.droppedFeature(name: reference.name, className: object.eClass.name))
+                return ""
+            }
+            for child in inline { diagnostics.record(.unregisteredContainedObject(className: child.eClass.name)) }
             return ""
         }
         var text = ""
         for identifier in identifiers {
-            guard let child = await resource.resolve(identifier) as? DynamicEObject else { continue }
-            var xsiType: String?
-            if child.eClass.name != reference.eType.name {
-                let info = packageInfo(for: child.eClass)
-                markUsed(info)
-                xsiType = "\(info.prefix)\(CrossReferenceSyntax.qualifierSeparator)\(child.eClass.name)"
+            guard let child = await resource.resolve(identifier) as? DynamicEObject else {
+                diagnostics.record(.unregisteredContainedObject(className: reference.eType.name))
+                continue
             }
+            let xsiType = typeQualifier(of: child, declared: reference.eType)
             text += try await render(child, elementName: reference.name, xsiType: xsiType, indent: indent, isRoot: false)
         }
         return text
     }
 
-    /// Writes a non-containment reference as an attribute or as `href` child elements.
+    /// The `xsi:type` of a contained object whose class differs from the declared type.
+    ///
+    /// The namespace of the object's class is declared on the root element, and a class of no
+    /// known package is recorded as a ``ConversionWarning/Kind/untypedClass(name:)`` warning.
     ///
     /// - Parameters:
-    ///   - reference: The declared reference.
+    ///   - child: The contained object.
+    ///   - declared: The declared type of the containment reference.
+    /// - Returns: `prefix:Class`, or `nil` if the object's class is the declared type.
+    mutating func typeQualifier(of child: DynamicEObject, declared: any EClassifier) -> String? {
+        guard child.eClass.name != declared.name else { return nil }
+        let info = namespace(for: child.eClass)
+        markUsed(info)
+        needsXSI = true
+        return "\(info.prefix)\(CrossReferenceSyntax.qualifierSeparator)\(child.eClass.name)"
+    }
+
+    /// Whether a stored value refers to objects by identifier or by proxy.
+    ///
+    /// - Parameter value: The stored value.
+    /// - Returns: `true` for an identifier, a proxy, or a non-empty list of them.
+    static func holdsReferences(_ value: any EcoreValue) -> Bool {
+        switch value {
+        case is EUUID, is ResourceProxy: return true
+        case let identifiers as [EUUID]: return !identifiers.isEmpty
+        case let proxies as [ResourceProxy]: return !proxies.isEmpty
+        default: return false
+        }
+    }
+
+    /// Writes a non-containment reference as an attribute or as `href` child elements.
+    ///
+    /// A feature that holds identifiers without being declared as a reference, as the features
+    /// of untyped documents do, is written in the same way, without a type qualifier.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the feature.
+    ///   - declared: The declared type of the reference, or `nil` for a feature not declared as one.
     ///   - value: The stored identifier, proxy, or list of either.
+    ///   - object: The object that holds the reference.
     ///   - attributes: The attribute text of the element being written.
     ///   - children: The child element text of the element being written.
     ///   - indentation: The indentation for child elements.
     private mutating func renderReference(
-        _ reference: EReference, value: any EcoreValue, into attributes: inout [String],
-        children: inout String, indentation: String
+        named name: String, declared: (any EClassifier)?, value: any EcoreValue, of object: DynamicEObject,
+        into attributes: inout [String], children: inout String, indentation: String
     ) async throws {
         var entries: [(qualifier: String?, href: String)] = []
         let identifiers: [EUUID]
@@ -522,26 +665,33 @@ struct EMFDocumentWriter {
         case let ids as [EUUID]: (identifiers, proxies) = (ids, [])
         case let proxy as ResourceProxy: (identifiers, proxies) = ([], [proxy])
         case let list as [ResourceProxy]: (identifiers, proxies) = ([], list)
-        default: return
+        default:
+            diagnostics.record(.droppedFeature(name: name, className: object.eClass.name))
+            return
         }
         for id in identifiers {
             let resolved = try await self.reference(to: id)
-            entries.append((qualifier(for: resolved.target, declared: reference.eType), resolved.href))
+            if !resolved.located {
+                diagnostics.record(.referenceWithoutFragment(feature: name, className: object.eClass.name))
+            }
+            entries.append((declared.flatMap { qualifier(for: resolved.target, declared: $0) }, resolved.href))
         }
         for proxy in proxies {
+            await checkDangling(proxy)
             entries.append((proxyQualifier(proxy), proxyHref(proxy)))
         }
         guard !entries.isEmpty else { return }
 
         if options.attributeStyleReferences {
             let texts = entries.map { entry in
-                entry.qualifier.map { "\($0)\(CrossReferenceSyntax.listSeparator)\(entry.href)" } ?? entry.href
+                let href = attributeText(of: entry.href)
+                return entry.qualifier.map { "\($0)\(CrossReferenceSyntax.listSeparator)\(href)" } ?? href
             }
             attributes.append(
-                "\(reference.name)=\"\(XMISerializer.escapeAttribute(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\"")
+                "\(name)=\"\(XMISerializer.escapeAttribute(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\"")
         } else {
             for entry in entries {
-                var tag = "\(indentation)<\(reference.name)"
+                var tag = "\(indentation)<\(name)"
                 if let qualifier = entry.qualifier {
                     needsXSI = true
                     tag += " \(XMIAttribute.xsiType.rawValue)=\"\(qualifier)\""
@@ -549,6 +699,18 @@ struct EMFDocumentWriter {
                 children += "\(tag) \(CrossReferenceSyntax.hrefAttribute)=\"\(XMISerializer.escapeAttribute(entry.href))\"/>\n"
             }
         }
+    }
+
+    /// Spells a reference for an attribute value in the configured reference style.
+    ///
+    /// - Parameter href: The `uri#fragment` text, or `#fragment` for the written document.
+    /// - Returns: The fragment without its leading `#` for a same-document reference in the
+    ///   ``XMIReferenceStyle/plain`` style, otherwise the text unchanged.
+    private func attributeText(of href: String) -> String {
+        guard options.referenceStyle == .plain, href.first == CrossReferenceSyntax.fragmentSeparator else {
+            return href
+        }
+        return String(href.dropFirst())
     }
 
     /// Computes the type qualifier of a reference to an object.
@@ -562,7 +724,7 @@ struct EMFDocumentWriter {
         guard options.typeQualifiers, let target else { return nil }
         let targetClass = target.eClass
         guard targetClass.name != declared.name else { return nil }
-        let info = packageInfo(for: targetClass)
+        let info = namespace(for: targetClass)
         markUsed(info)
         return "\(info.prefix)\(CrossReferenceSyntax.qualifierSeparator)\(targetClass.name)"
     }

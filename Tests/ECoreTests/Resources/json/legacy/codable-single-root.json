@@ -1,0 +1,33 @@
+{
+  "eClass" : "Catalogue",
+  "featured" : [
+    "6F1C2B4E-0D0A-4C47-9E6B-2B8E7B5C9A01"
+  ],
+  "highlight" : "6F1C2B4E-0D0A-4C47-9E6B-2B8E7B5C9A02",
+  "homepage" : "http:\/\/www.example.org\/catalogue",
+  "issued" : "2026-01-02T03:04:05.123000Z",
+  "sections" : [
+    {
+      "eClass" : "Section",
+      "items" : [
+        {
+          "code" : "A1",
+          "eClass" : "Item",
+          "label" : "Lamp",
+          "price" : 12.5
+        },
+        {
+          "code" : "A2",
+          "eClass" : "Item",
+          "label" : "Desk",
+          "price" : 80,
+          "related" : [
+            "A1"
+          ]
+        }
+      ],
+      "name" : "Furniture"
+    }
+  ],
+  "title" : "Spring"
+}

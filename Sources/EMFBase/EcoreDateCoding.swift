@@ -54,6 +54,22 @@ public enum EcoreDateCoding {
         return base(seconds) + "." + pad(milliseconds * 1000, 6) + "Z"
     }
 
+    /// Writes a date in the form that the Eclipse Modeling Framework writes.
+    ///
+    /// EMF writes dates with the pattern `yyyy-MM-dd'T'HH:mm:ss.SSSZ`, so the result
+    /// looks like `2025-01-02T03:04:05.123+0000`: milliseconds and a numeric UTC offset,
+    /// which EMF's own parser reads back. The date is rounded to the nearest millisecond.
+    ///
+    /// - Parameter date: The date to write.
+    /// - Returns: The text form.
+    public static func emfString(from date: EDate) -> String {
+        let (seconds, milliseconds) = roundedToMilliseconds(date)
+        return base(seconds) + "." + pad(milliseconds, 3) + emfUTCOffset
+    }
+
+    /// The numeric time zone offset that ``emfString(from:)`` writes for UTC.
+    private static let emfUTCOffset = "+0000"
+
     /// Writes a date in internet date-time form in UTC.
     ///
     /// The result looks like `2025-01-02T03:04:05Z`; fractional seconds are

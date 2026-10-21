@@ -160,7 +160,18 @@ let documentation = book?.getEAnnotationDetail(
   (`//@authors.0`, `#/authors/0`, `other.json#//@authors.0`) resolve to objects or proxies
 - [x] Metamodel-aware saving: package-qualified `eClass` values and `{"$ref": ...}` references
 - [x] `JSONParseOptions.requiresMetamodel` turns an unknown class into an error instead of
-  falling back to a class fabricated from the document
+  falling back to classes synthesised from the document
+- [x] Nested objects take the class that their own `eClass` names (package-qualified, or a bare
+  name looked up below the declared reference type first); the declared type is the fallback
+- [x] Documents without a registered metamodel are read with classes synthesised from their keys,
+  so that nested objects are registered with the resource and survive conversion to XMI
+- [x] The container side of a containment is implied by nesting and not written
+- [x] Documents written by earlier releases load, with or without a metamodel: unqualified
+  `eClass` names, escaped slashes, inline nested objects, a single object or an array of roots,
+  container-side `$ref` entries, and references written as bare identifiers (resolved through
+  identifier attributes, otherwise kept and reported as `ConversionDiagnostics` warnings)
+- [x] An empty resource is written as `[]` and read back as an empty resource
+- [x] `JSONError` values describe themselves, naming the class or feature involved
 
 ### XMI Serialisation ✅
 
@@ -173,6 +184,17 @@ let documentation = book?.getEAnnotationDetail(
 - [x] XMI serialiser (Step 4.5) - Full serialisation with attributes, containment, and cross-references
 - [x] Round-trip tests - XMI → memory → XMI with in-memory verification at each step
 - [x] Cross-resource references (Step 4.6)
+- [x] `XMISerializationOptions.referenceStyle`: `.encoded` (the default) writes same-document
+  references in attributes as `#//@entries.0`, `.plain` as `//@entries.0`; references into
+  other documents and `href` elements keep their `#`
+- [x] An empty resource is written as the `xmi:XMI` wrapper element alone, as EMF does, and read
+  back as an empty resource
+- [x] The legacy writer takes namespaces from the registered packages (or the metamodel snapshot of
+  a released resource set); only classes of no known package get a namespace derived from their name
+- [x] `ConversionDiagnostics`: `XMISerializer.serialize(_:diagnostics:)`,
+  `JSONSerializer.serialize(_:diagnostics:)`, and the `diagnostics` of `XMIParser` and
+  `JSONParser` report untyped classes, references without fragments, dropped values,
+  unregistered contained objects, and unresolved references instead of losing them silently
 - [x] Cross-document reference attributes - `ecoreFeature="ecore:EAttribute library.ecore#//Book/title"`, space-separated lists, and `href` child elements, for references declared by a registered metamodel
 - [x] Name-based Ecore fragments - `#/`, `#//Book`, `#//Book/title`, `#//sub/Class`, `#//Enum/Literal`, operations and parameters (`FragmentNavigator`, `XPathResolver`)
 - [x] Multi-root positional fragments - as in EMF, the only root of a resource is `#/` and its contents `#//@feature.index`, while root `n` of a resource with several roots is `#/n` and its contents `#/n/@feature.index` (`PositionalFragments`, `XPathResolver`); the container side of a containment is never written

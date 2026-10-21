@@ -138,6 +138,30 @@ struct MultiRootFragmentTests {
         #expect(!text.contains("//@classifiers"), "\(text)")
     }
 
+    @Test("the plain reference style combines with type qualifiers")
+    func plainWriterQualifiedReference() async throws {
+        let (_, resource, _, _, _) = try await Self.loadTwoRoots()
+        var options = XMISerializationOptions.emf
+        options.referenceStyle = .plain
+        let text = try await XMISerializer(options: options).serialize(resource)
+        #expect(text.contains("type=\"cls:DataType /0/@classifiers.0\""), "\(text)")
+        #expect(!text.contains("#/0"), "\(text)")
+    }
+
+    @Test("a plain reference to the only root parses as a reference")
+    func plainRootReference() {
+        #expect(CrossReference.parseList("/") == [CrossReference(uri: "", fragment: "/")])
+        #expect(
+            CrossReference.parseList("cls:Package /")
+                == [CrossReference(qualifier: "cls:Package", uri: "", fragment: "/")])
+        #expect(
+            CrossReference.parseList("cls:Package / //@classifiers.0")
+                == [
+                    CrossReference(qualifier: "cls:Package", uri: "", fragment: "/"),
+                    CrossReference(uri: "", fragment: "//@classifiers.0"),
+                ])
+    }
+
     @Test("the legacy writer writes a same-document reference as an href with #")
     func legacyWriterHref() async throws {
         let (_, resource, _, _, _) = try await Self.loadTwoRoots()
@@ -221,7 +245,12 @@ struct MultiRootFragmentTests {
         #expect(ReferenceValues.identifiers(total.eGet("type")) == [shop[1].id])
     }
 
-    @Test("a save of later-root references reloads them", arguments: [XMISerializationOptions.legacy, .emf])
+    @Test(
+        "a save of later-root references reloads them",
+        arguments: [
+            XMISerializationOptions.legacy, .emf,
+            XMISerializationOptions(attributeStyleReferences: true, typeQualifiers: true, referenceStyle: .plain),
+        ])
     func laterRootRoundTrip(options: XMISerializationOptions) async throws {
         let (set, _) = try await WrappedDocumentLoadingTests.makeResourceSet()
         let resource = try await XMIParser(resourceSet: set).parse(Self.crossRootDocument, uri: "memory:/cross-root.xmi")

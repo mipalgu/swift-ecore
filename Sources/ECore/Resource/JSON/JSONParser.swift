@@ -42,8 +42,12 @@ public struct JSONParseOptions: Sendable, Equatable {
 /// the metamodel: attribute values are converted by their data types, enumerations hold
 /// literal names, nested objects take the class of their containment reference (or their
 /// own `eClass` if it names a subclass), and `$ref` values are resolved to the objects they
-/// denote (see ``JSONFragments``). Otherwise the parser fabricates classes from the document,
-/// unless ``JSONParseOptions/requiresMetamodel`` asks for an error.
+/// denote (see ``JSONFragments``). Otherwise the parser synthesises classes from the document,
+/// unless ``JSONParseOptions/requiresMetamodel`` asks for an error: each class takes the keys
+/// of its objects as features, nested objects become contained objects, and `$ref` values
+/// become references. Either way every object, including every nested one, is registered
+/// with the resource, and contained objects are held by their identifiers. A document that
+/// is an empty array yields an empty resource.
 ///
 /// ## JSON Format
 ///
@@ -74,6 +78,16 @@ public struct JSONParseOptions: Sendable, Equatable {
 public actor JSONParser {
     private let resourceSet: ResourceSet?
     private let options: JSONParseOptions
+
+    /// The warnings recorded while the most recent document was parsed.
+    ///
+    /// The parser records a ``ConversionWarning/Kind/untypedClass(name:)`` warning for each
+    /// class that it synthesises because no registered metamodel defines it, a
+    /// ``ConversionWarning/Kind/droppedFeature(name:className:)`` warning for a value that
+    /// its class does not define and that is not a primitive, and a
+    /// ``ConversionWarning/Kind/unresolvedProxy(uri:fragment:)`` warning for a reference
+    /// into the document that names no object. Each parse starts with no warnings.
+    public private(set) var diagnostics = ConversionDiagnostics()
 
     /// Initializes a new JSON parser
     ///
@@ -119,78 +133,68 @@ public actor JSONParser {
             resource = Resource(uri: uri)
         }
 
-        // Try to decode as array first, then fall back to single object
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-
-        // Check if JSON is an array or single object
+        diagnostics = ConversionDiagnostics()
         let json = try JSONSerialization.jsonObject(with: data, options: [])
-
-        let documents: [[String: Any]]? = (json as? [[String: Any]]) ?? (json as? [String: Any]).map { [$0] }
-        if let documents, let first = documents.first,
+        guard let documents = (json as? [[String: Any]]) ?? (json as? [String: Any]).map({ [$0] }) else {
+            throw JSONError.invalidFormat("JSON must be an object with eClass field")
+        }
+        if let first = documents.first,
             let classes = await MetamodelClasses(resourceSet: resourceSet),
             let identifier = first[JSONSyntax.eClassKey] as? String, classes.resolve(identifier) != nil
         {
             var builder = JSONModelBuilder(classes: classes)
             try await builder.populate(resource, from: documents)
+            diagnostics.merge(builder.diagnostics)
             return resource
         }
-        if options.requiresMetamodel, let documents, !documents.isEmpty {
+        if options.requiresMetamodel, !documents.isEmpty {
             let identifier = documents[0][JSONSyntax.eClassKey] as? String
             throw JSONError.unresolvedMetamodel(
                 "No registered metamodel defines the class \(identifier ?? "(missing eClass)") of \(uri)")
         }
 
-        if let jsonArray = json as? [[String: Any]] {
-            // Multiple root objects
-            var rootObjects: [any EObject] = []
-            for jsonObject in jsonArray {
-                let objectData = try JSONSerialization.data(withJSONObject: jsonObject, options: [])
-                rootObjects.append(try await parseSingleObject(from: objectData, decoder: decoder, in: resource))
-            }
-            await resource.add(contentsOf: rootObjects)
-        } else {
-            // Single root object
-            let dynamicObject = try await parseSingleObject(from: data, decoder: decoder, in: resource)
-            await resource.add(dynamicObject)
-        }
-
+        // No registered metamodel defines the classes: synthesise them from the document
+        let classes = SynthesisedClasses(documents: documents)
+        for name in classes.names { diagnostics.record(.untypedClass(name: name)) }
+        var builder = JSONModelBuilder(classes: classes)
+        try await builder.populate(resource, from: documents)
+        diagnostics.merge(builder.diagnostics)
         return resource
-    }
-
-    /// Parse a single JSON object into a DynamicEObject
-    private func parseSingleObject(from data: Data, decoder: JSONDecoder, in resource: Resource) async throws -> DynamicEObject {
-        // Extract eClass to determine metamodel
-        let json = try JSONSerialization.jsonObject(with: data, options: [])
-        guard let jsonDict = json as? [String: Any] else {
-            throw JSONError.invalidFormat("JSON must be an object with eClass field")
-        }
-
-        guard let eClassString = jsonDict[JSONSyntax.eClassKey] as? String else {
-            throw JSONError.missingEClass
-        }
-
-        // No registered metamodel defines the class: fabricate one from the document
-        let eClass = DynamicEObject.createDynamicEClass(from: eClassString, jsonDict: jsonDict)
-
-        // Set up decoder with EClass context
-        decoder.userInfo[.eClassKey] = eClass
-
-        // Decode the DynamicEObject
-        let dynamicObject = try decoder.decode(DynamicEObject.self, from: data)
-
-        return dynamicObject
     }
 }
 
 /// Errors that can occur during JSON parsing
 public enum JSONError: Error, Sendable {
+    /// The document does not have the structure of a JSON resource.
+    ///
+    /// The associated value describes what was found instead.
     case invalidFormat(String)
+
+    /// An object of the document has no `eClass` entry and no containment reference implies its class.
     case missingEClass
+
+    /// A value of the document could not be read, or the resource could not be written.
+    ///
+    /// The associated value describes the value and the feature involved.
     case parseError(String)
 
     /// A registered metamodel was required but does not define the class of the document.
     ///
     /// The associated value describes the class that could not be found.
     case unresolvedMetamodel(String)
+}
+
+extension JSONError: CustomStringConvertible, LocalizedError {
+    /// A sentence that describes the error, naming the class or feature involved.
+    public var description: String {
+        switch self {
+        case .invalidFormat(let detail): return "Invalid JSON resource: \(detail)"
+        case .missingEClass: return "A JSON object has no '\(JSONSyntax.eClassKey)' entry that names its class"
+        case .parseError(let detail): return detail
+        case .unresolvedMetamodel(let detail): return detail
+        }
+    }
+
+    /// The ``description`` of the error.
+    public var errorDescription: String? { description }
 }

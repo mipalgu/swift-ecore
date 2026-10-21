@@ -1,0 +1,19 @@
+[
+  {
+    "eClass" : "Catalogue",
+    "sections" : [
+      "6F1C2B4E-0D0A-4C47-9E6B-2B8E7B5C9A11",
+      "6F1C2B4E-0D0A-4C47-9E6B-2B8E7B5C9A12"
+    ],
+    "title" : "Summer"
+  },
+  {
+    "code" : "B1",
+    "eClass" : "Item",
+    "label" : "Chair",
+    "price" : 45.25,
+    "related" : [
+      "6F1C2B4E-0D0A-4C47-9E6B-2B8E7B5C9A13"
+    ]
+  }
+]

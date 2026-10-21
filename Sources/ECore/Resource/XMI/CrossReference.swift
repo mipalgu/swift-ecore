@@ -50,7 +50,7 @@ public struct CrossReference: Sendable, Equatable {
     /// Parses the value of a reference attribute.
     ///
     /// Tokens are separated by white space. A token that contains `#` or is a positional
-    /// path into the same document (`//@entries.0`, `/1`, `/1/@entries.0`) is a reference;
+    /// path into the same document (`/`, `//@entries.0`, `/1`, `/1/@entries.0`) is a reference;
     /// a preceding token without `#` that contains a `:` is its type qualifier. Any other
     /// token is taken to be an `xmi:id` reference into the same document.
     ///
@@ -80,11 +80,12 @@ public struct CrossReference: Sendable, Equatable {
     /// Whether a token has the form of a reference (as opposed to a type qualifier).
     ///
     /// - Parameter token: The token to test.
-    /// - Returns: `true` if the token contains `#`, starts with `//`, or starts with `/`
-    ///   followed by the position of a root.
+    /// - Returns: `true` if the token contains `#`, starts with `//`, is `/` (the only root of
+    ///   a resource), or starts with `/` followed by the position of a root.
     private static func isReference(_ token: String) -> Bool {
         token.contains(CrossReferenceSyntax.fragmentSeparator)
             || token.hasPrefix(CrossReferenceSyntax.fragmentPathPrefix)
+            || token == CrossReferenceSyntax.rootFragment
             || isRootPath(token)
     }
 

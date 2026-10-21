@@ -870,6 +870,30 @@ public enum XMIDocumentSyntax {
     /// The name of the wrapper element for documents with more than one root object.
     public static let multipleRootElement = "XMI"
 
+    /// The class name given to objects whose class cannot be determined.
+    ///
+    /// The name is deliberately not that of an Ecore metaclass, so that such objects are
+    /// neither written in the Ecore namespace nor read back as instances of Ecore's classes.
+    public static let untypedClassName = "Object"
+
+    /// The XML declaration that starts every serialised document.
+    ///
+    /// Documents are written in UTF-8 as XML 1.0, as EMF writes them; the declaration is
+    /// followed by a newline and the root element.
+    public static let xmlDeclaration = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"
+
+    /// The document written for a resource without root objects.
+    ///
+    /// As in EMF, the document consists of the XML declaration and an empty `xmi:XMI`
+    /// wrapper element that declares the XMI namespace, followed by a newline.
+    public static let emptyDocument: String = {
+        let wrapper = CrossReferenceSyntax.xmiPrefix + String(CrossReferenceSyntax.qualifierSeparator)
+            + multipleRootElement
+        let version = "\(XMIAttribute.xmiVersion.rawValue)=\"\(CrossReferenceSyntax.xmiVersion)\""
+        let namespace = "\(CrossReferenceSyntax.namespaceAttribute(for: CrossReferenceSyntax.xmiPrefix))=\"\(EcoreURI.xmiNamespace.rawValue)\""
+        return "\(xmlDeclaration)\n<\(wrapper) \(version) \(namespace)/>\n"
+    }()
+
     /// The name of the stored feature that holds the class reference of an object.
     ///
     /// It is bookkeeping rather than model data, so serialisers skip it.

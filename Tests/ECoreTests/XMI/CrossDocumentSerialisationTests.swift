@@ -310,10 +310,10 @@ struct CrossDocumentSerialisationTests {
             """)
     }
 
-    @Test("Empty resources and non-dynamic roots are rejected")
+    @Test("Empty resources are written as the wrapper and non-dynamic roots are rejected")
     func rejectsUnsupportedRoots() async throws {
         let empty = Resource(uri: "file:///models/empty.xmi")
-        await #expect(throws: XMIError.self) { _ = try await XMISerializer(options: .emf).serialize(empty) }
+        #expect(try await XMISerializer(options: .emf).serialize(empty) == EmptyDocumentTests.emptyXMI)
 
         let native = Resource(uri: "file:///models/native.ecore")
         await native.registerNativePackage(EPackage(name: "p", nsURI: "http://x/p", nsPrefix: "p"))

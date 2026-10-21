@@ -88,6 +88,10 @@ try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "employee
 - ``ResourceSet``
 - ``XMIParser``
 - ``XMISerializer``
+- ``XMISerializationOptions``
+- ``XMIReferenceStyle``
+- ``ConversionDiagnostics``
+- ``ConversionWarning``
 - ``JSONParser``
 - ``JSONSerializer``
 - ``JSONParseOptions``

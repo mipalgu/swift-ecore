@@ -205,4 +205,110 @@ struct SerialiserReferenceTests {
         let attributeText = try await XMISerializer(options: joined).serialize(resource)
         #expect(attributeText.contains("tags=\"alpha beta &amp; gamma\""))
     }
+
+    // MARK: Reference style
+
+    /// The EMF layout with same-document references written in the plain style.
+    private static let plainEMF: XMISerializationOptions = {
+        var options = XMISerializationOptions.emf
+        options.referenceStyle = .plain
+        return options
+    }()
+
+    @Test("the presets and the default options write encoded references")
+    func presetsAreEncoded() {
+        #expect(XMISerializationOptions.emf.referenceStyle == .encoded)
+        #expect(XMISerializationOptions.emfWrapped.referenceStyle == .encoded)
+        #expect(XMISerializationOptions.legacy.referenceStyle == .encoded)
+        #expect(XMISerializationOptions().referenceStyle == .encoded)
+        #expect(XMISerializationOptions(referenceStyle: .plain).referenceStyle == .plain)
+        #expect(XMISerializationOptions(referenceStyle: .plain) != .legacy)
+    }
+
+    @Test("the reference styles are spelt as on the command line")
+    func referenceStyleSpellings() {
+        #expect(XMIReferenceStyle.allCases.map(\.rawValue) == ["encoded", "plain"])
+        #expect(XMIReferenceStyle(rawValue: "plain") == .plain)
+    }
+
+    @Test("the plain style writes many-valued same-document references without #")
+    func plainManyLocalReferences() async throws {
+        let (_, resource, _) = try await makeClub { club, people in
+            club.eSet("alumni", value: [people[2].id, people[0].id])
+            club.eSet("sponsor", value: people[1].id)
+        }
+        let text = try await XMISerializer(options: Self.plainEMF).serialize(resource)
+        #expect(text.contains("alumni=\"//@members.2 //@members.0\""), "\(text)")
+        #expect(text.contains("sponsor=\"//@members.1\""), "\(text)")
+        #expect(!text.contains("\"#//"), "\(text)")
+    }
+
+    @Test("the plain style keeps the # of references into other documents")
+    func plainCrossDocumentReferences() async throws {
+        let (_, resource, _) = try await makeClub { club, people in
+            club.eSet("sponsor", value: ResourceProxy(uri: "other.xmi", fragment: "//@members.0"))
+            club.eSet("alumni", value: [people[1].id])
+        }
+        let text = try await XMISerializer(options: Self.plainEMF).serialize(resource)
+        #expect(text.contains("sponsor=\"other.xmi#//@members.0\""), "\(text)")
+        #expect(text.contains("alumni=\"//@members.1\""), "\(text)")
+    }
+
+    @Test("the plain style leaves href elements unchanged")
+    func plainHrefElements() async throws {
+        let (_, resource, _) = try await makeClub { club, people in
+            club.eSet("alumni", value: [people[2].id])
+        }
+        let text = try await XMISerializer(options: XMISerializationOptions(referenceStyle: .plain)).serialize(resource)
+        #expect(text.contains("<alumni href=\"#//@members.2\"/>"), "\(text)")
+    }
+
+    @Test("the plain style does not change metamodel documents")
+    func plainMetamodelUnchanged() {
+        let package = Self.makeMetamodel()
+        #expect(XMISerializer(options: Self.plainEMF).serialize(package) == XMISerializer(options: .emf).serialize(package))
+    }
+
+    @Test("a document written in the plain style loads back unchanged")
+    func plainRoundTrip() async throws {
+        let (set, resource, _) = try await makeClub { club, people in
+            club.eSet("alumni", value: [people[1].id, people[2].id])
+            club.eSet("sponsor", value: people[0].id)
+        }
+        let text = try await XMISerializer(options: Self.plainEMF).serialize(resource)
+        let reloaded = try await XMIParser(resourceSet: set).parse(text, uri: "file:///club-plain.xmi")
+        let root = try #require(await reloaded.getRootObjects().first as? DynamicEObject)
+        let members = try #require(root.eGet("members") as? [EUUID])
+        #expect(members.count == 3)
+        #expect(root.eGet("alumni") as? [EUUID] == [members[1], members[2]])
+        #expect(root.eGet("sponsor") as? EUUID == members[0])
+    }
+
+    @Test("a plain reference to the only root is written as / and loads back")
+    func plainRootReferenceRoundTrip() async throws {
+        let childrenID = EUUID()
+        var node = EClass(name: "Node")
+        node.eStructuralFeatures = [
+            EReference(id: childrenID, name: "children", eType: node, upperBound: -1, containment: true),
+            EReference(name: "peer", eType: node),
+        ]
+        let package = EPackage(name: "graph", nsURI: "http://www.example.org/graph", nsPrefix: "graph", eClassifiers: [node])
+        let set = ResourceSet()
+        await set.registerMetamodel(package, uri: package.nsURI)
+        let nodeClass = try #require(package.getEClass("Node"))
+        var root = DynamicEObject(eClass: nodeClass)
+        var child = DynamicEObject(eClass: nodeClass)
+        child.eSet("peer", value: root.id)
+        root.eSet("children", value: [child.id])
+        let resource = await set.createResource(uri: "file:///graph.xmi")
+        await resource.register(child)
+        await resource.add(root)
+        let text = try await XMISerializer(options: Self.plainEMF).serialize(resource)
+        #expect(text.contains("<children peer=\"/\"/>"), "\(text)")
+        let reloaded = try await XMIParser(resourceSet: set).parse(text, uri: "file:///graph-plain.xmi")
+        let loadedRoot = try #require(await reloaded.getRootObjects().first as? DynamicEObject)
+        let childID = try #require(ReferenceValues.identifiers(loadedRoot.eGet("children")).first, "\(text)")
+        let loadedChild = try #require(await reloaded.resolve(childID) as? DynamicEObject)
+        #expect(loadedChild.eGet("peer") as? EUUID == loadedRoot.id)
+    }
 }

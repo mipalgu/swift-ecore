@@ -31,4 +31,10 @@ public enum JSONSyntax {
 
     /// The JSON pointer escape of a tilde inside a segment.
     public static let pointerTildeEscape = "~0"
+
+    /// The document written for a resource without root objects.
+    ///
+    /// A JSON resource holds one root object or an array of roots, so a resource without
+    /// roots is an empty array, which reads back as an empty resource.
+    public static let emptyDocument = "[]"
 }

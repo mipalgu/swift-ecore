@@ -45,6 +45,26 @@ public enum XMIRootLayout: Sendable, Equatable, CaseIterable {
     }
 }
 
+/// How references to objects of the written document are spelt in attribute values.
+///
+/// EMF reads both spellings. Its own XMI writer encodes a same-document reference as
+/// a fragment with a leading `#` (`#//@entries.0`), while documents that follow the
+/// plain XMI identifier style hold the fragment alone (`//@entries.0`). The raw value
+/// of each case is the spelling that selects it on a command line.
+public enum XMIReferenceStyle: String, Sendable, CaseIterable {
+    /// Same-document references carry a leading `#` (`#//@entries.0`, `#/1/@entries.0`).
+    ///
+    /// This is the spelling that EMF's XMI writer uses, and the default.
+    case encoded
+
+    /// Same-document references are written without the leading `#` (`//@entries.0`,
+    /// `/1/@entries.0`, or `/` for the only root).
+    ///
+    /// References into other documents keep their `uri#fragment` form, and references
+    /// written as `href` child elements always keep the `#`.
+    case plain
+}
+
 /// Options that control how ``XMISerializer`` lays out a document.
 ///
 /// The default, ``legacy``, reproduces the layout this package has always written.
@@ -88,6 +108,13 @@ public struct XMISerializationOptions: Sendable, Equatable {
     /// How the root element's start tag is wrapped when ``lineWidth`` is set.
     public var rootLayout: XMIRootLayout
 
+    /// How references into the written document are spelt when they are written as attributes.
+    ///
+    /// The style applies to model instance documents written with
+    /// ``attributeStyleReferences``. It does not change `href` child elements, references
+    /// into other documents, or metamodel (`.ecore`) and generator model documents.
+    public var referenceStyle: XMIReferenceStyle
+
     /// The line width that EMF's editors use when they write `.ecore` documents.
     public static let emfLineWidth = 80
 
@@ -102,6 +129,7 @@ public struct XMISerializationOptions: Sendable, Equatable {
     ///   - manyValuedAttributesAsElements: Whether many-valued attributes become child elements.
     ///   - lineWidth: The width after which attributes continue on a new line, or `nil` for none.
     ///   - rootLayout: How the root element's start tag is wrapped.
+    ///   - referenceStyle: How same-document references are spelt in attribute values.
     public init(
         attributeStyleReferences: Bool = false,
         typeQualifiers: Bool = false,
@@ -110,7 +138,8 @@ public struct XMISerializationOptions: Sendable, Equatable {
         omitDefaultValues: Bool = false,
         manyValuedAttributesAsElements: Bool = false,
         lineWidth: Int? = nil,
-        rootLayout: XMIRootLayout = .standard
+        rootLayout: XMIRootLayout = .standard,
+        referenceStyle: XMIReferenceStyle = .encoded
     ) {
         self.attributeStyleReferences = attributeStyleReferences
         self.typeQualifiers = typeQualifiers
@@ -120,6 +149,7 @@ public struct XMISerializationOptions: Sendable, Equatable {
         self.manyValuedAttributesAsElements = manyValuedAttributesAsElements
         self.lineWidth = lineWidth
         self.rootLayout = rootLayout
+        self.referenceStyle = referenceStyle
     }
 
     /// The layout this package has always written (all switches off).
