@@ -56,29 +56,7 @@ public enum GenModelPackage {
     /// - Throws: ``GenModelError/metamodelResourceMissing`` if the bundled document is
     ///   missing, or the loader's error if it cannot be parsed.
     public static func load() async throws -> EPackage {
-        try await cache.package()
-    }
-
-    private static let cache = PackageCache()
-
-    private actor PackageCache {
-        private var loading: Task<EPackage, Error>?
-
-        func package() async throws -> EPackage {
-            if let loading { return try await loading.value }
-            let task = Task { () async throws -> EPackage in
-                guard let url = GenModelPackage.resourceURL else {
-                    throw GenModelError.metamodelResourceMissing
-                }
-                return try await EPackage(url: url)
-            }
-            loading = task
-            do {
-                return try await task.value
-            } catch {
-                loading = nil
-                throw error
-            }
-        }
+        guard let url = resourceURL else { throw GenModelError.metamodelResourceMissing }
+        return try await BundledMetamodelCache.shared.package(at: url)
     }
 }

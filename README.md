@@ -251,6 +251,25 @@ try await ModelIO.save(loaded.resource, to: jsonURL, diagnostics: &diagnostics)
 for warning in diagnostics.warnings { print(warning) }
 ```
 
+### Bundled Metamodels ✅
+
+- [x] `EPackage.bundled(named:withExtension:subdirectory:in:bundleName:registeringIn:cache:)` loads
+  an `.ecore` document that a target ships as a package resource, optionally registering it (with
+  its nested packages) in a `ResourceSet`
+- [x] `BundledMetamodelCache` loads each document once per location, so every caller gets the same
+  package with the same element identifiers; `BundledMetamodelCache.shared` serves a whole program
+- [x] `BundledResources` finds resources in `Bundle.module` or, where that bundle is not available
+  (such as on WASI), in the `<package>_<target>.resources` directory (`ResourceBundleName`) beside
+  the executable or in the current directory
+
+```swift
+let resourceSet = ResourceSet()
+let package = try await EPackage.bundled(
+    named: "Library", subdirectory: "Resources", in: .module,
+    bundleName: ResourceBundleName(package: "swift-example", target: "Metamodels"),
+    registeringIn: resourceSet)
+```
+
 ### Generic JSON Serialisation ✅
 
 - [x] JSON parser for model instances (Step 5.1)

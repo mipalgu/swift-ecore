@@ -170,6 +170,23 @@ Registering a metamodel also registers each of its nested packages under its own
 URI, so documents whose objects are qualified by the namespace of a subpackage are read with
 the classes of that subpackage. ``ModelFormat`` detects the format of a document on its own.
 
+## Shipping a Metamodel with a Package
+
+A package that ships an `.ecore` document as a resource of one of its targets loads it with
+``EPackage/bundled(named:withExtension:subdirectory:in:bundleName:registeringIn:cache:)``.
+The document is loaded once, through ``BundledMetamodelCache``, so every caller receives the
+same package:
+
+```swift
+let package = try await EPackage.bundled(
+    named: "Company", subdirectory: "Resources", in: .module,
+    bundleName: ResourceBundleName(package: "swift-example", target: "Metamodels"),
+    registeringIn: resourceSet)
+```
+
+The bundle name is used where `Bundle.module` is not available, such as on WASI, to find the
+resource directory beside the executable.
+
 ## Next Steps
 
 - <doc:UnderstandingEcore> - Learn about the core concepts

@@ -101,6 +101,10 @@ try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "employee
 - ``ModelFormatError``
 - ``ModelIO``
 - ``ModelIOError``
+- ``BundledMetamodelCache``
+- ``BundledMetamodelError``
+- ``BundledResources``
+- ``ResourceBundleName``
 
 ### Commands and Editing
 
