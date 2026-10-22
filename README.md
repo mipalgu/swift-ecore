@@ -108,6 +108,9 @@ retained unresolved references. Each constraint can be disabled through validato
 - [x] Native `EOperation` and `EParameter` values, reflective access, containment navigation, name-based fragments (`#//Class/op/param`), and serialisation
 - [x] `eGenericType` children supply the type (the raw classifier); type arguments, type parameters, and bounds are not represented
 - [x] Enumerations (`getAllInstancesOf`, `getAllObjectsIncludingContents`) are in document (containment) order and identical on every load
+- [x] Nested packages: `EPackage(url:)` returns the root package with its `eSubpackages` attached, `allPackages` lists a package and every nested package depth first, and `getClassifier(_:includingSubpackages:)` searches them all
+- [x] Registering a metamodel (`ResourceSet.registerMetamodel`, `loadEcoreResource`) also registers every nested package under its own `nsURI`, so instances whose objects are qualified by the namespace of a subpackage (`xmlns:kernel="http://example.org/root/kernel"`) get the classes of that subpackage; explicit registrations take precedence, and `getMetamodelURIs(includingSubpackages: true)` lists both
+- [x] A class qualified by the namespace of an enclosing package (for example a subpackage class written as `root:Node`) is found in its nested packages
 
 ```swift
 let package = try await EPackage(url: libraryURL)       // also resolves types in other documents

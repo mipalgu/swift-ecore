@@ -51,6 +51,9 @@ public actor ResourceSet {
     /// relying on global variables, as requested.
     private var metamodelRegistry: OrderedDictionary<String, EPackage>
 
+    /// The nested packages of the registered metamodels, indexed by their namespace URIs.
+    private var nestedPackages: OrderedDictionary<String, EPackage> = [:]
+
     /// The registered metamodels, shared with the resources of the set so that they remain
     /// available to the resources after the set has been released.
     nonisolated let metamodelSnapshot = MetamodelSnapshot()
@@ -248,22 +251,46 @@ public actor ResourceSet {
     /// This enables namespace-based metamodel resolution without global variables.
     /// The package becomes available for model instantiation and reference resolution.
     ///
+    /// Every package nested in the registered package that has a namespace URI of its own
+    /// becomes available under that URI as well, so that documents whose objects are
+    /// qualified by the namespace of a subpackage find its classes. A package registered
+    /// explicitly under a URI takes precedence over a nested package with the same URI, and
+    /// of several nested packages with the same URI the one registered first is used.
+    /// Nested packages are found by ``getMetamodel(uri:)`` and listed by
+    /// ``getMetamodelURIs(includingSubpackages:)``, but not by ``getMetamodelURIs()``.
+    ///
     /// - Parameters:
     ///   - package: The root package of the metamodel to register.
     ///   - uri: The namespace URI identifying this metamodel.
     public func registerMetamodel(_ package: EPackage, uri: String) {
         metamodelRegistry[uri] = package
+        nestedPackages = NestedPackageIndex.build(from: metamodelRegistry)
         metamodelSnapshot.register(package, uri: uri)
     }
 
+    /// Registers a metamodel package under its own namespace URI.
+    ///
+    /// This is ``registerMetamodel(_:uri:)`` with the ``EPackage/nsURI`` of the package,
+    /// including the registration of its nested packages.
+    ///
+    /// - Parameter package: The root package of the metamodel to register.
+    public func registerMetamodel(_ package: EPackage) {
+        registerMetamodel(package, uri: package.nsURI)
+    }
+
     /// Unregisters a metamodel by its namespace URI.
+    ///
+    /// The nested packages of the metamodel are no longer found by their namespace URIs,
+    /// unless another registered metamodel also contains a package with that URI.
     ///
     /// - Parameter uri: The namespace URI of the metamodel to unregister.
     /// - Returns: The unregistered package, or `nil` if not found.
     @discardableResult
     public func unregisterMetamodel(uri: String) -> EPackage? {
         metamodelSnapshot.unregister(uri: uri)
-        return metamodelRegistry.removeValue(forKey: uri)
+        let removed = metamodelRegistry.removeValue(forKey: uri)
+        nestedPackages = NestedPackageIndex.build(from: metamodelRegistry)
+        return removed
     }
 
     /// Gets a metamodel package by its namespace URI.
@@ -273,11 +300,15 @@ public actor ResourceSet {
     /// package has been registered under that URI. The built-in package is not listed
     /// by ``getMetamodelURIs()``, which reports explicit registrations only.
     ///
+    /// A URI under which no package is registered explicitly finds the package nested in a
+    /// registered metamodel that has this namespace URI (see ``registerMetamodel(_:uri:)``).
+    ///
     /// - Parameter uri: The namespace URI of the metamodel to retrieve.
     /// - Returns: The metamodel package, or `nil` if not registered.
     public func getMetamodel(uri: String) -> EPackage? {
         if let registered = metamodelRegistry[uri] { return registered }
-        return uri == EcorePackage.nsURI ? EcorePackage.instance : nil
+        if uri == EcorePackage.nsURI { return EcorePackage.instance }
+        return nestedPackages[uri]
     }
 
     /// The reflective Ecore package that every resource set provides.
@@ -293,6 +324,19 @@ public actor ResourceSet {
     /// - Returns: An array of namespace URIs for all registered metamodels.
     public func getMetamodelURIs() -> [String] {
         return Array(metamodelRegistry.keys)
+    }
+
+    /// Gets the URIs of all registered metamodels, optionally with those of their nested packages.
+    ///
+    /// The explicitly registered URIs come first, in registration order, followed by the
+    /// namespace URIs of the nested packages that ``getMetamodel(uri:)`` finds, in the order
+    /// in which their metamodels were registered and, within a metamodel, depth first.
+    ///
+    /// - Parameter includingSubpackages: Whether the URIs of nested packages are included.
+    /// - Returns: The namespace URIs.
+    public func getMetamodelURIs(includingSubpackages: Bool) -> [String] {
+        guard includingSubpackages else { return getMetamodelURIs() }
+        return Array(metamodelRegistry.keys) + Array(nestedPackages.keys)
     }
 
     // MARK: - URI Management

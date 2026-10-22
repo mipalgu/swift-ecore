@@ -1816,7 +1816,8 @@ public actor XMIParser {
     ///
     /// This method attempts to resolve the EClass in the following order:
     /// 1. If parent context is available, look up the reference's eType
-    /// 2. Otherwise, resolve from ResourceSet using namespace URI
+    /// 2. Otherwise, resolve from ResourceSet using namespace URI, searching the package of
+    ///    that namespace first and then the packages nested within it
     /// 3. Fall back to creating a new dynamic EClass
     ///
     /// - Parameters:
@@ -1880,7 +1881,7 @@ public actor XMIParser {
                     if debug {
                         print("[XMI]   Found metamodel: \(metamodel.name)")
                     }
-                    if let eClass = metamodel.getClassifier(effectiveName) as? EClass {
+                    if let eClass = metamodel.getClassifier(effectiveName, includingSubpackages: true) as? EClass {
                         if debug {
                             print("[XMI]   Found canonical EClass '\(eClass.name)' with \(eClass.eStructuralFeatures.count) own features, \(eClass.allStructuralFeatures.count) total")
                         }

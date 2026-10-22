@@ -343,6 +343,45 @@ public struct EPackage: ENamedElement {
         return eSubpackages.first { $0.name == name }
     }
 
+    /// This package followed by every package nested within it.
+    ///
+    /// The packages are listed depth first: each package precedes its own subpackages,
+    /// which precede the following siblings of that package. The list always starts with
+    /// this package, so a package without subpackages yields a list of one element.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// for package in rootPackage.allPackages where !package.nsURI.isEmpty {
+    ///     print("\(package.name): \(package.nsURI)")
+    /// }
+    /// ```
+    public var allPackages: [EPackage] {
+        var result = [self]
+        for subpackage in eSubpackages { result.append(contentsOf: subpackage.allPackages) }
+        return result
+    }
+
+    /// Retrieves a classifier by its name, optionally searching the nested packages.
+    ///
+    /// Without nested packages, this is ``getClassifier(_:)``. With them, the classifiers of
+    /// this package are searched first, followed by those of each package of
+    /// ``allPackages`` in turn, so the first classifier of that name in depth-first order is
+    /// returned.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the classifier to find.
+    ///   - includingSubpackages: Whether the nested packages are searched as well.
+    /// - Returns: The matching classifier, or `nil` if no package searched defines one.
+    public func getClassifier(_ name: String, includingSubpackages: Bool) -> (any EClassifier)? {
+        if let found = getClassifier(name) { return found }
+        guard includingSubpackages else { return nil }
+        for subpackage in eSubpackages {
+            if let found = subpackage.getClassifier(name, includingSubpackages: true) { return found }
+        }
+        return nil
+    }
+
     // MARK: - EObject Protocol Implementation
 
     /// Reflectively retrieves the value of a feature.

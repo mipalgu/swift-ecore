@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="root" nsURI="http://example.org/root" nsPrefix="root">
+  <eClassifiers xsi:type="ecore:EClass" name="Model">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="elements" upperBound="-1"
+        eType="#//kernel/Element" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="views" upperBound="-1"
+        eType="#//views/View" containment="true"/>
+  </eClassifiers>
+  <eSubpackages name="kernel" nsURI="http://example.org/root/kernel" nsPrefix="kernel">
+    <eClassifiers xsi:type="ecore:EClass" name="Element" abstract="true">
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    </eClassifiers>
+    <eClassifiers xsi:type="ecore:EClass" name="Node" eSuperTypes="#//kernel/Element">
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="weight" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    </eClassifiers>
+  </eSubpackages>
+  <eSubpackages name="views" nsURI="http://example.org/root/views" nsPrefix="views">
+    <eClassifiers xsi:type="ecore:EClass" name="View" eSuperTypes="#//kernel/Element">
+      <eStructuralFeatures xsi:type="ecore:EReference" name="shows" upperBound="-1"
+          eType="#//kernel/Node"/>
+      <eStructuralFeatures xsi:type="ecore:EReference" name="focus" eType="#//kernel/Element"/>
+    </eClassifiers>
+  </eSubpackages>
+</ecore:EPackage>
