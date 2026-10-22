@@ -97,6 +97,8 @@ try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "employee
 - ``JSONParseOptions``
 - ``JSONFragments``
 - ``JSONSyntax``
+- ``ModelFormat``
+- ``ModelFormatError``
 
 ### Commands and Editing
 

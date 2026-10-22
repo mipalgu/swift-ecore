@@ -225,6 +225,14 @@ let text = try await XMISerializer(options: .emf).serialize(resource)
 `ResourceSet.loadEcoreResource(uri:)` loads one as native `EPackage`, `EClass`, and related values
 instead.
 
+### Model Formats and Loading ✅
+
+- [x] `ModelFormat` (`.xmi`, `.json`, `.ecore`; the raw values are the file extensions) with
+  `detect(url:)` by file extension, ignoring case, and `detect(data:)` and `detect(contentsOf:)`
+  by the start of a document: `{` or `[` is JSON, an `EPackage` of the Ecore namespace (also
+  inside an `xmi:XMI` wrapper) is Ecore, and any other XML is XMI
+- [x] `ModelFormatError` describes a document whose format is unknown, listing the supported formats
+
 ### Generic JSON Serialisation ✅
 
 - [x] JSON parser for model instances (Step 5.1)
