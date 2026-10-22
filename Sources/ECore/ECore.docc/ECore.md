@@ -99,6 +99,8 @@ try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "employee
 - ``JSONSyntax``
 - ``ModelFormat``
 - ``ModelFormatError``
+- ``ModelIO``
+- ``ModelIOError``
 
 ### Commands and Editing
 

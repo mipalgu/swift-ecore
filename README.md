@@ -232,6 +232,24 @@ instead.
   by the start of a document: `{` or `[` is JSON, an `EPackage` of the Ecore namespace (also
   inside an `xmi:XMI` wrapper) is Ecore, and any other XML is XMI
 - [x] `ModelFormatError` describes a document whose format is unknown, listing the supported formats
+- [x] `ModelIO.load(url:format:resourceSet:metamodels:options:)` registers the given metamodels
+  (every root package, with its nested packages), detects the format unless it is given, and
+  returns the resource, the format, the parser's `ConversionDiagnostics`, and the packages of an
+  Ecore input, which is loaded natively and registered as a metamodel too
+- [x] `ModelIO.LoadOptions` chooses how XMI references are read (`XMIReferenceParsing`) and whether
+  JSON classes must come from a registered metamodel (by default, exactly when one is registered)
+- [x] `ModelIO.save(_:to:format:xmiOptions:diagnostics:)` writes XMI with the given
+  `XMISerializationOptions`, JSON, or an Ecore document for a resource of native packages, and
+  `ModelIO.serialise(_:format:relativeTo:xmiOptions:diagnostics:)` returns the text instead
+
+```swift
+let resourceSet = ResourceSet()
+let loaded = try await ModelIO.load(
+    url: modelURL, resourceSet: resourceSet, metamodels: [metamodelURL])
+var diagnostics = loaded.diagnostics
+try await ModelIO.save(loaded.resource, to: jsonURL, diagnostics: &diagnostics)
+for warning in diagnostics.warnings { print(warning) }
+```
 
 ### Generic JSON Serialisation ✅
 

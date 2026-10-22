@@ -144,6 +144,32 @@ let modelResource = try await resourceSet.loadResource(from: URL(fileURLWithPath
 // Cross-resource references are automatically resolved
 ```
 
+## Loading and Saving Models in Any Format
+
+``ModelIO`` reads and writes XMI, JSON and Ecore documents through one interface. It
+registers the metamodels of a model with a ``ResourceSet`` before the model is read, detects
+the format from the file name or the contents of the document unless it is given, and reports
+whatever a conversion could not keep as ``ConversionDiagnostics``:
+
+```swift
+let resourceSet = ResourceSet()
+let loaded = try await ModelIO.load(
+    url: URL(fileURLWithPath: "company-data.xmi"),
+    resourceSet: resourceSet,
+    metamodels: [URL(fileURLWithPath: "Company.ecore")])
+
+var diagnostics = loaded.diagnostics
+try await ModelIO.save(
+    loaded.resource, to: URL(fileURLWithPath: "company-data.json"), diagnostics: &diagnostics)
+for warning in diagnostics.warnings {
+    print(warning)
+}
+```
+
+Registering a metamodel also registers each of its nested packages under its own namespace
+URI, so documents whose objects are qualified by the namespace of a subpackage are read with
+the classes of that subpackage. ``ModelFormat`` detects the format of a document on its own.
+
 ## Next Steps
 
 - <doc:UnderstandingEcore> - Learn about the core concepts
