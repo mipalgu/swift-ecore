@@ -82,6 +82,33 @@ struct BundledMetamodelTests {
                 bundleName: bundleName, searching: [empty]) == nil)
     }
 
+    @Test("the resource directory is derived from the name of the bundle")
+    func derivesDirectoryNameFromBundle() {
+        let name = BundledResources.directoryName(of: .module)
+        #expect(name == Bundle.module.bundleURL.lastPathComponent)
+        #expect(name.hasPrefix("swift-ecore_ECoreTests."))
+    }
+
+    @Test("without a bundle name a resource is found in the directory named like the bundle")
+    func findsResourceInDirectoryDerivedFromBundle() throws {
+        let root = try Self.temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let directory = root.appendingPathComponent(BundledResources.directoryName(of: .module), isDirectory: true)
+            .appendingPathComponent("models", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Self.fixtureText().write(
+            to: directory.appendingPathComponent("Derived.ecore"), atomically: testWritesAtomically, encoding: .utf8)
+
+        let found = BundledResources.url(
+            forResource: "Derived", withExtension: ModelFormat.ecore.fileExtension, subdirectory: "models",
+            in: .module, bundleName: nil, searching: [root])
+        #expect(found?.standardizedFileURL.path == directory.appendingPathComponent("Derived.ecore").standardizedFileURL.path)
+        #expect(
+            BundledResources.url(
+                forResource: "Derived", withExtension: ModelFormat.ecore.fileExtension, subdirectory: "models",
+                in: .module, bundleName: nil, searching: [try Self.temporaryDirectory()]) == nil)
+    }
+
     // MARK: - Loading
 
     @Test("a bundled metamodel is loaded with its subpackages")

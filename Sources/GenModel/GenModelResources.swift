@@ -1,12 +1,11 @@
 import ECore
 import Foundation
 
-/// Resolves packaged WASI resources without SwiftPM's build-time bundle paths.
-/// Native platforms retain the standard SwiftPM accessor.
+/// Resolves the resources of this target.
+///
+/// The bundle of the target is used where Foundation supports it; on WASI the resource
+/// directory named like the bundle is found beside the executable.
 enum GenModelResources {
-    /// The resource directory that SwiftPM builds for this target.
-    static let bundleName = ResourceBundleName(package: "swift-ecore", target: "GenModel")
-
     /// Finds a file or directory in this target's resource bundle.
     ///
     /// - Parameters:
@@ -15,11 +14,6 @@ enum GenModelResources {
     ///   - subdirectory: An optional directory within the resource bundle.
     /// - Returns: The resource URL, or `nil` when no accessible resource exists.
     static func url(forResource name: String, withExtension ext: String?, subdirectory: String? = nil) -> URL? {
-        #if os(WASI)
-        return BundledResources.url(
-            forResource: name, withExtension: ext, subdirectory: subdirectory, in: nil, bundleName: bundleName)
-        #else
-        return BundledResources.url(forResource: name, withExtension: ext, subdirectory: subdirectory, in: .module)
-        #endif
+        BundledResources.url(forResource: name, withExtension: ext, subdirectory: subdirectory, in: .module)
     }
 }

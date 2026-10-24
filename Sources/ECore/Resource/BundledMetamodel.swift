@@ -51,22 +51,32 @@ public struct ResourceBundleName: Sendable, Hashable {
 /// Locates files that a package ships as resources.
 ///
 /// On platforms with resource bundles, a resource is looked up in the ``Foundation/Bundle``
-/// of its target, which a target obtains as `Bundle.module`. Where that bundle is not
-/// available, the resource is looked up in the resource directory of the target (see
-/// ``ResourceBundleName``) beside the running executable and in the current directory.
+/// of its target, which a target obtains as `Bundle.module`.
+///
+/// On WASI the bundle cannot be read through Foundation, and the resource directory of a
+/// target lives beside the executable rather than inside a bundle. There, and on any
+/// platform where the bundle does not hold the resource, the lookup falls back to the
+/// resource directory of the target, searched beside the running executable and then in the
+/// current directory. The directory is named by the explicit ``ResourceBundleName``, if one
+/// is given, and otherwise by the last path component of the bundle's own location. Because
+/// Swift Package Manager names the resource bundle of a target `<package>_<target>.resources`
+/// on every platform, `Bundle.module` alone is enough to find the directory, and a caller
+/// needs no `bundleName` for it.
 public enum BundledResources {
     /// Finds a file or directory that a target ships as a resource.
     ///
-    /// With a bundle, the resource is looked up in it. Without one, or on WASI, where the
-    /// bundle of a target cannot be used, the resource is looked up in the resource directory
-    /// that `bundleName` names, first beside the running executable and then in the current
-    /// directory.
+    /// Outside WASI, the resource is looked up in `bundle` first. If the bundle is absent,
+    /// is unusable (as on WASI) or lacks the resource, the resource is looked up in the
+    /// resource directory of the target, first beside the running executable and then in the
+    /// current directory. That directory is named by `bundleName` when it is given, and by
+    /// the name of the bundle's own directory otherwise.
     ///
     /// - Parameters:
     ///   - name: The name of the resource without its extension.
     ///   - ext: The extension, or `nil` for a directory or a file without an extension.
     ///   - subdirectory: The directory within the resource bundle that holds the resource, if any.
-    ///   - bundle: The resource bundle of the target, or `nil` if it is not available.
+    ///   - bundle: The resource bundle of the target, usually `.module`, or `nil` if it is not
+    ///     available.
     ///   - bundleName: The name of the resource directory of the target, if it is known.
     /// - Returns: The location of the resource, or `nil` if no accessible resource exists.
     public static func url(
@@ -76,15 +86,9 @@ public enum BundledResources {
         in bundle: Bundle?,
         bundleName: ResourceBundleName? = nil
     ) -> URL? {
-        #if !os(WASI)
-        if let bundle {
-            return bundle.url(forResource: name, withExtension: ext, subdirectory: subdirectory)
-        }
-        #endif
-        guard let bundleName else { return nil }
-        return url(
-            forResource: name, withExtension: ext, subdirectory: subdirectory, bundleName: bundleName,
-            searching: searchRoots)
+        url(
+            forResource: name, withExtension: ext, subdirectory: subdirectory, in: bundle,
+            bundleName: bundleName, searching: searchRoots)
     }
 
     /// The directories in which resource directories are looked for: that of the running
@@ -96,6 +100,53 @@ public enum BundledResources {
         }
         roots.append(URL(fileURLWithPath: FileManager.default.currentDirectoryPath))
         return roots
+    }
+
+    /// The name of the directory that holds the resources of a bundle.
+    ///
+    /// - Parameter bundle: The resource bundle of a target.
+    /// - Returns: The last path component of the bundle's location, such as
+    ///   `swift-example_Metamodels.resources`.
+    static func directoryName(of bundle: Bundle) -> String {
+        bundle.bundleURL.lastPathComponent
+    }
+
+    /// Finds a resource in a bundle, or else in the resource directory of its target.
+    ///
+    /// - Parameters:
+    ///   - name: The name of the resource without its extension.
+    ///   - ext: The extension, or `nil` for a directory or a file without an extension.
+    ///   - subdirectory: The directory within the resource directory, if any.
+    ///   - bundle: The resource bundle of the target, if any.
+    ///   - bundleName: The explicit name of the resource directory, if known.
+    ///   - roots: The directories that may hold the resource directory, in search order.
+    /// - Returns: The location of the first existing resource, or `nil` if there is none.
+    static func url(
+        forResource name: String, withExtension ext: String?, subdirectory: String?,
+        in bundle: Bundle?, bundleName: ResourceBundleName?, searching roots: [URL]
+    ) -> URL? {
+        #if !os(WASI)
+        if let bundle,
+            let found = bundle.url(forResource: name, withExtension: ext, subdirectory: subdirectory)
+        {
+            return found
+        }
+        #endif
+        var directoryNames: [String] = []
+        if let bundleName { directoryNames.append(bundleName.directoryName) }
+        if let bundle {
+            let derived = directoryName(of: bundle)
+            if !directoryNames.contains(derived) { directoryNames.append(derived) }
+        }
+        for directoryName in directoryNames {
+            if let found = url(
+                forResource: name, withExtension: ext, subdirectory: subdirectory,
+                directoryName: directoryName, searching: roots)
+            {
+                return found
+            }
+        }
+        return nil
     }
 
     /// Finds a resource in the resource directory of a target under one of several roots.
@@ -111,8 +162,18 @@ public enum BundledResources {
         forResource name: String, withExtension ext: String?, subdirectory: String?,
         bundleName: ResourceBundleName, searching roots: [URL]
     ) -> URL? {
+        url(
+            forResource: name, withExtension: ext, subdirectory: subdirectory,
+            directoryName: bundleName.directoryName, searching: roots)
+    }
+
+    /// Finds a resource in a named resource directory under one of several roots.
+    private static func url(
+        forResource name: String, withExtension ext: String?, subdirectory: String?,
+        directoryName: String, searching roots: [URL]
+    ) -> URL? {
         for root in roots {
-            var resource = root.appendingPathComponent(bundleName.directoryName, isDirectory: true)
+            var resource = root.appendingPathComponent(directoryName, isDirectory: true)
             if let subdirectory { resource.appendPathComponent(subdirectory, isDirectory: true) }
             resource.appendPathComponent(name)
             if let ext { resource.appendPathExtension(ext) }
@@ -206,9 +267,11 @@ extension EPackage {
     ///   - ext: The extension of the document (default `ecore`).
     ///   - subdirectory: The directory within the resource bundle that holds the document, if any.
     ///   - bundle: The resource bundle of the target, usually `.module`, or `nil` where it is
-    ///     not available.
-    ///   - bundleName: The name of the resource directory of the target, which is searched
-    ///     where the bundle is not available, such as on WASI.
+    ///     not available. On WASI, and wherever the bundle lacks the document, the resource
+    ///     directory named like the bundle is searched beside the executable and in the
+    ///     current directory.
+    ///   - bundleName: The name of the resource directory of the target, searched before the
+    ///     directory derived from `bundle`, if it is known.
     ///   - resourceSet: A resource set with which to register the package, if any.
     ///   - cache: The cache through which the document is loaded (default ``BundledMetamodelCache/shared``).
     /// - Returns: The root package of the document.
