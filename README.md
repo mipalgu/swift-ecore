@@ -261,6 +261,7 @@ for warning in diagnostics.warnings { print(warning) }
 - [x] `BundledResources` finds resources in `Bundle.module` or, where that bundle is not available
   (such as on WASI), in the `<package>_<target>.resources` directory (`ResourceBundleName`) beside
   the executable or in the current directory
+  (on WASI the bundle is only evaluated when no bundle name is given)
 
 ```swift
 let resourceSet = ResourceSet()

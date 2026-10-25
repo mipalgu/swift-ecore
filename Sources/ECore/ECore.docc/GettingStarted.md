@@ -185,7 +185,9 @@ let package = try await EPackage.bundled(
 ```
 
 The bundle name is used where `Bundle.module` is not available, such as on WASI, to find the
-resource directory beside the executable.
+resource directory beside the executable. On WASI, `Bundle.module` stops the program when that
+directory is not where the build placed it, so the bundle is evaluated there only when no bundle
+name is given: code that runs on WASI should always pass one.
 
 ## Next Steps
 

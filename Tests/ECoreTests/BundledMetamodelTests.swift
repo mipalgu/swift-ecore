@@ -89,6 +89,23 @@ struct BundledMetamodelTests {
         #expect(name.hasPrefix("swift-ecore_ECoreTests."))
     }
 
+    #if os(WASI)
+    @Test("on WASI the bundle is not evaluated when the resource directory is named")
+    func namedDirectoryDoesNotEvaluateBundle() throws {
+        var evaluations = 0
+        func bundle() -> Bundle? {
+            evaluations += 1
+            return nil
+        }
+        let found = BundledResources.url(
+            forResource: Self.name, withExtension: ModelFormat.ecore.fileExtension, subdirectory: "models",
+            in: bundle(), bundleName: ResourceBundleName(package: "swift-example", target: "Metamodels"),
+            searching: [])
+        #expect(found == nil)
+        #expect(evaluations == 0)
+    }
+    #endif
+
     @Test("without a bundle name a resource is found in the directory named like the bundle")
     func findsResourceInDirectoryDerivedFromBundle() throws {
         let root = try Self.temporaryDirectory()

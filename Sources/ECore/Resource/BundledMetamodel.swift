@@ -58,10 +58,12 @@ public struct ResourceBundleName: Sendable, Hashable {
 /// platform where the bundle does not hold the resource, the lookup falls back to the
 /// resource directory of the target, searched beside the running executable and then in the
 /// current directory. The directory is named by the explicit ``ResourceBundleName``, if one
-/// is given, and otherwise by the last path component of the bundle's own location. Because
-/// Swift Package Manager names the resource bundle of a target `<package>_<target>.resources`
-/// on every platform, `Bundle.module` alone is enough to find the directory, and a caller
-/// needs no `bundleName` for it.
+/// is given, and otherwise by the last path component of the bundle's own location.
+///
+/// On WASI, `Bundle.module` stops the program when the resource directory is not where the
+/// build placed it, as in an installed copy of the program. The bundle is therefore taken as
+/// an expression that is evaluated only when it is needed: on WASI that is only when no
+/// `bundleName` is given, so code that runs on WASI should always give one.
 public enum BundledResources {
     /// Finds a file or directory that a target ships as a resource.
     ///
@@ -76,18 +78,18 @@ public enum BundledResources {
     ///   - ext: The extension, or `nil` for a directory or a file without an extension.
     ///   - subdirectory: The directory within the resource bundle that holds the resource, if any.
     ///   - bundle: The resource bundle of the target, usually `.module`, or `nil` if it is not
-    ///     available.
+    ///     available. On WASI it is evaluated only if `bundleName` is `nil`.
     ///   - bundleName: The name of the resource directory of the target, if it is known.
     /// - Returns: The location of the resource, or `nil` if no accessible resource exists.
     public static func url(
         forResource name: String,
         withExtension ext: String?,
         subdirectory: String? = nil,
-        in bundle: Bundle?,
+        in bundle: @autoclosure () -> Bundle?,
         bundleName: ResourceBundleName? = nil
     ) -> URL? {
         url(
-            forResource: name, withExtension: ext, subdirectory: subdirectory, in: bundle,
+            forResource: name, withExtension: ext, subdirectory: subdirectory, in: bundle(),
             bundleName: bundleName, searching: searchRoots)
     }
 
@@ -123,19 +125,22 @@ public enum BundledResources {
     /// - Returns: The location of the first existing resource, or `nil` if there is none.
     static func url(
         forResource name: String, withExtension ext: String?, subdirectory: String?,
-        in bundle: Bundle?, bundleName: ResourceBundleName?, searching roots: [URL]
+        in bundle: @autoclosure () -> Bundle?, bundleName: ResourceBundleName?, searching roots: [URL]
     ) -> URL? {
-        #if !os(WASI)
-        if let bundle,
-            let found = bundle.url(forResource: name, withExtension: ext, subdirectory: subdirectory)
+        #if os(WASI)
+        let resolvedBundle = bundleName == nil ? bundle() : nil
+        #else
+        let resolvedBundle = bundle()
+        if let resolvedBundle,
+            let found = resolvedBundle.url(forResource: name, withExtension: ext, subdirectory: subdirectory)
         {
             return found
         }
         #endif
         var directoryNames: [String] = []
         if let bundleName { directoryNames.append(bundleName.directoryName) }
-        if let bundle {
-            let derived = directoryName(of: bundle)
+        if let resolvedBundle {
+            let derived = directoryName(of: resolvedBundle)
             if !directoryNames.contains(derived) { directoryNames.append(derived) }
         }
         for directoryName in directoryNames {
@@ -269,7 +274,7 @@ extension EPackage {
     ///   - bundle: The resource bundle of the target, usually `.module`, or `nil` where it is
     ///     not available. On WASI, and wherever the bundle lacks the document, the resource
     ///     directory named like the bundle is searched beside the executable and in the
-    ///     current directory.
+    ///     current directory. On WASI the bundle is evaluated only if `bundleName` is `nil`.
     ///   - bundleName: The name of the resource directory of the target, searched before the
     ///     directory derived from `bundle`, if it is known.
     ///   - resourceSet: A resource set with which to register the package, if any.
@@ -281,14 +286,14 @@ extension EPackage {
         named name: String,
         withExtension ext: String = ModelFormat.ecore.fileExtension,
         subdirectory: String? = nil,
-        in bundle: Bundle?,
+        in bundle: @autoclosure () -> Bundle?,
         bundleName: ResourceBundleName? = nil,
         registeringIn resourceSet: ResourceSet? = nil,
         cache: BundledMetamodelCache = .shared
     ) async throws -> EPackage {
         guard
             let url = BundledResources.url(
-                forResource: name, withExtension: ext, subdirectory: subdirectory, in: bundle,
+                forResource: name, withExtension: ext, subdirectory: subdirectory, in: bundle(),
                 bundleName: bundleName)
         else {
             throw BundledMetamodelError.resourceMissing(ext.isEmpty ? name : name + "." + ext)

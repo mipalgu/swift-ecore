@@ -42,6 +42,12 @@ public enum GenModelConstants {
     /// The directory holding bundled resources.
     public static let resourceDirectory = "Resources"
 
+    /// The name of the package whose manifest declares the generator model target.
+    public static let resourcePackageName = "swift-ecore"
+
+    /// The name of the target that ships the generator metamodel as a resource.
+    public static let resourceTargetName = "GenModel"
+
     /// The separator between a document location and a fragment in a reference.
     public static let fragmentSeparator: Character = "#"
 

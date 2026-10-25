@@ -4,10 +4,10 @@
 //
 //  Copyright © 2026 Rene Hexel. All rights reserved.
 //
-import ECore
 import Foundation
 import Testing
 
+@testable import ECore
 @testable import GenModel
 
 @Suite("GenModel metamodel")
@@ -60,6 +60,34 @@ struct GenModelMetamodelTests {
     func resourceExists() throws {
         let url = try #require(GenModelPackage.resourceURL)
         #expect(FileManager.default.fileExists(atPath: url.path))
+    }
+
+    @Test("the resource directory is named after the package and the target")
+    func resourceDirectoryName() throws {
+        let url = try #require(GenModelPackage.resourceURL)
+        let bundleName = GenModelResources.bundleName
+        let prefix = bundleName.package + ResourceBundleName.separator + bundleName.target + "."
+        #expect(url.pathComponents.contains { $0.hasPrefix(prefix) })
+    }
+
+    @Test("the generator metamodel is found by the name of its resource directory")
+    func resourceFoundByDirectoryName() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("GenModelMetamodelTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let directory = root.appendingPathComponent(GenModelResources.bundleName.directoryName, isDirectory: true)
+            .appendingPathComponent(GenModelConstants.resourceDirectory, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let target = directory.appendingPathComponent(GenModelConstants.metamodelResourceName)
+            .appendingPathExtension(GenModelConstants.metamodelResourceExtension)
+        try FileManager.default.copyItem(at: try #require(GenModelPackage.resourceURL), to: target)
+
+        let found = BundledResources.url(
+            forResource: GenModelConstants.metamodelResourceName,
+            withExtension: GenModelConstants.metamodelResourceExtension,
+            subdirectory: GenModelConstants.resourceDirectory, in: nil,
+            bundleName: GenModelResources.bundleName, searching: [root])
+        #expect(found?.standardizedFileURL.path == target.standardizedFileURL.path)
     }
 
     @Test("package identity and classifier counts")
