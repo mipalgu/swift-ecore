@@ -61,6 +61,7 @@ try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "employee
 
 - <doc:GettingStarted>
 - <doc:UnderstandingEcore>
+- <doc:Compatibility>
 
 ### Core Types
 
@@ -86,6 +87,7 @@ try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "employee
 
 - ``Resource``
 - ``ResourceSet``
+- ``ContainerLookupScope``
 - ``XMIParser``
 - ``XMISerializer``
 - ``XMISerializationOptions``

@@ -7,6 +7,21 @@
 import EMFBase
 import OrderedCollections
 
+/// How a containment value holds a contained object.
+enum ContainmentForm: Sendable {
+    /// The value is the identifier of the contained object.
+    case identifier
+
+    /// The value is an array of identifiers that includes the contained object's.
+    case identifierList
+
+    /// The value is an array of another element type that includes the contained object's identifier.
+    case mixedList
+
+    /// The value is the contained object itself.
+    case object
+}
+
 /// A containment reference of one object that holds another object.
 struct ContainmentClaim: Sendable {
     /// The identifier of the containing object.
@@ -15,8 +30,11 @@ struct ContainmentClaim: Sendable {
     /// The containment reference that holds the contained object.
     let reference: EReference
 
-    /// Whether the reference holds the contained object by identifier rather than as a value.
-    let byIdentifier: Bool
+    /// How the value of the reference holds the contained object.
+    let form: ContainmentForm
+
+    /// Whether the holding value lies within an ``EcoreValueArray`` of the reference value.
+    let nested: Bool
 }
 
 /// The objects of a resource in insertion order, together with an index of their containment.
@@ -132,34 +150,32 @@ struct ObjectTable: Sendable {
         guard let eClass = object.eClass as? EClass else { return [] }
         var result: [(child: EUUID, claim: ContainmentClaim)] = []
         for reference in eClass.eAllReferences where reference.containment {
-            collect(object.eGet(reference), container: id, reference: reference, into: &result)
+            collect(object.eGet(reference), container: id, reference: reference, nested: false, into: &result)
         }
         return result
     }
 
     /// Appends the claims of one containment value.
     private static func collect(
-        _ value: (any EcoreValue)?, container: EUUID, reference: EReference,
+        _ value: (any EcoreValue)?, container: EUUID, reference: EReference, nested: Bool,
         into result: inout [(child: EUUID, claim: ContainmentClaim)]
     ) {
+        func claim(_ child: EUUID, _ form: ContainmentForm) {
+            result.append((child, ContainmentClaim(container: container, reference: reference, form: form, nested: nested)))
+        }
         switch value {
         case let id as EUUID:
-            result.append((id, ContainmentClaim(container: container, reference: reference, byIdentifier: true)))
+            claim(id, .identifier)
         case let ids as [EUUID]:
-            for id in ids {
-                result.append((id, ContainmentClaim(container: container, reference: reference, byIdentifier: true)))
-            }
+            for id in ids { claim(id, .identifierList) }
         case let array as EcoreValueArray:
             for element in array.values {
-                collect(element, container: container, reference: reference, into: &result)
+                collect(element, container: container, reference: reference, nested: true, into: &result)
             }
         case let object as any EObject:
-            result.append(
-                (object.id, ContainmentClaim(container: container, reference: reference, byIdentifier: false)))
+            claim(object.id, .object)
         case let values as [Any]:
-            for case let id as EUUID in values {
-                result.append((id, ContainmentClaim(container: container, reference: reference, byIdentifier: true)))
-            }
+            for case let id as EUUID in values { claim(id, .mixedList) }
         default:
             break
         }

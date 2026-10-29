@@ -92,6 +92,14 @@ private func expectAgreement(
         let expected = bruteForceContainer(of: object.id, in: objects)
         #expect(await resource.eContainer(of: object)?.id == expected?.container, sourceLocation: sourceLocation)
         #expect(await resource.eContainingFeature(of: object)?.name == expected?.feature, sourceLocation: sourceLocation)
+        for scope in ContainerLookupScope.allCases {
+            #expect(
+                await resource.eContainer(of: object, scope: scope)?.id == expected?.container,
+                sourceLocation: sourceLocation)
+            #expect(
+                await resource.eContainingFeature(of: object, scope: scope)?.name == expected?.feature,
+                sourceLocation: sourceLocation)
+        }
     }
 }
 
@@ -197,7 +205,8 @@ struct ContainerIndexTests {
         await resource.add(contentsOf: [parent, child])
         #expect(await resource.remove(id: child.id))
         #expect(await resource.container(ofIdentifier: child.id)?.container.id == parent.id)
-        #expect(await resource.eContainer(of: child)?.id == parent.id)
+        #expect(await resource.eContainer(of: child, scope: .anyResource)?.id == parent.id)
+        #expect(await resource.eContainer(of: child) == nil)
         await expectAgreement(resource, extra: [child.id])
     }
 
@@ -435,7 +444,8 @@ struct ContainerIndexTests {
         #expect(await children.eGet(objectId: child.id, feature: "parent") as? EUUID == parent.id)
         #expect(await containers.container(ofIdentifier: child.id)?.container.id == parent.id)
         #expect(await containers.container(ofIdentifier: child.id)?.feature.name == "children")
-        #expect(await containers.eContainer(of: child)?.id == parent.id)
+        #expect(await containers.eContainer(of: child, scope: .anyResource)?.id == parent.id)
+        #expect(await containers.eContainer(of: child) == nil)
         #expect(await children.container(ofIdentifier: child.id) == nil)
         let found = await set.container(ofIdentifier: child.id)
         #expect(found?.container.id == parent.id)

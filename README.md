@@ -202,7 +202,7 @@ let documentation = book?.getEAnnotationDetail(
 - [x] Name-based Ecore fragments - `#/`, `#//Book`, `#//Book/title`, `#//sub/Class`, `#//Enum/Literal`, operations and parameters (`FragmentNavigator`, `XPathResolver`)
 - [x] Multi-root positional fragments - as in EMF, the only root of a resource is `#/` and its contents `#//@feature.index`, while root `n` of a resource with several roots is `#/n` and its contents `#/n/@feature.index` (`PositionalFragments`, `XPathResolver`); the container side of a containment is never written
 - [x] Proxy resolution - `Resource.resolveProxies()`, `ResourceSet.resolveAllProxies()` and `Resource.eGetResolving(objectId:feature:)` load target resources on demand
-- [x] Container lookup by identifier - `Resource.eContainer(of:)`, `eContainingFeature(of:)`, `container(ofIdentifier:)` and `ResourceSet.container(ofIdentifier:)` answer repeated lookups without rescanning the resource, and find a container even when the contained object belongs to another resource
+- [x] Container lookup by identifier - `Resource.container(ofIdentifier:)` and `ResourceSet.container(ofIdentifier:)` find a container even when the contained object belongs to another resource, as do `Resource.eContainer(of:scope:)` and `eContainingFeature(of:scope:)` with the `.anyResource` scope of `ContainerLookupScope`; repeated lookups, including those of `eContainer(of:)` and `eContainingFeature(of:)`, are answered without rescanning the resource
 - [x] EMF-style serialisation - `XMISerializer(options: .emf)` writes attribute-style references, type qualifiers, relative URIs, name-based fragments, omits defaults, and writes many-valued attributes as child elements
 
 #### Cross-document references
@@ -360,6 +360,26 @@ See the details in the LICENCE file.
 Swift Modelling aims for 100% round-trip compatibility with:
 - [emf4cpp](https://github.com/catedrasaes-umu/emf4cpp) - C++ EMF implementation
 - [pyecore](https://github.com/pyecore/pyecore) - Python EMF implementation
+
+### Compatibility with 0.6
+
+Every API of version 0.6 is still available and behaves as it did in 0.6. Newer behaviour is
+offered through additional API, whose default is the new behaviour:
+
+- Container lookup for an object that belongs to another resource, or that has been removed
+  from the resource of its container
+  - New default: the container is found by `Resource.container(ofIdentifier:)`,
+    `ResourceSet.container(ofIdentifier:)`, and with `ContainerLookupScope()` or
+    `ContainerLookupScope.standard` (`.anyResource`)
+  - Option: the `scope:` argument of `Resource.eContainer(of:scope:)` and
+    `Resource.eContainingFeature(of:scope:)`
+  - 0.6 behaviour: `eContainer(of:)` and `eContainingFeature(of:)` as before, or
+    `scope: .thisResource` (`ContainerLookupScope.legacy`); an object held by identifier is
+    answered only while the resource can resolve it, and an object embedded as a value always is
+
+`EcoreValueArray` now records an `EcoreCollectionKind`. Arrays created with
+`EcoreValueArray(_:)` are sequences, as before, and the kind takes no part in equality, hashing
+or the textual form of an array.
 
 ## References
 

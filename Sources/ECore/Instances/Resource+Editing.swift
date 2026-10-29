@@ -415,7 +415,8 @@ extension Resource {
     }
 
     private func findContainer(of id: EUUID) -> (container: EUUID, reference: EReference)? {
-        containerClaim(of: id, byIdentifierOnly: true).map { ($0.container, $0.reference) }
+        containerClaim(of: id) { $0.form == .identifier || $0.form == .identifierList }
+            .map { ($0.container, $0.reference) }
     }
 
     private func subtree(of root: EUUID) -> [EUUID] {

@@ -190,7 +190,7 @@ public actor Resource {
 
         // The object becomes a root unless another object holds it, whether or not it
         // was registered before
-        let isContained = containerClaim(of: object.id, byIdentifierOnly: true) != nil
+        let isContained = containerClaim(of: object.id, where: Self.containsForAdd) != nil
 
         if !isContained && !rootObjects.contains(object.id) {
             rootObjects.append(object.id)
@@ -217,7 +217,9 @@ public actor Resource {
         }
         var known = Set(rootObjects)
         for object in newObjects
-        where containerClaim(of: object.id, byIdentifierOnly: true) == nil && known.insert(object.id).inserted {
+        where containerClaim(of: object.id, where: Self.containsForBatchAdd) == nil
+            && known.insert(object.id).inserted
+        {
             rootObjects.append(object.id)
         }
         return added
@@ -778,23 +780,66 @@ public actor Resource {
     /// Retrieves the object that contains the given object.
     ///
     /// For native metamodel objects the container is found from the containment structure of
-    /// the metamodel objects registered with this resource. A dynamic object is contained by
-    /// the first object of this resource, in the order of the resource, whose containment
-    /// references hold it. The object itself need not belong to this resource.
+    /// the metamodel objects registered with this resource. For dynamic objects the
+    /// containment references of every registered object are searched.
+    ///
+    /// The lookup uses the ``ContainerLookupScope/thisResource`` scope, so an object that
+    /// this resource cannot resolve has a container only if an object of this resource embeds
+    /// it as a value. Use ``eContainer(of:scope:)`` with ``ContainerLookupScope/anyResource``
+    /// to find the container of an object that belongs to another resource.
     ///
     /// - Parameter object: The object whose container is wanted.
     /// - Returns: The container, or `nil` if the object is a root or is not contained.
     public func eContainer(of object: any EObject) -> (any EObject)? {
-        containerObject(of: object.id, metaObject: object as? any EMetaObject)
+        eContainer(of: object, scope: .thisResource)
+    }
+
+    /// Retrieves the object of this resource that contains the given object, within a scope.
+    ///
+    /// For native metamodel objects the container is found from the containment structure of
+    /// the metamodel objects registered with this resource. Otherwise the container is the
+    /// first object of this resource, in the order of the resource, whose containment
+    /// references hold the object in a way that the scope admits.
+    ///
+    /// - Parameters:
+    ///   - object: The object whose container is wanted.
+    ///   - scope: The contained objects to answer for; ``ContainerLookupScope/anyResource``
+    ///     also finds the container of an object that belongs to another resource.
+    /// - Returns: The container, or `nil` if the object is a root or is not contained.
+    public func eContainer(of object: any EObject, scope: ContainerLookupScope) -> (any EObject)? {
+        containerObject(of: object.id, metaObject: object as? any EMetaObject, scope: scope)
     }
 
     /// Retrieves the containment feature through which an object is held by its container.
+    ///
+    /// The lookup uses the ``ContainerLookupScope/thisResource`` scope, as does
+    /// ``eContainer(of:)``. Use ``eContainingFeature(of:scope:)`` with
+    /// ``ContainerLookupScope/anyResource`` for an object that belongs to another resource.
     ///
     /// - Parameter object: The object whose containing feature is wanted.
     /// - Returns: The containment reference or attribute-like feature, or `nil` if the
     ///   object is not contained.
     public func eContainingFeature(of object: any EObject) -> (any EStructuralFeature)? {
-        containingFeature(of: object.id, in: eContainer(of: object))
+        eContainingFeature(of: object, scope: .thisResource)
+    }
+
+    /// Retrieves the containment feature through which an object is held by its container,
+    /// within a scope.
+    ///
+    /// The feature belongs to the container that ``eContainer(of:scope:)`` finds in the
+    /// same scope; a container that holds the object in several containment references
+    /// reports the first of them in the order of its class.
+    ///
+    /// - Parameters:
+    ///   - object: The object whose containing feature is wanted.
+    ///   - scope: The contained objects to answer for; ``ContainerLookupScope/anyResource``
+    ///     also answers for an object that belongs to another resource.
+    /// - Returns: The containment reference or attribute-like feature, or `nil` if the
+    ///   object is not contained.
+    public func eContainingFeature(
+        of object: any EObject, scope: ContainerLookupScope
+    ) -> (any EStructuralFeature)? {
+        containingFeature(of: object.id, in: eContainer(of: object, scope: scope), scope: scope)
     }
 
     /// Retrieves the container of an object, and the feature that holds it, by identifier.
@@ -808,15 +853,16 @@ public actor Resource {
     /// hold the identifier, and the feature is the first of those references in the order of
     /// the container's class.
     ///
-    /// Repeated lookups do not rescan the resource.
+    /// The lookup uses the ``ContainerLookupScope/anyResource`` scope. Repeated lookups do
+    /// not rescan the resource.
     ///
     /// - Parameter id: The identifier of the contained object.
     /// - Returns: The container and the containment feature, or `nil` if no object of this
     ///   resource contains the identifier.
     public func container(ofIdentifier id: EUUID) -> (container: any EObject, feature: any EStructuralFeature)? {
         let metaObject = (objects[id] ?? nativeContents[id]) as? any EMetaObject
-        guard let container = containerObject(of: id, metaObject: metaObject),
-            let feature = containingFeature(of: id, in: container)
+        guard let container = containerObject(of: id, metaObject: metaObject, scope: .anyResource),
+            let feature = containingFeature(of: id, in: container, scope: .anyResource)
         else { return nil }
         return (container, feature)
     }
@@ -867,12 +913,54 @@ public actor Resource {
     ///
     /// - Parameters:
     ///   - id: The identifier of the contained object.
-    ///   - byIdentifierOnly: Whether to disregard objects held as values rather than by identifier.
-    /// - Returns: The container's identifier and containment reference, or `nil` if none holds it.
-    func containerClaim(of id: EUUID, byIdentifierOnly: Bool = false) -> ContainmentClaim? {
+    ///   - admits: Decides whether a claim on the identifier counts.
+    /// - Returns: The first claim that counts, in the order of the resource, or `nil` if none does.
+    func containerClaim(of id: EUUID, where admits: (ContainmentClaim) -> Bool) -> ContainmentClaim? {
         let (claims, built) = objects.containmentClaims(on: id)
         if built { containerIndexBuilds += 1 }
-        return byIdentifierOnly ? claims.first(where: \.byIdentifier) : claims.first
+        return claims.first(where: admits)
+    }
+
+    /// Finds the first containment reference that holds an identifier in a way that a scope admits.
+    ///
+    /// - Parameters:
+    ///   - id: The identifier of the contained object.
+    ///   - scope: The scope of the lookup.
+    /// - Returns: The first admitted claim, or `nil` if none is admitted.
+    private func containerClaim(of id: EUUID, scope: ContainerLookupScope) -> ContainmentClaim? {
+        switch scope {
+        case .anyResource:
+            return containerClaim(of: id) { _ in true }
+        case .thisResource:
+            let resolvable = resolve(id)?.id == id
+            return containerClaim(of: id) { claim in
+                switch claim.form {
+                case .identifier, .identifierList: return resolvable
+                case .object: return true
+                case .mixedList: return false
+                }
+            }
+        }
+    }
+
+    /// Whether a claim makes an object added on its own a contained object rather than a root.
+    ///
+    /// A single-valued containment holds an object by its identifier, and a many-valued one
+    /// by an array that lists the identifier.
+    static func containsForAdd(_ claim: ContainmentClaim) -> Bool {
+        guard !claim.nested else { return false }
+        switch claim.form {
+        case .identifier: return !claim.reference.isMany
+        case .identifierList, .mixedList: return claim.reference.isMany
+        case .object: return false
+        }
+    }
+
+    /// Whether a claim makes an object added in a batch a contained object rather than a root.
+    ///
+    /// A containment holds an object by its identifier, or by an array that lists the identifier.
+    static func containsForBatchAdd(_ claim: ContainmentClaim) -> Bool {
+        !claim.nested && claim.form != .object
     }
 
     /// Finds the container of an identifier from native metamodel structure or containment.
@@ -880,15 +968,18 @@ public actor Resource {
     /// - Parameters:
     ///   - id: The identifier of the contained object.
     ///   - metaObject: The contained object, if it is a native metamodel object.
+    ///   - scope: The scope of the lookup.
     /// - Returns: The container, or `nil` if none is found.
-    private func containerObject(of id: EUUID, metaObject: (any EMetaObject)?) -> (any EObject)? {
+    private func containerObject(
+        of id: EUUID, metaObject: (any EMetaObject)?, scope: ContainerLookupScope
+    ) -> (any EObject)? {
         if let containerID = nativeContainers[id] {
             return resolve(containerID)
         }
         if let containerID = metaObject?.eContainerID, let container = resolve(containerID) {
             return container
         }
-        return containerClaim(of: id).flatMap { objects[$0.container] }
+        return containerClaim(of: id, scope: scope).flatMap { objects[$0.container] }
     }
 
     /// Finds the feature through which an identifier is contained.
@@ -896,13 +987,16 @@ public actor Resource {
     /// - Parameters:
     ///   - id: The identifier of the contained object.
     ///   - container: The container found for the identifier, if any.
+    ///   - scope: The scope of the lookup.
     /// - Returns: The containing feature, or `nil` if none is found.
-    private func containingFeature(of id: EUUID, in container: (any EObject)?) -> (any EStructuralFeature)? {
+    private func containingFeature(
+        of id: EUUID, in container: (any EObject)?, scope: ContainerLookupScope
+    ) -> (any EStructuralFeature)? {
         if let container = container as? any EcoreReflective {
             guard let pair = container.containedObjects.first(where: { $0.object.id == id }) else { return nil }
             return (container.eClass as? EClass)?.getStructuralFeature(name: pair.feature.rawValue)
         }
-        return containerClaim(of: id)?.reference
+        return containerClaim(of: id, scope: scope)?.reference
     }
 
     /// Resolves a reference value, which may hold identifiers or objects, to objects.
