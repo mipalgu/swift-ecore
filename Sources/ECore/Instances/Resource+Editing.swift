@@ -415,14 +415,7 @@ extension Resource {
     }
 
     private func findContainer(of id: EUUID) -> (container: EUUID, reference: EReference)? {
-        for object in objects.values {
-            guard let eClass = object.eClass as? EClass else { continue }
-            for reference in eClass.eAllReferences
-            where reference.containment && ReferenceValues.identifiers(object.eGet(reference)).contains(id) {
-                return (object.id, reference)
-            }
-        }
-        return nil
+        containerClaim(of: id, byIdentifierOnly: true).map { ($0.container, $0.reference) }
     }
 
     private func subtree(of root: EUUID) -> [EUUID] {

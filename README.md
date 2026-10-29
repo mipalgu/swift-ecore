@@ -202,6 +202,7 @@ let documentation = book?.getEAnnotationDetail(
 - [x] Name-based Ecore fragments - `#/`, `#//Book`, `#//Book/title`, `#//sub/Class`, `#//Enum/Literal`, operations and parameters (`FragmentNavigator`, `XPathResolver`)
 - [x] Multi-root positional fragments - as in EMF, the only root of a resource is `#/` and its contents `#//@feature.index`, while root `n` of a resource with several roots is `#/n` and its contents `#/n/@feature.index` (`PositionalFragments`, `XPathResolver`); the container side of a containment is never written
 - [x] Proxy resolution - `Resource.resolveProxies()`, `ResourceSet.resolveAllProxies()` and `Resource.eGetResolving(objectId:feature:)` load target resources on demand
+- [x] Container lookup by identifier - `Resource.eContainer(of:)`, `eContainingFeature(of:)`, `container(ofIdentifier:)` and `ResourceSet.container(ofIdentifier:)` answer repeated lookups without rescanning the resource, and find a container even when the contained object belongs to another resource
 - [x] EMF-style serialisation - `XMISerializer(options: .emf)` writes attribute-style references, type qualifiers, relative URIs, name-based fragments, omits defaults, and writes many-valued attributes as child elements
 
 #### Cross-document references

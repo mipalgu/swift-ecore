@@ -49,8 +49,11 @@ public actor Resource {
     ///
     /// All objects within a resource must have unique identifiers. The resource
     /// maintains ownership and provides resolution services.
-    /// Uses OrderedDictionary to preserve insertion order for EMF compliance.
-    var objects: OrderedDictionary<EUUID, any EObject>
+    /// Preserves insertion order for EMF compliance and indexes containment.
+    var objects: ObjectTable
+
+    /// The number of times the containment index of the objects has been built.
+    var containerIndexBuilds = 0
 
     /// Root objects that are not contained by other objects in this resource.
     ///
@@ -132,7 +135,7 @@ public actor Resource {
     ///   - enableDebugging: Whether to enable debug output for this resource
     public init(uri: String = "resource://\(UUID().uuidString)", enableDebugging: Bool = false) {
         self.uri = uri
-        objects = OrderedDictionary<EUUID, any EObject>()
+        objects = ObjectTable()
         rootObjects = []
         debug = enableDebugging
     }
@@ -185,19 +188,9 @@ public actor Resource {
         objects[object.id] = object
         indexNativeContents(of: object)
 
-        // Check if this should be a root object (not contained by another)
-        // This check happens regardless of whether the object is new, because
-        // objects might be registered first and then added as roots later
-        let isContained = objects.values.contains { container in
-            // Check if any object contains this one through containment references
-            if let eClass = container.eClass as? EClass {
-                return eClass.allReferences.contains { reference in
-                    reference.containment
-                        && doesObjectContain(container, objectId: object.id, through: reference)
-                }
-            }
-            return false
-        }
+        // The object becomes a root unless another object holds it, whether or not it
+        // was registered before
+        let isContained = containerClaim(of: object.id, byIdentifierOnly: true) != nil
 
         if !isContained && !rootObjects.contains(object.id) {
             rootObjects.append(object.id)
@@ -209,9 +202,8 @@ public actor Resource {
     /// Adds several objects to this resource at once.
     ///
     /// Each object is stored and indexed as with ``add(_:)``, and each object that no object of
-    /// the resource contains becomes a root object, in the given order. Containment is
-    /// examined once for the whole batch, so adding many roots takes time proportional to the
-    /// size of the resource rather than to its square.
+    /// the resource contains becomes a root object, in the given order. Adding many roots
+    /// takes time proportional to the size of the resource rather than to its square.
     ///
     /// - Parameter newObjects: The objects to add.
     /// - Returns: The number of objects that were not yet part of the resource.
@@ -223,37 +215,12 @@ public actor Resource {
             objects[object.id] = object
             indexNativeContents(of: object)
         }
-        let contained = containedIdentifiers()
         var known = Set(rootObjects)
-        for object in newObjects where !contained.contains(object.id) && known.insert(object.id).inserted {
+        for object in newObjects
+        where containerClaim(of: object.id, byIdentifierOnly: true) == nil && known.insert(object.id).inserted {
             rootObjects.append(object.id)
         }
         return added
-    }
-
-    /// The identifiers of all objects that another object of the resource contains.
-    private func containedIdentifiers() -> Set<EUUID> {
-        var result = Set<EUUID>()
-        var containmentReferences: [EUUID: [EReference]] = [:]
-        for container in objects.values {
-            guard let eClass = container.eClass as? EClass else { continue }
-            let references: [EReference]
-            if let known = containmentReferences[eClass.id] {
-                references = known
-            } else {
-                references = eClass.allReferences.filter(\.containment)
-                containmentReferences[eClass.id] = references
-            }
-            for reference in references {
-                switch container.eGet(reference) {
-                case let identifier as EUUID: result.insert(identifier)
-                case let identifiers as [EUUID]: result.formUnion(identifiers)
-                case let values as [Any]: result.formUnion(values.compactMap { $0 as? EUUID })
-                default: break
-                }
-            }
-        }
-        return result
     }
 
     /// Removes an object from this resource.
@@ -721,36 +688,6 @@ public actor Resource {
 
     // MARK: - Private Helpers
 
-    /// Checks if a container object contains a target object through a specific reference.
-    ///
-    /// - Parameters:
-    ///   - container: The potential container object.
-    ///   - objectId: The ID of the object to check for containment.
-    ///   - reference: The containment reference to check.
-    /// - Returns: `true` if the container contains the target object.
-    private func doesObjectContain(
-        _ container: any EObject, objectId: EUUID, through reference: EReference
-    ) -> Bool {
-        guard reference.containment else { return false }
-
-        if let value = container.eGet(reference) {
-            if reference.isMany {
-                if let ids = value as? [EUUID] {
-                    return ids.contains(objectId)
-                } else if let anyArray = value as? [Any] {
-                    let ids = anyArray.compactMap { $0 as? EUUID }
-                    return ids.contains(objectId)
-                }
-            } else {
-                if let id = value as? EUUID {
-                    return id == objectId
-                }
-            }
-        }
-
-        return false
-    }
-
     // MARK: - ATL Integration Methods
 
     /// Gets all instances of a specific EClass in this resource.
@@ -841,21 +778,14 @@ public actor Resource {
     /// Retrieves the object that contains the given object.
     ///
     /// For native metamodel objects the container is found from the containment structure of
-    /// the metamodel objects registered with this resource. For dynamic objects the
-    /// containment references of every registered object are searched.
+    /// the metamodel objects registered with this resource. A dynamic object is contained by
+    /// the first object of this resource, in the order of the resource, whose containment
+    /// references hold it. The object itself need not belong to this resource.
     ///
     /// - Parameter object: The object whose container is wanted.
     /// - Returns: The container, or `nil` if the object is a root or is not contained.
     public func eContainer(of object: any EObject) -> (any EObject)? {
-        if let containerID = nativeContainers[object.id] {
-            return resolve(containerID)
-        }
-        if let meta = object as? any EMetaObject, let containerID = meta.eContainerID,
-            let container = resolve(containerID)
-        {
-            return container
-        }
-        return containment(of: object.id)?.container
+        containerObject(of: object.id, metaObject: object as? any EMetaObject)
     }
 
     /// Retrieves the containment feature through which an object is held by its container.
@@ -864,13 +794,31 @@ public actor Resource {
     /// - Returns: The containment reference or attribute-like feature, or `nil` if the
     ///   object is not contained.
     public func eContainingFeature(of object: any EObject) -> (any EStructuralFeature)? {
-        if let container = eContainer(of: object) as? any EcoreReflective {
-            if let pair = container.containedObjects.first(where: { $0.object.id == object.id }) {
-                return (container.eClass as? EClass)?.getStructuralFeature(name: pair.feature.rawValue)
-            }
-            return nil
-        }
-        return containment(of: object.id)?.feature
+        containingFeature(of: object.id, in: eContainer(of: object))
+    }
+
+    /// Retrieves the container of an object, and the feature that holds it, by identifier.
+    ///
+    /// The object need not belong to this resource: an object of this resource may contain
+    /// an object held by another resource, so a client that knows only an identifier can ask
+    /// each resource of a ``ResourceSet`` in turn, or use
+    /// ``ResourceSet/container(ofIdentifier:)``. Native metamodel contents of this resource
+    /// are answered from their metamodel structure. Otherwise the container is the first
+    /// object of this resource, in the order of the resource, whose containment references
+    /// hold the identifier, and the feature is the first of those references in the order of
+    /// the container's class.
+    ///
+    /// Repeated lookups do not rescan the resource.
+    ///
+    /// - Parameter id: The identifier of the contained object.
+    /// - Returns: The container and the containment feature, or `nil` if no object of this
+    ///   resource contains the identifier.
+    public func container(ofIdentifier id: EUUID) -> (container: any EObject, feature: any EStructuralFeature)? {
+        let metaObject = (objects[id] ?? nativeContents[id]) as? any EMetaObject
+        guard let container = containerObject(of: id, metaObject: metaObject),
+            let feature = containingFeature(of: id, in: container)
+        else { return nil }
+        return (container, feature)
     }
 
     /// Retrieves the objects directly contained by an object.
@@ -915,17 +863,46 @@ public actor Resource {
         }
     }
 
-    /// Finds the registered container and containment reference holding a dynamic object.
-    private func containment(of id: EUUID) -> (container: any EObject, feature: EReference)? {
-        for candidate in objects.values {
-            guard let eClass = candidate.eClass as? EClass else { continue }
-            for reference in eClass.eAllReferences where reference.containment {
-                if referencedObjects(candidate.eGet(reference)).contains(where: { $0.id == id }) {
-                    return (candidate, reference)
-                }
-            }
+    /// Finds the first containment reference of an object of this resource that holds an identifier.
+    ///
+    /// - Parameters:
+    ///   - id: The identifier of the contained object.
+    ///   - byIdentifierOnly: Whether to disregard objects held as values rather than by identifier.
+    /// - Returns: The container's identifier and containment reference, or `nil` if none holds it.
+    func containerClaim(of id: EUUID, byIdentifierOnly: Bool = false) -> ContainmentClaim? {
+        let (claims, built) = objects.containmentClaims(on: id)
+        if built { containerIndexBuilds += 1 }
+        return byIdentifierOnly ? claims.first(where: \.byIdentifier) : claims.first
+    }
+
+    /// Finds the container of an identifier from native metamodel structure or containment.
+    ///
+    /// - Parameters:
+    ///   - id: The identifier of the contained object.
+    ///   - metaObject: The contained object, if it is a native metamodel object.
+    /// - Returns: The container, or `nil` if none is found.
+    private func containerObject(of id: EUUID, metaObject: (any EMetaObject)?) -> (any EObject)? {
+        if let containerID = nativeContainers[id] {
+            return resolve(containerID)
         }
-        return nil
+        if let containerID = metaObject?.eContainerID, let container = resolve(containerID) {
+            return container
+        }
+        return containerClaim(of: id).flatMap { objects[$0.container] }
+    }
+
+    /// Finds the feature through which an identifier is contained.
+    ///
+    /// - Parameters:
+    ///   - id: The identifier of the contained object.
+    ///   - container: The container found for the identifier, if any.
+    /// - Returns: The containing feature, or `nil` if none is found.
+    private func containingFeature(of id: EUUID, in container: (any EObject)?) -> (any EStructuralFeature)? {
+        if let container = container as? any EcoreReflective {
+            guard let pair = container.containedObjects.first(where: { $0.object.id == id }) else { return nil }
+            return (container.eClass as? EClass)?.getStructuralFeature(name: pair.feature.rawValue)
+        }
+        return containerClaim(of: id)?.reference
     }
 
     /// Resolves a reference value, which may hold identifiers or objects, to objects.

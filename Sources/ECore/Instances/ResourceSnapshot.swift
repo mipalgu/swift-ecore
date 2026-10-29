@@ -17,14 +17,14 @@ public struct ResourceSnapshot: Sendable {
     /// The URI of the resource that the snapshot was taken from.
     public let uri: String
 
-    let storage: OrderedDictionary<EUUID, any EObject>
+    let storage: ObjectTable
     let rootIdentifiers: [EUUID]
     let nativeContents: OrderedDictionary<EUUID, any EObject>
     let nativeContainers: [EUUID: EUUID]
     let nativeOwned: [EUUID: [EUUID]]
 
     init(
-        uri: String, storage: OrderedDictionary<EUUID, any EObject>, rootIdentifiers: [EUUID],
+        uri: String, storage: ObjectTable, rootIdentifiers: [EUUID],
         nativeContents: OrderedDictionary<EUUID, any EObject>,
         nativeContainers: [EUUID: EUUID], nativeOwned: [EUUID: [EUUID]]
     ) {

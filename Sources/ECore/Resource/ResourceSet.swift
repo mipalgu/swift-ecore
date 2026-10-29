@@ -657,6 +657,26 @@ public actor ResourceSet {
         return nil
     }
 
+    /// Retrieves the container of an object, and the feature that holds it, across all resources.
+    ///
+    /// The resources are asked in the order in which they were added to the set, using
+    /// ``Resource/container(ofIdentifier:)``, so the container may belong to a different
+    /// resource from the contained object.
+    ///
+    /// - Parameter id: The identifier of the contained object.
+    /// - Returns: The container, the containment feature, and the resource holding the
+    ///   container, or `nil` if no resource contains the identifier.
+    public func container(
+        ofIdentifier id: EUUID
+    ) async -> (container: any EObject, feature: any EStructuralFeature, resource: Resource)? {
+        for resource in resources.values {
+            if let found = await resource.container(ofIdentifier: id) {
+                return (found.container, found.feature, resource)
+            }
+        }
+        return nil
+    }
+
     /// Resolves the opposite reference for a bidirectional reference across all resources.
     ///
     /// - Parameter reference: The reference whose opposite should be resolved.
