@@ -102,20 +102,92 @@ extension Array: EcoreValue where Element: EcoreValue {}
 
 // MARK: - EcoreValue Collection Wrappers
 
+/// The kind of a collection value.
+///
+/// The four kinds correspond to the OCL collection types and to the
+/// combinations of the `ordered` and `unique` properties of a multi-valued
+/// Ecore feature. Query and transformation languages use the kind to decide
+/// how operations such as adding an element behave, for example whether an
+/// element that is already present is added again.
+public enum EcoreCollectionKind: String, Sendable, Hashable, CaseIterable {
+    /// An ordered collection that may contain duplicates.
+    case sequence = "Sequence"
+    /// An ordered collection without duplicates.
+    case orderedSet = "OrderedSet"
+    /// An unordered collection without duplicates.
+    case set = "Set"
+    /// An unordered collection that may contain duplicates.
+    case bag = "Bag"
+
+    /// Creates the kind with the given ordering and uniqueness.
+    ///
+    /// - Parameters:
+    ///   - ordered: Whether the elements have a defined order.
+    ///   - unique: Whether each element occurs at most once.
+    public init(ordered: Bool, unique: Bool) {
+        switch (ordered, unique) {
+        case (true, false): self = .sequence
+        case (true, true): self = .orderedSet
+        case (false, true): self = .set
+        case (false, false): self = .bag
+        }
+    }
+
+    /// Whether collections of this kind have a defined element order.
+    ///
+    /// Sequences and ordered sets are ordered; sets and bags are not.
+    public var isOrdered: Bool {
+        switch self {
+        case .sequence, .orderedSet: return true
+        case .set, .bag: return false
+        }
+    }
+
+    /// Whether collections of this kind hold each element at most once.
+    ///
+    /// Ordered sets and sets are unique; sequences and bags may hold duplicates.
+    public var isUnique: Bool {
+        switch self {
+        case .orderedSet, .set: return true
+        case .sequence, .bag: return false
+        }
+    }
+}
+
 /// Wrapper for arrays of EcoreValue to enable EcoreValue conformance.
 ///
 /// This wrapper allows `[any EcoreValue]` collections to conform to EcoreValue,
 /// which isn't possible with conditional extensions due to Swift's type system.
 /// It provides proper equality and hashing semantics for heterogeneous collections.
+///
+/// Each array records the ``EcoreCollectionKind`` of the collection it represents
+/// (a ``EcoreCollectionKind/sequence`` unless stated otherwise). The kind is
+/// descriptive only: it takes no part in equality, hashing or the textual form,
+/// so arrays holding equal elements are equal whatever their kinds.
 public struct EcoreValueArray: EcoreValue, Sendable, Equatable, Hashable {
     /// The underlying array of EcoreValue instances.
     public let values: [any EcoreValue]
 
-    /// Creates a new EcoreValueArray wrapping the given values.
+    /// The kind of collection the values form.
+    public let kind: EcoreCollectionKind
+
+    /// Creates a new sequence wrapping the given values.
     ///
     /// - Parameter values: Array of EcoreValue instances to wrap
     public init(_ values: [any EcoreValue]) {
+        self.init(values, kind: .sequence)
+    }
+
+    /// Creates a new EcoreValueArray of the given kind wrapping the given values.
+    ///
+    /// The values are kept as given: a unique kind does not remove duplicates.
+    ///
+    /// - Parameters:
+    ///   - values: Array of EcoreValue instances to wrap.
+    ///   - kind: The kind of collection the values form.
+    public init(_ values: [any EcoreValue], kind: EcoreCollectionKind) {
         self.values = values
+        self.kind = kind
     }
 
     /// Compares two EcoreValueArray instances for equality.
@@ -136,6 +208,16 @@ public struct EcoreValueArray: EcoreValue, Sendable, Equatable, Hashable {
         for value in values {
             EMFBase.hash(value, into: &hasher)
         }
+    }
+}
+
+extension EcoreValueArray: CustomReflectable {
+    /// The mirror of the array, which reflects its values only.
+    ///
+    /// The kind is left out so that the textual form of an array, and with it
+    /// any comparison based on that form, does not depend on the kind.
+    public var customMirror: Mirror {
+        Mirror(self, children: ["values": values], displayStyle: .struct)
     }
 }
 
