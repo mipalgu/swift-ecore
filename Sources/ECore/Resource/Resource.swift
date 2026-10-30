@@ -106,7 +106,38 @@ public actor Resource {
             if let resourceSet {
                 metamodelSnapshot = resourceSet.metamodelSnapshot
             }
+            inheritedContainerLookup = resourceSet?.containerLookupDefault
         }
+    }
+
+    /// The container lookup default of the resource set that this resource belongs to, or
+    /// belonged to until the set was released.
+    var inheritedContainerLookup: ContainerLookupDefault?
+
+    /// The container lookup scope configured for this resource itself, if any.
+    ///
+    /// When it is `nil`, the resource inherits the default of its resource set (see
+    /// ``configuredContainerLookupScope``). Set it with ``setContainerLookupScope(_:)``.
+    public private(set) var containerLookupScopeOverride: ContainerLookupScope?
+
+    /// The container lookup scope configured for this resource or its resource set, if any.
+    ///
+    /// This is ``containerLookupScopeOverride`` if it is set, else the
+    /// ``ResourceSet/defaultContainerLookupScope`` of the resource set that the resource
+    /// belongs to. A resource keeps the default of its set after the set has been released,
+    /// as it keeps the set's metamodels, and loses it when it is given another set or none.
+    /// The value is `nil` if neither the resource nor its set configures a scope.
+    public var configuredContainerLookupScope: ContainerLookupScope? {
+        containerLookupScopeOverride ?? inheritedContainerLookup?.scope
+    }
+
+    /// The container lookup scope that ``eContainer(of:scope:)`` and
+    /// ``eContainingFeature(of:scope:)`` use when they are not given one.
+    ///
+    /// This is ``configuredContainerLookupScope`` if a scope is configured, else
+    /// ``ContainerLookupScope/builtInDefault``, the scope of version 0.6.
+    public var containerLookupScope: ContainerLookupScope {
+        configuredContainerLookupScope ?? .builtInDefault
     }
 
     /// The metamodels of the resource set that this resource belongs to, or belonged to.
@@ -145,6 +176,18 @@ public actor Resource {
     /// - Parameter resourceSet: The resource set to associate with this resource.
     public func setResourceSet(_ resourceSet: ResourceSet?) {
         self.resourceSet = resourceSet
+    }
+
+    /// Configures the container lookup scope of this resource.
+    ///
+    /// The scope applies to every call of ``eContainer(of:scope:)`` and
+    /// ``eContainingFeature(of:scope:)`` that is not given a scope, and takes precedence over
+    /// the default of the resource set. ``container(ofIdentifier:scope:)`` follows it too.
+    ///
+    /// - Parameter scope: The scope to use, or `nil` to inherit the default of the resource
+    ///   set, or the built-in default if the resource has no set.
+    public func setContainerLookupScope(_ scope: ContainerLookupScope?) {
+        containerLookupScopeOverride = scope
     }
 
     /// Enable or disable debug mode.
@@ -777,69 +820,55 @@ public actor Resource {
 
     // MARK: - Containment Navigation
 
-    /// Retrieves the object that contains the given object.
-    ///
-    /// For native metamodel objects the container is found from the containment structure of
-    /// the metamodel objects registered with this resource. For dynamic objects the
-    /// containment references of every registered object are searched.
-    ///
-    /// The lookup uses the ``ContainerLookupScope/thisResource`` scope, so an object that
-    /// this resource cannot resolve has a container only if an object of this resource embeds
-    /// it as a value. Use ``eContainer(of:scope:)`` with ``ContainerLookupScope/anyResource``
-    /// to find the container of an object that belongs to another resource.
-    ///
-    /// - Parameter object: The object whose container is wanted.
-    /// - Returns: The container, or `nil` if the object is a root or is not contained.
-    public func eContainer(of object: any EObject) -> (any EObject)? {
-        eContainer(of: object, scope: .thisResource)
-    }
-
-    /// Retrieves the object of this resource that contains the given object, within a scope.
+    /// Retrieves the object of this resource that contains the given object.
     ///
     /// For native metamodel objects the container is found from the containment structure of
     /// the metamodel objects registered with this resource. Otherwise the container is the
     /// first object of this resource, in the order of the resource, whose containment
     /// references hold the object in a way that the scope admits.
     ///
+    /// Without a scope, the lookup uses ``containerLookupScope``: the scope configured for the
+    /// resource or its resource set, else ``ContainerLookupScope/builtInDefault``. That
+    /// default is ``ContainerLookupScope/thisResource``, as in version 0.6, so an object that
+    /// this resource cannot resolve has a container only if an object of this resource
+    /// embeds it as a value. Pass ``ContainerLookupScope/anyResource``, or configure it, to
+    /// find the container of an object that belongs to another resource.
+    ///
+    /// ```swift
+    /// let container = await resource.eContainer(of: object)
+    /// let anywhere = await resource.eContainer(of: object, scope: .anyResource)
+    /// ```
+    ///
     /// - Parameters:
     ///   - object: The object whose container is wanted.
-    ///   - scope: The contained objects to answer for; ``ContainerLookupScope/anyResource``
-    ///     also finds the container of an object that belongs to another resource.
+    ///   - scope: The contained objects to answer for, or `nil` (the default) for
+    ///     ``containerLookupScope``; ``ContainerLookupScope/anyResource`` also finds the
+    ///     container of an object that belongs to another resource.
     /// - Returns: The container, or `nil` if the object is a root or is not contained.
-    public func eContainer(of object: any EObject, scope: ContainerLookupScope) -> (any EObject)? {
-        containerObject(of: object.id, metaObject: object as? any EMetaObject, scope: scope)
+    public func eContainer(of object: any EObject, scope: ContainerLookupScope? = nil) -> (any EObject)? {
+        containerObject(
+            of: object.id, metaObject: object as? any EMetaObject, scope: scope ?? containerLookupScope)
     }
 
     /// Retrieves the containment feature through which an object is held by its container.
     ///
-    /// The lookup uses the ``ContainerLookupScope/thisResource`` scope, as does
-    /// ``eContainer(of:)``. Use ``eContainingFeature(of:scope:)`` with
-    /// ``ContainerLookupScope/anyResource`` for an object that belongs to another resource.
-    ///
-    /// - Parameter object: The object whose containing feature is wanted.
-    /// - Returns: The containment reference or attribute-like feature, or `nil` if the
-    ///   object is not contained.
-    public func eContainingFeature(of object: any EObject) -> (any EStructuralFeature)? {
-        eContainingFeature(of: object, scope: .thisResource)
-    }
-
-    /// Retrieves the containment feature through which an object is held by its container,
-    /// within a scope.
-    ///
-    /// The feature belongs to the container that ``eContainer(of:scope:)`` finds in the
-    /// same scope; a container that holds the object in several containment references
-    /// reports the first of them in the order of its class.
+    /// The feature belongs to the container that ``eContainer(of:scope:)`` finds in the same
+    /// scope; a container that holds the object in several containment references reports
+    /// the first of them in the order of its class. Without a scope, the lookup uses
+    /// ``containerLookupScope``, as does ``eContainer(of:scope:)``.
     ///
     /// - Parameters:
     ///   - object: The object whose containing feature is wanted.
-    ///   - scope: The contained objects to answer for; ``ContainerLookupScope/anyResource``
-    ///     also answers for an object that belongs to another resource.
+    ///   - scope: The contained objects to answer for, or `nil` (the default) for
+    ///     ``containerLookupScope``; ``ContainerLookupScope/anyResource`` also answers for
+    ///     an object that belongs to another resource.
     /// - Returns: The containment reference or attribute-like feature, or `nil` if the
     ///   object is not contained.
     public func eContainingFeature(
-        of object: any EObject, scope: ContainerLookupScope
+        of object: any EObject, scope: ContainerLookupScope? = nil
     ) -> (any EStructuralFeature)? {
-        containingFeature(of: object.id, in: eContainer(of: object, scope: scope), scope: scope)
+        let scope = scope ?? containerLookupScope
+        return containingFeature(of: object.id, in: eContainer(of: object, scope: scope), scope: scope)
     }
 
     /// Retrieves the container of an object, and the feature that holds it, by identifier.
@@ -847,22 +876,30 @@ public actor Resource {
     /// The object need not belong to this resource: an object of this resource may contain
     /// an object held by another resource, so a client that knows only an identifier can ask
     /// each resource of a ``ResourceSet`` in turn, or use
-    /// ``ResourceSet/container(ofIdentifier:)``. Native metamodel contents of this resource
-    /// are answered from their metamodel structure. Otherwise the container is the first
-    /// object of this resource, in the order of the resource, whose containment references
-    /// hold the identifier, and the feature is the first of those references in the order of
-    /// the container's class.
+    /// ``ResourceSet/container(ofIdentifier:scope:)``. Native metamodel contents of this
+    /// resource are answered from their metamodel structure. Otherwise the container is the
+    /// first object of this resource, in the order of the resource, whose containment
+    /// references hold the identifier in a way that the scope admits, and the feature is the
+    /// first of those references in the order of the container's class.
     ///
-    /// The lookup uses the ``ContainerLookupScope/anyResource`` scope. Repeated lookups do
-    /// not rescan the resource.
+    /// Without a scope, the lookup uses ``configuredContainerLookupScope`` if a scope is
+    /// configured for the resource or its resource set, and otherwise
+    /// ``ContainerLookupScope/anyResource``, the scope of this lookup in version 0.6.
+    /// Repeated lookups do not rescan the resource.
     ///
-    /// - Parameter id: The identifier of the contained object.
+    /// - Parameters:
+    ///   - id: The identifier of the contained object.
+    ///   - scope: The contained objects to answer for, or `nil` (the default) for the
+    ///     configured scope, else ``ContainerLookupScope/anyResource``.
     /// - Returns: The container and the containment feature, or `nil` if no object of this
     ///   resource contains the identifier.
-    public func container(ofIdentifier id: EUUID) -> (container: any EObject, feature: any EStructuralFeature)? {
+    public func container(
+        ofIdentifier id: EUUID, scope: ContainerLookupScope? = nil
+    ) -> (container: any EObject, feature: any EStructuralFeature)? {
+        let scope = scope ?? configuredContainerLookupScope ?? .anyResource
         let metaObject = (objects[id] ?? nativeContents[id]) as? any EMetaObject
-        guard let container = containerObject(of: id, metaObject: metaObject, scope: .anyResource),
-            let feature = containingFeature(of: id, in: container, scope: .anyResource)
+        guard let container = containerObject(of: id, metaObject: metaObject, scope: scope),
+            let feature = containingFeature(of: id, in: container, scope: scope)
         else { return nil }
         return (container, feature)
     }

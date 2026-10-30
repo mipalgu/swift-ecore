@@ -202,7 +202,7 @@ let documentation = book?.getEAnnotationDetail(
 - [x] Name-based Ecore fragments - `#/`, `#//Book`, `#//Book/title`, `#//sub/Class`, `#//Enum/Literal`, operations and parameters (`FragmentNavigator`, `XPathResolver`)
 - [x] Multi-root positional fragments - as in EMF, the only root of a resource is `#/` and its contents `#//@feature.index`, while root `n` of a resource with several roots is `#/n` and its contents `#/n/@feature.index` (`PositionalFragments`, `XPathResolver`); the container side of a containment is never written
 - [x] Proxy resolution - `Resource.resolveProxies()`, `ResourceSet.resolveAllProxies()` and `Resource.eGetResolving(objectId:feature:)` load target resources on demand
-- [x] Container lookup by identifier - `Resource.container(ofIdentifier:)` and `ResourceSet.container(ofIdentifier:)` find a container even when the contained object belongs to another resource, as do `Resource.eContainer(of:scope:)` and `eContainingFeature(of:scope:)` with the `.anyResource` scope of `ContainerLookupScope`; repeated lookups, including those of `eContainer(of:)` and `eContainingFeature(of:)`, are answered without rescanning the resource
+- [x] Container lookup by identifier - `Resource.container(ofIdentifier:scope:)` and `ResourceSet.container(ofIdentifier:scope:)` find a container even when the contained object belongs to another resource, as do `Resource.eContainer(of:scope:)` and `eContainingFeature(of:scope:)` with the `.anyResource` scope of `ContainerLookupScope`; repeated lookups, including those of `eContainer(of:)` and `eContainingFeature(of:)`, are answered without rescanning the resource
 - [x] EMF-style serialisation - `XMISerializer(options: .emf)` writes attribute-style references, type qualifiers, relative URIs, name-based fragments, omits defaults, and writes many-valued attributes as child elements
 
 #### Cross-document references
@@ -368,14 +368,24 @@ offered through additional API, whose default is the new behaviour:
 
 - Container lookup for an object that belongs to another resource, or that has been removed
   from the resource of its container
-  - New default: the container is found by `Resource.container(ofIdentifier:)`,
-    `ResourceSet.container(ofIdentifier:)`, and with `ContainerLookupScope()` or
+  - New default: the container is found by `Resource.container(ofIdentifier:scope:)`,
+    `ResourceSet.container(ofIdentifier:scope:)` (which follow a configured scope, else answer
+    for any resource), and with `ContainerLookupScope()` or
     `ContainerLookupScope.standard` (`.anyResource`)
   - Option: the `scope:` argument of `Resource.eContainer(of:scope:)` and
-    `Resource.eContainingFeature(of:scope:)`
-  - 0.6 behaviour: `eContainer(of:)` and `eContainingFeature(of:)` as before, or
+    `Resource.eContainingFeature(of:scope:)`, or a scope configured for a resource with
+    `Resource.setContainerLookupScope(_:)` or for every resource of a set with
+    `ResourceSet.setDefaultContainerLookupScope(_:)` or
+    `ResourceSet(defaultContainerLookupScope:)`; a resource's own scope takes precedence over
+    the default of its set
+  - 0.6 behaviour: `eContainer(of:)` and `eContainingFeature(of:)` without a scope, as before,
+    while no scope is configured (`ContainerLookupScope.builtInDefault`), or
     `scope: .thisResource` (`ContainerLookupScope.legacy`); an object held by identifier is
     answered only while the resource can resolve it, and an object embedded as a value always is
+- Choosing the semantics: `ModellingSemantics` (`.standard` or `.legacy`) names the two sets of
+  behaviours of all the modelling languages, `ModellingSemantics.fromEnvironment()` reads a
+  choice from the `SWIFT_MODELLING_SEMANTICS` environment variable, and
+  `ContainerLookupScope(semantics:)` selects the matching scope
 
 `EcoreValueArray` now records an `EcoreCollectionKind`. Arrays created with
 `EcoreValueArray(_:)` are sequences, as before, and the kind takes no part in equality, hashing

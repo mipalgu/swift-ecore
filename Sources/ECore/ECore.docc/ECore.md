@@ -88,6 +88,8 @@ try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "employee
 - ``Resource``
 - ``ResourceSet``
 - ``ContainerLookupScope``
+- ``ModellingSemantics``
+- ``ModellingSemanticsError``
 - ``XMIParser``
 - ``XMISerializer``
 - ``XMISerializationOptions``

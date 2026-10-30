@@ -82,13 +82,54 @@ public actor ResourceSet {
     /// Derived feature rules, keyed by class and feature name (see ``DerivedFeatureRule``).
     var derivedFeatureRules: [DerivedFeatureKey: DerivedFeatureRule] = [:]
 
+    /// The default container lookup scope of the set, shared with its resources.
+    nonisolated let containerLookupDefault: ContainerLookupDefault
+
     /// Initialises a new resource set with empty registries.
+    ///
+    /// The set configures no container lookup scope, so its resources use
+    /// ``ContainerLookupScope/builtInDefault`` unless they configure their own.
     public init() {
+        self.init(defaultContainerLookupScope: nil)
+    }
+
+    /// Initialises a new resource set with empty registries and a default container lookup
+    /// scope.
+    ///
+    /// - Parameter defaultContainerLookupScope: The scope that the resources of the set use
+    ///   unless they configure their own, or `nil` for
+    ///   ``ContainerLookupScope/builtInDefault``.
+    public init(defaultContainerLookupScope: ContainerLookupScope?) {
         self.resources = [:]
         self.metamodelRegistry = [:]
         self.uriConverter = [:]
         self.resourceFactories = [:]
+        containerLookupDefault = ContainerLookupDefault(defaultContainerLookupScope)
         // registerDefaultFactories() - will be called later when needed
+    }
+
+    // MARK: - Container Lookup Scope
+
+    /// The container lookup scope that the resources of this set inherit, if one is
+    /// configured.
+    ///
+    /// Each resource of the set uses this scope for ``Resource/eContainer(of:scope:)`` and
+    /// ``Resource/eContainingFeature(of:scope:)`` without a scope, unless the resource
+    /// configures its own with ``Resource/setContainerLookupScope(_:)``. When it is `nil`,
+    /// the resources use ``ContainerLookupScope/builtInDefault``.
+    public var defaultContainerLookupScope: ContainerLookupScope? {
+        containerLookupDefault.scope
+    }
+
+    /// Configures the container lookup scope that the resources of this set inherit.
+    ///
+    /// The change applies at once to every resource of the set, including resources added
+    /// earlier, except those that configure their own scope.
+    ///
+    /// - Parameter scope: The scope to use, or `nil` for
+    ///   ``ContainerLookupScope/builtInDefault``.
+    public func setDefaultContainerLookupScope(_ scope: ContainerLookupScope?) {
+        containerLookupDefault.scope = scope
     }
 
     // MARK: - Resource Management
@@ -660,17 +701,21 @@ public actor ResourceSet {
     /// Retrieves the container of an object, and the feature that holds it, across all resources.
     ///
     /// The resources are asked in the order in which they were added to the set, using
-    /// ``Resource/container(ofIdentifier:)``, so the container may belong to a different
-    /// resource from the contained object.
+    /// ``Resource/container(ofIdentifier:scope:)``, so the container may belong to a
+    /// different resource from the contained object.
     ///
-    /// - Parameter id: The identifier of the contained object.
+    /// - Parameters:
+    ///   - id: The identifier of the contained object.
+    ///   - scope: The contained objects that every resource answers for, or `nil` (the
+    ///     default) for the scope configured for each resource or for this set, else
+    ///     ``ContainerLookupScope/anyResource``.
     /// - Returns: The container, the containment feature, and the resource holding the
     ///   container, or `nil` if no resource contains the identifier.
     public func container(
-        ofIdentifier id: EUUID
+        ofIdentifier id: EUUID, scope: ContainerLookupScope? = nil
     ) async -> (container: any EObject, feature: any EStructuralFeature, resource: Resource)? {
         for resource in resources.values {
-            if let found = await resource.container(ofIdentifier: id) {
+            if let found = await resource.container(ofIdentifier: id, scope: scope) {
                 return (found.container, found.feature, resource)
             }
         }
