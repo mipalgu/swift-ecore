@@ -152,11 +152,15 @@ enum ReferenceValues {
 /// Helpers for reading and rebuilding many-valued feature values.
 enum ValueList {
     /// The elements of a many-valued feature value.
+    ///
+    /// - Parameter value: The value of a many-valued feature.
+    /// - Returns: The elements of a list, a single value that the feature holds without a
+    ///   list as the only element, or no elements for `nil`.
     static func elements(of value: (any EcoreValue)?) -> [any EcoreValue] {
         guard let value else { return [] }
         if let array = value as? EcoreValueArray { return array.values }
         if let array = value as? [any EcoreValue] { return array }
-        return []
+        return [value]
     }
 
     /// Whether a value is a list of values rather than a single value.
@@ -184,6 +188,7 @@ enum ValueList {
     }
 
     private static func empty(like template: (any EcoreValue)?) -> any EcoreValue {
+        if let template, !isList(template) { return typed(template, from: []) }
         switch template {
         case is [String]: return [String]()
         case is [Int]: return [Int]()
