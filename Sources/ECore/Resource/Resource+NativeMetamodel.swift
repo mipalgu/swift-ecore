@@ -62,7 +62,7 @@ extension Resource {
             objects: parsed, ignoresFailures: shouldIgnoreUnresolvedClassifiers)
         converter.metadata = ecoreDocumentMetadata
         converter.external = await resolveExternalClassifiers(converter.collectProxies(from: root))
-        converter.localProxies = await resolveLocalAnnotationProxies(converter.annotationProxies())
+        converter.localProxies = await resolveLocalProxies(converter.documentProxies())
         var package = try converter.convert(root)
         var references: [EUUID: ResourceProxy] = [:]
         for (proxy, classifier) in converter.external where references[classifier.id] == nil {
@@ -96,7 +96,7 @@ extension Resource {
         var converter = NativeMetamodelConverter(objects: parsed, ignoresFailures: false, options: options)
         converter.metadata = ecoreDocumentMetadata
         converter.external = await resolveExternalClassifiers(dynamic.flatMap { converter.collectProxies(from: $0) })
-        converter.localProxies = await resolveLocalAnnotationProxies(converter.annotationProxies())
+        converter.localProxies = await resolveLocalProxies(converter.documentProxies())
         var packages = try converter.convertRoots(dynamic)
         let references = Dictionary(converter.external.map { ($0.value.id, $0.key) }, uniquingKeysWith: { first, _ in first })
         let origin = EPackageOrigin(documentURI: uri, externalReferences: references,
@@ -108,14 +108,15 @@ extension Resource {
         return packages
     }
 
-    /// Resolves the annotation references that point back into this document.
+    /// Resolves the references that point back into this document.
     ///
-    /// A reference list that mixes references to this document and to other documents is
-    /// stored with proxies for all of them; the proxies of this document are resolved here.
+    /// A reference list that mixes references to this document and to other documents, such
+    /// as the supertypes of a class that extends classes of both, is stored with proxies for
+    /// all of them; the proxies of this document are resolved here.
     ///
-    /// - Parameter proxies: The annotation reference proxies.
+    /// - Parameter proxies: The reference proxies of the document.
     /// - Returns: The identifier of the element for each proxy of this document.
-    private func resolveLocalAnnotationProxies(_ proxies: [ResourceProxy]) async -> [ResourceProxy: EUUID] {
+    private func resolveLocalProxies(_ proxies: [ResourceProxy]) async -> [ResourceProxy: EUUID] {
         var resolved: [ResourceProxy: EUUID] = [:]
         let navigator = FragmentNavigator(resource: self)
         for proxy in proxies where proxy.uri == uri {
@@ -163,7 +164,7 @@ struct NativeMetamodelConverter {
     /// The classifiers of other documents, by the reference that names them.
     var external: [ResourceProxy: any EClassifier] = [:]
 
-    /// The identifiers of the elements that annotation references of this document name.
+    /// The identifiers of the elements of this document that proxies of this document name.
     var localProxies: [ResourceProxy: EUUID] = [:]
 
     /// XML metadata used to retain otherwise raw generic declarations.
@@ -216,16 +217,23 @@ struct NativeMetamodelConverter {
     }
 
     /// The targets that a reference value denotes, in order.
+    ///
+    /// A proxy that names an element of this document denotes that element.
     private func targets(_ value: (any EcoreValue)?) -> [Target] {
         switch value {
         case let identifier as EUUID: return [.local(identifier)]
         case let identifiers as [EUUID]: return identifiers.map { .local($0) }
-        case let proxy as ResourceProxy: return [.external(proxy)]
-        case let proxies as [ResourceProxy]: return proxies.map { .external($0) }
+        case let proxy as ResourceProxy: return [target(of: proxy)]
+        case let proxies as [ResourceProxy]: return proxies.map { target(of: $0) }
         case let object as any EObject: return [.local(object.id)]
         case let array as EcoreValueArray: return array.values.flatMap { targets($0) }
         default: return []
         }
+    }
+
+    /// The target that a proxy denotes: the element of this document that it names, if any.
+    private func target(of proxy: ResourceProxy) -> Target {
+        localProxies[proxy].map { .local($0) } ?? .external(proxy)
     }
 
     /// The types that name a classifier which could not be loaded.
@@ -332,20 +340,24 @@ struct NativeMetamodelConverter {
         EcoreFeatureName.eLowerBound.rawValue,
     ]
 
-    // MARK: Annotations
+    // MARK: Proxies
 
-    /// The references that the annotations of the document hold to other documents.
+    /// The proxies that the parsed elements hold in their reference features.
     ///
     /// - Returns: The distinct proxies, in no particular order.
-    func annotationProxies() -> [ResourceProxy] {
+    func documentProxies() -> [ResourceProxy] {
         var result: Set<ResourceProxy> = []
-        for object in objects.values where object.eClass.name == EcoreClassifier.eAnnotation.rawValue {
-            for case .external(let proxy) in targets(object.eGet(EcoreFeatureName.references.rawValue)) {
-                result.insert(proxy)
+        let features = Self.typeReferenceNames + Self.retainedReferenceFeatures.map(\.rawValue)
+            + [XMIAttribute.opposite.rawValue]
+        for object in objects.values {
+            for feature in features {
+                for case .external(let proxy) in targets(object.eGet(feature)) { result.insert(proxy) }
             }
         }
         return Array(result)
     }
+
+    // MARK: Annotations
 
     /// Converts the annotations of every parsed element.
     private mutating func convertAnnotations() {
@@ -371,7 +383,7 @@ struct NativeMetamodelConverter {
             target -> EAnnotationReference in
             switch target {
             case .local(let identifier): return .local(identifier)
-            case .external(let proxy): return localProxies[proxy].map { .local($0) } ?? .external(proxy)
+            case .external(let proxy): return .external(proxy)
             }
         }
         return EAnnotation(

@@ -90,14 +90,16 @@ extension ResourceSet {
     /// Loads an Ecore document from text as native metamodel objects.
     ///
     /// This behaves like ``loadEcoreResource(uri:)`` for a document whose text the caller
-    /// holds. References to other documents are resolved through the installed handlers.
-    /// A resource that is already loaded under the URI is returned unchanged.
+    /// holds, which may be an `.ecore` document or a JSON metamodel. References to other
+    /// documents are resolved through the installed handlers. A resource that is already
+    /// loaded under the URI is returned unchanged.
     ///
     /// - Parameters:
-    ///   - text: The text of the `.ecore` document.
+    ///   - text: The text of the `.ecore` document or JSON metamodel.
     ///   - uri: The URI that the document has.
     /// - Returns: The resource holding the native package as its root object.
-    /// - Throws: ``XMIError`` if the document cannot be parsed or has no root package.
+    /// - Throws: ``XMIError`` if the document cannot be parsed or has no root package, or
+    ///   ``JSONError`` if a JSON document is not a well-formed metamodel.
     public func loadEcoreResource(text: String, uri: String) async throws -> Resource {
         try await loadEcoreResource(text: text, uri: uri, options: EcoreLoadOptions())
     }

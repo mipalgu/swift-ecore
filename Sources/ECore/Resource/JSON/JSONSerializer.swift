@@ -35,6 +35,36 @@ import Foundation
 /// ]
 /// ```
 ///
+/// ## Metamodels
+///
+/// Metamodels are written as instances of the Ecore metamodel, following the conventions
+/// of emfjson for Ecore models (see ``serialize(_:relativeTo:)``):
+///
+/// ```json
+/// {
+///   "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EPackage",
+///   "name": "shop",
+///   "nsURI": "http://example.org/shop",
+///   "nsPrefix": "shop",
+///   "eClassifiers": [
+///     {
+///       "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EClass",
+///       "name": "Order",
+///       "eStructuralFeatures": [
+///         {
+///           "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EAttribute",
+///           "name": "total",
+///           "eType": {
+///             "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EDataType",
+///             "$ref": "http://www.eclipse.org/emf/2002/Ecore#//EInt"
+///           }
+///         }
+///       ]
+///     }
+///   ]
+/// }
+/// ```
+///
 /// ## Usage Example
 ///
 /// ```swift
@@ -67,7 +97,10 @@ public struct JSONSerializer: Sendable {
     /// nested objects.
     /// Keys are sorted.
     ///
-    /// A resource without root objects is written as an empty array (`[]`).
+    /// A resource without root objects is written as an empty array (`[]`). A resource whose
+    /// root objects are all native packages is written as a metamodel, as
+    /// ``serialize(_:relativeTo:)`` writes it with references to other documents relative to
+    /// the document from which the first package was loaded.
     ///
     /// - Parameter resource: The Resource containing objects to serialize
     /// - Returns: JSON string
@@ -85,6 +118,9 @@ public struct JSONSerializer: Sendable {
     /// fragment as the object's identifier, a contained object that the resource does not
     /// hold, and a proxy into the written document that names no object.
     ///
+    /// A resource whose root objects are all native packages is written as a metamodel, which
+    /// keeps everything that the packages hold.
+    ///
     /// - Parameters:
     ///   - resource: The Resource containing objects to serialise
     ///   - diagnostics: Receives the warnings, in the order in which they first occur
@@ -94,6 +130,8 @@ public struct JSONSerializer: Sendable {
         let roots = await resource.getRootObjects()
 
         guard !roots.isEmpty else { return JSONSyntax.emptyDocument }
+        let packages = roots.compactMap { $0 as? EPackage }
+        if packages.count == roots.count { return serialize(packages) }
         let dynamicRoots = roots.compactMap { $0 as? DynamicEObject }
         guard dynamicRoots.count == roots.count else {
             throw JSONError.unsupportedObjectType
@@ -114,6 +152,64 @@ public struct JSONSerializer: Sendable {
         }
 
         return jsonString
+    }
+
+    // MARK: - Metamodels
+
+    /// Serialises native packages as a JSON metamodel.
+    ///
+    /// The document holds what the `.ecore` document that ``XMISerializer`` writes for the
+    /// packages holds, as an instance of the Ecore metamodel in the conventions of emfjson:
+    ///
+    /// - Every object starts with an `eClass` member that names its metaclass, such as
+    ///   `"http://www.eclipse.org/emf/2002/Ecore#//EClass"`; the other members follow in a
+    ///   fixed order, so the same packages are always written as the same text.
+    /// - Contained elements are nested under their containment feature (`eClassifiers`,
+    ///   `eSubpackages`, `eStructuralFeatures`, `eOperations`, `eParameters`, `eLiterals`,
+    ///   `eAnnotations`, `eTypeParameters`, and the generic type features).
+    /// - Attributes are written with their Ecore names and JSON types, and only where they
+    ///   differ from their defaults (the name, `nsURI`, and `nsPrefix` of a package are always
+    ///   written).
+    /// - References are `$ref` objects: `{"$ref": "//Book/author"}` for an element of the
+    ///   document (by its name-based fragment), `{"$ref": "http://www.eclipse.org/emf/2002/Ecore#//EString"}`
+    ///   for a class or data type of Ecore, and `{"$ref": "other.ecore#//Name"}` for an
+    ///   element of another document, relative to the written document. A reference whose
+    ///   target is not of the declared type of the feature (such as the type of a typed
+    ///   element, which can be a class, data type, or enumeration) also names the class of the
+    ///   target in an `eClass` member.
+    /// - The details of an annotation are a JSON object from keys to values, in order.
+    /// - One package is written as an object; several packages as an array, whose elements
+    ///   are referred to as `/0/Name`, `/1/Name`, and so on.
+    ///
+    /// XML comments and `xmi:id` values of a document from which the packages were loaded
+    /// have no place in JSON and are not written.
+    ///
+    /// - Parameters:
+    ///   - packages: The root packages, in document order.
+    ///   - documentURL: The location that the document will have, against which references to
+    ///     other documents are made relative, or `nil` to use the location of the document
+    ///     from which the first package was loaded.
+    /// - Returns: The text of the document, ending in a newline, or an empty array (`[]`) if
+    ///   there are no packages.
+    public func serialize(_ packages: [EPackage], relativeTo documentURL: URL? = nil) -> String {
+        guard !packages.isEmpty else { return JSONSyntax.emptyDocument }
+        let writer = JSONMetamodelWriter(
+            roots: packages, documentURI: documentURL.map { URIReference.canonicalise($0.absoluteString) })
+        return writer.document.document
+    }
+
+    /// Serialises a native package as a JSON metamodel file.
+    ///
+    /// References to other documents are written relative to the file; see
+    /// ``serialize(_:relativeTo:)`` for the format.
+    ///
+    /// - Parameters:
+    ///   - package: The root package to serialise.
+    ///   - url: The location of the file to write.
+    /// - Throws: An error if the file cannot be written.
+    public func serialize(_ package: EPackage, to url: URL) throws {
+        try serialize([package], relativeTo: url)
+            .write(to: url, atomically: FileURIHandler.writesAtomically, encoding: .utf8)
     }
 }
 

@@ -577,9 +577,14 @@ public actor ResourceSet {
     /// document that refers to them. Documents that refer to each other in a cycle resolve
     /// the references that close the cycle to stand-ins.
     ///
-    /// - Parameter uri: The absolute URI of the `.ecore` document.
+    /// A document that starts like JSON (with `{` or `[`) is read as a metamodel in the JSON
+    /// format that ``JSONSerializer/serialize(_:relativeTo:)`` writes, both here and where
+    /// another document refers to it.
+    ///
+    /// - Parameter uri: The absolute URI of the `.ecore` or JSON document.
     /// - Returns: The resource holding the native package as its root object.
-    /// - Throws: ``XMIError`` if the document cannot be read or has no root package.
+    /// - Throws: ``XMIError`` if the document cannot be read or has no root package, or
+    ///   ``JSONError`` if a JSON document is not a well-formed metamodel.
     public func loadEcoreResource(uri: String) async throws -> Resource {
         try await loadEcoreResource(uri: uri, options: EcoreLoadOptions())
     }
@@ -621,12 +626,17 @@ public actor ResourceSet {
 
     /// Loads an Ecore document that has been read already as native metamodel objects.
     ///
+    /// A document that starts like JSON is read as a JSON metamodel; any other document as
+    /// an `.ecore` XMI document.
+    ///
     /// - Parameters:
     ///   - data: The bytes of the document.
     ///   - uri: The canonical URI of the document.
     ///   - enableDebugging: Whether the parser prints a trace.
+    ///   - options: The policies for unresolved references and incomplete elements.
     /// - Returns: The resource holding the native package as its root object.
-    /// - Throws: ``XMIError`` if the document cannot be parsed or has no root package.
+    /// - Throws: ``XMIError`` if the document cannot be parsed or has no root package, or
+    ///   ``JSONError`` if a JSON document is not a well-formed metamodel.
     func loadEcoreResource(data: Data, uri: String, enableDebugging: Bool, options: EcoreLoadOptions = EcoreLoadOptions()) async throws -> Resource {
         if let existing = resources[uri] {
             return existing
@@ -634,8 +644,14 @@ public actor ResourceSet {
         ecoreLoadsInProgress.insert(uri)
         defer { ecoreLoadsInProgress.remove(uri) }
 
-        let parser = XMIParser(enableDebugging: enableDebugging, ecoreLoadOptions: options)
-        let parsed = try await parser.parse(data, uri: uri)
+        let parsed: Resource
+        if ModelFormat.detect(data: data) == .json {
+            var reader = JSONMetamodelReader(uri: uri, options: options)
+            parsed = try await reader.read(data)
+        } else {
+            let parser = XMIParser(enableDebugging: enableDebugging, ecoreLoadOptions: options)
+            parsed = try await parser.parse(data, uri: uri)
+        }
         await parsed.enableDebugging(enableDebugging)
         await parsed.setResourceSet(self)
         let roots = await parsed.getRootObjects()

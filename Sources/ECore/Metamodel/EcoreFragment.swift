@@ -52,6 +52,12 @@ public enum EcoreFragment {
         static let firstPrintable: UInt32 = 0x21
     }
 
+    /// The character that encloses the source of an annotation segment, as in `%source%`.
+    static var annotationMarker: Character { Syntax.annotationMarker }
+
+    /// The segment text of an element without a name.
+    static var missingName: String { Syntax.missingName }
+
     // MARK: Encoding
 
     /// Percent-encodes a name for use as a fragment segment.

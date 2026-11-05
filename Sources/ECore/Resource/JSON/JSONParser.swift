@@ -49,6 +49,16 @@ public struct JSONParseOptions: Sendable, Equatable {
 /// with the resource, and contained objects are held by their identifiers. A document that
 /// is an empty array yields an empty resource.
 ///
+/// ## Metamodel Documents
+///
+/// A document whose root objects are all of class
+/// `http://www.eclipse.org/emf/2002/Ecore#//EPackage` is a metamodel (see
+/// ``JSONSerializer/serialize(_:relativeTo:)`` for its format). It is read as native
+/// packages, as ``ResourceSet/loadEcoreResource(uri:)`` reads an `.ecore` document: the
+/// resource holds ``EPackage`` values whose references and opposites are resolved, and with
+/// a resource set every root package is registered as a metamodel and the classifiers of
+/// other documents are loaded through it.
+///
 /// ## JSON Format
 ///
 /// Single root object:
@@ -117,6 +127,9 @@ public actor JSONParser {
 
     /// Parses the bytes of a JSON document.
     ///
+    /// A metamodel document, whose root objects are all packages of Ecore, is read as native
+    /// ``EPackage`` values, and with a resource set they are registered as metamodels.
+    ///
     /// - Parameters:
     ///   - data: The JSON document.
     ///   - uri: The URI that the document has.
@@ -124,6 +137,16 @@ public actor JSONParser {
     /// - Throws: ``JSONError`` or a decoding error if parsing fails.
     public func parse(_ data: Data, uri documentURI: String) async throws -> Resource {
         let uri = URIReference.canonicalise(documentURI)
+
+        diagnostics = ConversionDiagnostics()
+        let json = try JSONSerialization.jsonObject(with: data, options: [])
+        guard let documents = (json as? [[String: Any]]) ?? (json as? [String: Any]).map({ [$0] }) else {
+            throw JSONError.invalidFormat("JSON must be an object with eClass field")
+        }
+        if JSONMetamodelReader.isMetamodel(documents) {
+            let metamodels = resourceSet ?? ResourceSet()
+            return try await metamodels.loadEcoreResource(data: data, uri: uri, enableDebugging: false)
+        }
 
         // Create resource via ResourceSet if available, otherwise create directly
         let resource: Resource
@@ -133,11 +156,6 @@ public actor JSONParser {
             resource = Resource(uri: uri)
         }
 
-        diagnostics = ConversionDiagnostics()
-        let json = try JSONSerialization.jsonObject(with: data, options: [])
-        guard let documents = (json as? [[String: Any]]) ?? (json as? [String: Any]).map({ [$0] }) else {
-            throw JSONError.invalidFormat("JSON must be an object with eClass field")
-        }
         if let first = documents.first,
             let classes = await MetamodelClasses(resourceSet: resourceSet),
             let identifier = first[JSONSyntax.eClassKey] as? String, classes.resolve(identifier) != nil

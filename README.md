@@ -175,6 +175,87 @@ let documentation = book?.getEAnnotationDetail(
   identifier attributes, otherwise kept and reported as `ConversionDiagnostics` warnings)
 - [x] An empty resource is written as `[]` and read back as an empty resource
 - [x] `JSONError` values describe themselves, naming the class or feature involved
+- [x] Metamodels in JSON: `JSONSerializer.serialize(_:relativeTo:)` (and `ModelIO.save` or
+  `JSONSerializer.serialize(_:)` for a resource of native packages) writes `EPackage` values as
+  instances of the Ecore metamodel, following the emfjson conventions for Ecore models; every
+  construct of an `.ecore` document is kept (subpackages, classes, attributes, references with
+  opposites and keys, operations, parameters, enumerations, data types, annotations with ordered
+  details and references, and generic types), and the same packages always give the same text
+- [x] `JSONParser`, `ModelIO.load`, `ResourceSet.loadEcoreResource(uri:)` and `EPackage(url:)`
+  read a JSON document whose roots are Ecore packages as native packages, resolving references
+  within the document, to the classes and data types of Ecore, and to other `.ecore` or JSON
+  metamodels; malformed documents, unknown metaclasses and references to missing elements are
+  reported as `JSONError` values
+
+```json
+{
+  "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EPackage",
+  "name": "shop",
+  "nsURI": "http://example.org/shop",
+  "nsPrefix": "shop",
+  "eClassifiers": [
+    {
+      "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EClass",
+      "name": "Order",
+      "eStructuralFeatures": [
+        {
+          "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EAttribute",
+          "name": "total",
+          "eType": {
+            "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EDataType",
+            "$ref": "http://www.eclipse.org/emf/2002/Ecore#//EInt"
+          }
+        },
+        {
+          "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EReference",
+          "name": "lines",
+          "upperBound": -1,
+          "eType": {
+            "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EClass",
+            "$ref": "//Line"
+          },
+          "containment": true,
+          "eOpposite": {
+            "$ref": "//Line/order"
+          }
+        }
+      ]
+    },
+    {
+      "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EClass",
+      "name": "Line",
+      "eStructuralFeatures": [
+        {
+          "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EReference",
+          "name": "order",
+          "eType": {
+            "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EClass",
+            "$ref": "//Order"
+          },
+          "eOpposite": {
+            "$ref": "//Order/lines"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+Each object names its metaclass in `eClass`, contained elements are nested under their
+containment feature, attributes are written only where they differ from their defaults, and
+references are `$ref` objects that use the name-based fragments of Ecore (`//Line/order`),
+the Ecore namespace for its built-in types, or a relative document URI (`other.ecore#//Name`);
+a reference whose target may be of several metaclasses names the target's metaclass too.
+Annotation details are a JSON object, and several root packages are written as an array.
+
+```swift
+let resourceSet = ResourceSet()
+let metamodel = try await ModelIO.load(url: ecoreURL, resourceSet: resourceSet)
+try await ModelIO.save(metamodel.resource, to: jsonURL)        // .ecore to JSON
+let fromJSON = try await ModelIO.load(url: jsonURL, resourceSet: ResourceSet())
+try await ModelIO.save(fromJSON.resource, to: ecoreCopyURL)     // JSON to .ecore
+```
 
 ### XMI Serialisation ✅
 

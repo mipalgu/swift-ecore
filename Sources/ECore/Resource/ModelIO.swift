@@ -20,6 +20,8 @@ import Foundation
 /// - A JSON document is read by a ``JSONParser`` with the resource set. Unless
 ///   ``LoadOptions/requiresMetamodel`` says otherwise, a registered metamodel must then
 ///   define the classes of the document whenever the resource set has a metamodel registered.
+///   A JSON document whose roots are Ecore packages is a metamodel: it is loaded as native
+///   packages, which are registered as an Ecore document's are.
 ///
 /// ## Example
 ///
@@ -86,7 +88,7 @@ public enum ModelIO {
         /// What the parser could not keep, such as classes that no metamodel defines.
         public let diagnostics: ConversionDiagnostics
 
-        /// The root packages of an Ecore document, in document order.
+        /// The root packages of an Ecore document or JSON metamodel, in document order.
         ///
         /// Each of them has been registered as a metamodel. The list is empty for a model
         /// instance document.
@@ -116,7 +118,8 @@ public enum ModelIO {
     ///
     /// Each document is loaded into the resource set as native packages, and every root
     /// package with a namespace URI is registered under that URI, together with its nested
-    /// packages. A package registered later replaces an earlier one with the same URI.
+    /// packages. A package registered later replaces an earlier one with the same URI. A
+    /// document may be an `.ecore` document or a metamodel in JSON.
     ///
     /// - Parameters:
     ///   - urls: The locations of the Ecore documents, in registration order.
@@ -229,7 +232,11 @@ public enum ModelIO {
             let parser = JSONParser(
                 resourceSet: resourceSet, options: JSONParseOptions(requiresMetamodel: requiresMetamodel))
             let resource = try await parser.parse(data, uri: uri)
-            return Loaded(resource: resource, format: format, diagnostics: await parser.diagnostics)
+            let roots = await resource.getRootObjects()
+            let packages = !roots.isEmpty && roots.allSatisfy({ $0 is EPackage })
+                ? await register(resource, in: resourceSet) : []
+            return Loaded(
+                resource: resource, format: format, diagnostics: await parser.diagnostics, packages: packages)
         }
     }
 
@@ -238,8 +245,9 @@ public enum ModelIO {
     /// Renders a resource as the text of a document in a given format.
     ///
     /// A resource whose root objects are all native packages is written as an Ecore document
-    /// in the XMI and Ecore formats. Other resources are written by an ``XMISerializer`` with
-    /// the given options or by a ``JSONSerializer``.
+    /// in the XMI and Ecore formats and as a JSON metamodel (see
+    /// ``JSONSerializer/serialize(_:relativeTo:)``) in the JSON format. Other resources are
+    /// written by an ``XMISerializer`` with the given options or by a ``JSONSerializer``.
     ///
     /// - Parameters:
     ///   - resource: The resource to render.
@@ -262,7 +270,8 @@ public enum ModelIO {
         let roots = await resource.getRootObjects()
         let packages = roots.compactMap { $0 as? EPackage }
         let holdsMetamodel = !roots.isEmpty && packages.count == roots.count
-        if format != .json, holdsMetamodel {
+        if holdsMetamodel {
+            if format == .json { return JSONSerializer().serialize(packages, relativeTo: documentURL) }
             return XMISerializer(options: xmiOptions).serialize(packages, relativeTo: documentURL)
         }
         switch format {
