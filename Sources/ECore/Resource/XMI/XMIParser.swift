@@ -616,6 +616,15 @@ public actor XMIParser {
                 continue
             }
 
+            // A many-valued attribute written as one XML attribute holds its values separated by white space
+            if let attribute = enhancedEClass.getStructuralFeature(name: attributeName) as? EAttribute,
+                attribute.isMany
+            {
+                let texts = attributeValue.split(whereSeparator: \.isWhitespace).map(String.init)
+                instance.eSet(attributeName, value: self.attributeValue(from: texts, for: attribute))
+                continue
+            }
+
             // Use type inference to convert string to appropriate type
             let value = inferType(from: attributeValue)
             instance.eSet(attributeName, value: value)
