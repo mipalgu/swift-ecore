@@ -690,6 +690,7 @@ public struct XMISerializer: Sendable {
         case let ints as [Int]: return ints.map(String.init)
         case let doubles as [Double]: return doubles.map { convertToString($0) }
         case let bools as [Bool]: return bools.map { convertToString($0) }
+        case let dates as [Date]: return dates.map { convertToString($0) }
         case let array as EcoreValueArray:
             let texts = array.values.map { element -> String? in
                 switch element {

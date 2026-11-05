@@ -283,6 +283,17 @@ struct JSONModelBuilder {
 
     // MARK: - Attribute Values
 
+    /// Converts the JSON value of an attribute into a feature value.
+    ///
+    /// A many-valued attribute takes a JSON array, or a single JSON value as a list of one,
+    /// and becomes an array whose element type follows the converted values (strings,
+    /// integers, doubles, Booleans or dates), or a mixed array otherwise.
+    ///
+    /// - Parameters:
+    ///   - json: The JSON value.
+    ///   - attribute: The declared attribute.
+    /// - Returns: The value to store.
+    /// - Throws: ``JSONError/parseError(_:)`` if a value does not convert to the attribute's type.
     private func convert(_ json: Any, for attribute: EAttribute) throws -> (any EcoreValue)? {
         guard attribute.isMany else { return try single(json, for: attribute) }
         let values = try ((json as? [Any]) ?? [json]).compactMap { try single($0, for: attribute) }
@@ -290,9 +301,21 @@ struct JSONModelBuilder {
         if let integers = values as? [Int] { return integers }
         if let doubles = values as? [Double] { return doubles }
         if let flags = values as? [Bool] { return flags }
+        if let dates = values as? [Date] { return dates }
         return EcoreValueArray(values)
     }
 
+    /// Converts one JSON value into a value of an attribute's type.
+    ///
+    /// Enumeration values are literal names or values. Dates are read in any form that EMF
+    /// reads (see ``EcoreDateCoding/emfDate(from:)``); other data types are converted by the
+    /// Ecore factory.
+    ///
+    /// - Parameters:
+    ///   - json: The JSON value.
+    ///   - attribute: The declared attribute.
+    /// - Returns: The converted value.
+    /// - Throws: ``JSONError/parseError(_:)`` if the value does not convert to the attribute's type.
     private func single(_ json: Any, for attribute: EAttribute) throws -> (any EcoreValue)? {
         if let eEnum = attribute.eType as? EEnum {
             if let text = json as? String { return eEnum.storedValue(forText: text) }
@@ -312,7 +335,7 @@ struct JSONModelBuilder {
         default: throw mismatch(json, attribute)
         }
         if dataType.name == EcoreDataType.eDate.rawValue {
-            guard let date = EcoreDateCoding.date(from: literal) else { throw mismatch(json, attribute) }
+            guard let date = EcoreDateCoding.emfDate(from: literal) else { throw mismatch(json, attribute) }
             return date
         }
         guard let value = factory.createFromString(dataType, literal) else { throw mismatch(json, attribute) }

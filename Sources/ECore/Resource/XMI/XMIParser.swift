@@ -457,7 +457,8 @@ public actor XMIParser {
     ///
     /// - Enum literals are stored as strings until metamodel-guided conversion is available
     /// - Large integers beyond `Int.max` will be stored as strings
-    /// - Date/time strings are stored as strings (no format detection yet)
+    /// - Date/time strings are stored as strings unless the metamodel declares the
+    ///   attribute as an `EDate`, in which case they are read as dates
     ///
     /// - Parameter string: The string value to convert
     /// - Returns: The inferred value as an `EcoreValue`
@@ -625,6 +626,14 @@ public actor XMIParser {
                 continue
             }
 
+            // Dates are read in the forms that EMF reads
+            if let attribute = enhancedEClass.getStructuralFeature(name: attributeName) as? EAttribute,
+                Self.isDateType(attribute.eType)
+            {
+                instance.eSet(attributeName, value: Self.dateValue(from: attributeValue))
+                continue
+            }
+
             // Use type inference to convert string to appropriate type
             let value = inferType(from: attributeValue)
             instance.eSet(attributeName, value: value)
@@ -709,12 +718,33 @@ public actor XMIParser {
         type.name == EcoreDataType.eString.rawValue || type.name == EcoreDataType.eStringObject.rawValue
     }
 
+    /// Whether a data type holds dates.
+    ///
+    /// - Parameter type: The attribute's type.
+    /// - Returns: `true` for `EDate`.
+    private static func isDateType(_ type: any EClassifier) -> Bool {
+        type.name == EcoreDataType.eDate.rawValue
+    }
+
+    /// Converts the text of a date attribute into a feature value.
+    ///
+    /// The text may be in any form that EMF reads (see ``EcoreDateCoding/emfDate(from:)``).
+    /// Text that is not a date is kept as it is, so that validation can report it.
+    ///
+    /// - Parameter text: The text of the value.
+    /// - Returns: The date, or the text if it is not a date.
+    private static func dateValue(from text: String) -> any EcoreValue {
+        EcoreDateCoding.emfDate(from: text) ?? text
+    }
+
     /// Converts the texts of an attribute written as child elements into a feature value.
     ///
     /// A single-valued attribute takes its only text; a many-valued attribute becomes an
-    /// array whose element type follows the declared type (strings) or the inferred
-    /// type of the values (integers, doubles, booleans, or strings). The values of an
-    /// enumeration-typed attribute are the names of the literals that the texts denote.
+    /// array whose element type follows the declared type (strings or dates) or the
+    /// inferred type of the values (integers, doubles, booleans, or strings). The values
+    /// of an enumeration-typed attribute are the names of the literals that the texts
+    /// denote. Dates are read in the forms that EMF reads; if any text is not a date, the
+    /// values stay texts.
     ///
     /// - Parameters:
     ///   - texts: The text contents of the child elements, in document order.
@@ -727,6 +757,12 @@ public actor XMIParser {
         }
         if Self.isStringType(attribute.eType) {
             return attribute.isMany ? texts : (texts.first ?? "")
+        }
+        if Self.isDateType(attribute.eType) {
+            let values = texts.map(Self.dateValue(from:))
+            if !attribute.isMany { return values.first ?? "" }
+            if let dates = values as? [Date] { return dates }
+            return texts
         }
         let inferred = texts.map { inferType(from: $0) }
         if !attribute.isMany, let first = inferred.first { return first }

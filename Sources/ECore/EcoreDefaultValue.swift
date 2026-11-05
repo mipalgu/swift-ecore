@@ -98,6 +98,7 @@ public enum EcoreDefaultValue {
         case .eBigDecimal: return EBigDecimal(string: literal)
         case .eBigInteger: return EBigInteger(literal)
         case .eChar, .eCharacterObject: return literal.count == 1 ? literal.first : nil
+        case .eDate: return EcoreDateCoding.emfDate(from: literal)
         default: return nil
         }
     }

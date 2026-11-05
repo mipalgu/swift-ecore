@@ -22,6 +22,10 @@ import Foundation
 /// and when writing. Field values may have fewer digits than the canonical
 /// form, and a day that exceeds the length of its month carries into the
 /// following month. Dates are interpreted in the proleptic Gregorian calendar.
+///
+/// ``emfDate(from:)`` also reads the shorter forms that the Eclipse Modeling
+/// Framework reads, such as `2024-03-15` and `2024-03-15T10:30`, and
+/// ``emfString(from:)`` writes the canonical form that EMF writes.
 public enum EcoreDateCoding {
     /// Reads a date in any of the supported forms.
     ///
@@ -29,6 +33,33 @@ public enum EcoreDateCoding {
     /// - Returns: The date, or `nil` if the text is not in a supported form.
     public static func date(from text: String) -> EDate? {
         parse(text, requiresTimeZone: false)
+    }
+
+    /// Reads a date in any form that the Eclipse Modeling Framework reads.
+    ///
+    /// EMF reads an `EDate` with the first of these patterns that matches, from the
+    /// most to the least precise:
+    ///
+    /// - `yyyy-MM-dd'T'HH:mm:ss.SSSZ`, such as `2024-03-15T10:30:00.250+1000`
+    /// - `yyyy-MM-dd'T'HH:mm:ss.SSS`, such as `2024-03-15T10:30:00.250`
+    /// - `yyyy-MM-dd'T'HH:mm:ss`, such as `2024-03-15T10:30:00`
+    /// - `yyyy-MM-dd'T'HH:mm`, such as `2024-03-15T10:30`
+    /// - `yyyy-MM-dd`, such as `2024-03-15`
+    ///
+    /// Any form with a time may also end in an ISO 8601 time zone designator, such as
+    /// `Z` or `+10:00`, and every form that ``date(from:)`` reads is read as well. A
+    /// form without a time zone denotes a time in UTC, so that the same text denotes
+    /// the same instant on every machine; omitted time fields are zero. Fractional
+    /// seconds are decimal fractions kept to millisecond precision. The whole text
+    /// must be a date, apart from surrounding white space.
+    ///
+    /// ``emfString(from:)`` writes the first, canonical form, which this function
+    /// reads back to the same instant.
+    ///
+    /// - Parameter text: The text to read.
+    /// - Returns: The date, or `nil` if the text is not in a supported form.
+    public static func emfDate(from text: String) -> EDate? {
+        parseEMF(text) ?? date(from: text)
     }
 
     /// Reads a date in internet date-time form (`yyyy-MM-ddTHH:mm:ssZ`).
@@ -187,6 +218,44 @@ public enum EcoreDateCoding {
             scanner.skipSpaces()
             guard scanner.atEnd else { return nil }
         }
+
+        let days = daysFromCivil(year: year, month: month, day: 1) + Int64(day - 1)
+        let epoch = days * 86_400 + Int64(hour * 3600 + minute * 60 + second - offsetSeconds)
+        return Date(timeIntervalSince1970: Double(epoch) + Double(milliseconds) / 1000)
+    }
+
+    /// Reads a date in one of the lexical forms of ``emfDate(from:)``.
+    ///
+    /// - Parameter text: The text to read.
+    /// - Returns: The date, or `nil` if the text is not in one of those forms.
+    private static func parseEMF(_ text: String) -> EDate? {
+        var scanner = Scanner8(Array(text.utf8))
+        scanner.skipSpaces()
+        guard let year = scanner.number(maxDigits: 9), scanner.expect("-"),
+            let month = scanner.number(maxDigits: 2), (1...12).contains(month), scanner.expect("-"),
+            let day = scanner.number(maxDigits: 2), (1...daysInMonth(year: year, month: month)).contains(day)
+        else { return nil }
+
+        var (hour, minute, second, milliseconds, offsetSeconds) = (0, 0, 0, 0, 0)
+        if scanner.expect("T") {
+            guard let hours = scanner.number(maxDigits: 2), hours < 24, scanner.expect(":"),
+                let minutes = scanner.number(maxDigits: 2), minutes <= 59
+            else { return nil }
+            (hour, minute) = (hours, minutes)
+            if scanner.expect(":") {
+                guard let seconds = scanner.number(maxDigits: 2), seconds <= 59 else { return nil }
+                second = seconds
+                if scanner.expect(".") {
+                    guard let digits = scanner.digits(), !digits.isEmpty else { return nil }
+                    for (index, digit) in digits.prefix(3).enumerated() {
+                        milliseconds += digit * [100, 10, 1][index]
+                    }
+                }
+            }
+            offsetSeconds = scanner.timeZone() ?? 0
+        }
+        scanner.skipSpaces()
+        guard scanner.atEnd else { return nil }
 
         let days = daysFromCivil(year: year, month: month, day: 1) + Int64(day - 1)
         let epoch = days * 86_400 + Int64(hour * 3600 + minute * 60 + second - offsetSeconds)

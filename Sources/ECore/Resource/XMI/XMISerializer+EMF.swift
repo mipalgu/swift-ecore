@@ -546,6 +546,8 @@ struct EMFDocumentWriter {
 
     /// Converts an array value into the texts of its elements.
     ///
+    /// Dates are written in the form that EMF writes (see ``EcoreDateCoding/emfString(from:)``).
+    ///
     /// - Parameter value: The stored value.
     /// - Returns: The texts, or `nil` if the value is not an array of primitives.
     private func arrayTexts(of value: any EcoreValue) -> [String]? {
@@ -554,6 +556,7 @@ struct EMFDocumentWriter {
         case let ints as [Int]: return ints.map(String.init)
         case let doubles as [Double]: return doubles.map { "\($0)" }
         case let bools as [Bool]: return bools.map { $0 ? "true" : "false" }
+        case let dates as [Date]: return dates.map(EcoreDateCoding.emfString(from:))
         default: return nil
         }
     }

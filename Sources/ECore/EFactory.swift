@@ -148,6 +148,8 @@ public struct EFactory: ENamedElement {
     /// - `EBoolean` → `Bool`
     /// - `EFloat` → `Float`
     /// - `EDouble` → `Double`
+    /// - `EDate` → `Date`, from any form that EMF reads, such as `2024-03-15` or
+    ///   `2024-03-15T10:30:00.000+1000` (see ``EcoreDateCoding/emfDate(from:)``)
     /// - Custom data types (uses instanceClassName for reflection)
     ///
     /// ## Example
@@ -179,9 +181,8 @@ public struct EFactory: ENamedElement {
             return ELong(literal)
         case "EBigInteger":
             return EBigInteger(literal)
-        case "EDate":
-            // ISO 8601 date parsing
-            return EcoreDateCoding.internetDate(from: literal)
+        case EcoreDataType.eDate.rawValue:
+            return EcoreDateCoding.emfDate(from: literal)
         default:
             // For custom data types, return the literal as-is
             // In a complete implementation, would use instanceClassName for conversion
@@ -193,6 +194,8 @@ public struct EFactory: ENamedElement {
     ///
     /// Converts a typed value to its string representation. This is used during
     /// serialisation (e.g., to XMI or JSON) to convert attribute values to strings.
+    /// An `EDate` is written in the canonical form of EMF, in UTC, such as
+    /// `2024-03-15T00:30:00.000+0000` (see ``EcoreDateCoding/emfString(from:)``).
     ///
     /// - Parameters:
     ///   - eDataType: The data type of the value.
@@ -209,9 +212,9 @@ public struct EFactory: ENamedElement {
     public func convertToString(_ eDataType: EDataType, _ value: any EcoreValue) -> String {
         // Handle standard Ecore primitive types
         switch eDataType.name {
-        case "EDate":
+        case EcoreDataType.eDate.rawValue:
             if let date = value as? EDate {
-                return EcoreDateCoding.internetString(from: date)
+                return EcoreDateCoding.emfString(from: date)
             }
         default:
             break
