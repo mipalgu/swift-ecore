@@ -1612,7 +1612,7 @@ public actor XMIParser {
     /// Handles:
     /// - XPath references: `#//@members.0` (using XPathResolver)
     /// - Fragment references: `#//ClassName`
-    /// - XMI ID references: `#xmi-id`
+    /// - Identifier references: `#id`, naming an `xmi:id` or the value of an ID attribute
     /// - External references: `department-b.xmi#/` (creates ResourceProxy)
     ///
     /// - Parameters:
@@ -1662,8 +1662,11 @@ public actor XMIParser {
             if fragment.hasPrefix("/"), let resolved = await FragmentNavigator(resource: resource).resolve(fragment) {
                 return resolved.id
             }
-            // Fall back to fragment map or xmi:id map
-            return fragmentMap[fragment] ?? xmiIdMap[fragment]
+            // Fall back to the fragment map, then to the xmi:id or ID attribute that the fragment names
+            if let found = fragmentMap[fragment] { return found }
+            guard let identifier = XPathResolver.identifier(inFragment: fragment) else { return nil }
+            if let found = xmiIdMap[identifier] { return found }
+            return await resource.object(identifiedBy: identifier)
         }
 
         // External reference - create ResourceProxy

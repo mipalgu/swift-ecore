@@ -16,6 +16,10 @@ import Foundation
 /// - `#/1` - The second root of a resource with several roots
 /// - `#/1/@children.0` - Navigate from the second root of a resource with several roots
 /// - `#//Book/title` - Name-based navigation of Ecore elements (see ``FragmentNavigator``)
+/// - `#it` - The object identified by `it` (see ``Resource/object(identifiedBy:)``)
+///
+/// As in EMF, a fragment that starts with `/` is a path and any other fragment is an
+/// identifier: the `xmi:id` of an object, or the value of its ID attribute.
 ///
 /// ## XPath Fragment Format
 ///
@@ -65,6 +69,13 @@ public struct XPathResolver: Sendable {
             return await resource.getRootObjects().first?.id
         }
 
+        // Fragments that do not start with a slash are identifiers
+        if let identifier = Self.identifier(inFragment: cleanPath),
+            let identified = await resource.object(identifiedBy: identifier)
+        {
+            return identified
+        }
+
         // Paths without positional segments (//Book/title, /1, /1/Book) identify elements by name or root
         guard cleanPath.contains(CrossReferenceSyntax.positionalMarker) else {
             return await FragmentNavigator(resource: resource).resolve(cleanPath)?.id
@@ -100,6 +111,22 @@ public struct XPathResolver: Sendable {
     public func resolveObject(_ path: String) async -> (any EObject)? {
         guard let id = await resolve(path) else { return nil }
         return await resource.resolve(id)
+    }
+
+    /// Extracts the identifier from a fragment that names an object by its identifier.
+    ///
+    /// EMF reads a fragment that starts with `/` as a path and any other fragment as an
+    /// identifier. A fragment of the form `id?query?` names the object identified by `id`.
+    ///
+    /// - Parameter fragment: The fragment, without a leading `#`.
+    /// - Returns: The identifier, or `nil` if the fragment is empty or a path.
+    public static func identifier(inFragment fragment: String) -> String? {
+        guard let first = fragment.first, first != CrossReferenceSyntax.segmentSeparator else { return nil }
+        let delimiter = CrossReferenceSyntax.fragmentQueryDelimiter
+        guard fragment.last == delimiter else { return fragment }
+        let body = fragment.dropLast()
+        guard let start = body.lastIndex(of: delimiter), start > body.startIndex else { return fragment }
+        return String(body[..<start])
     }
 
     // MARK: - Private Helper Methods

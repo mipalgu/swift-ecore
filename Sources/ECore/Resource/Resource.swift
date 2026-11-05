@@ -65,6 +65,9 @@ public actor Resource {
     /// The XML metadata retained for native package conversion.
     var ecoreDocumentMetadata = EcoreDocumentMetadata()
 
+    /// The objects by their explicit `xmi:id`, as recorded in ``ecoreDocumentMetadata``.
+    var xmlIdentifierTargets: [String: EUUID] = [:]
+
     /// The diagnostics produced while loading a native Ecore document.
     ///
     /// Tolerant loading retains incomplete elements and records missing attributes here.
@@ -75,6 +78,8 @@ public actor Resource {
     /// - Parameter metadata: The source document's comments and explicit identifiers.
     func setEcoreDocumentMetadata(_ metadata: EcoreDocumentMetadata) {
         ecoreDocumentMetadata = metadata
+        xmlIdentifierTargets = Dictionary(
+            metadata.xmlIdentifiers.map { ($0.value, $0.key) }, uniquingKeysWith: { first, _ in first })
     }
 
     /// Records the diagnostics produced by a document parser.

@@ -53,6 +53,13 @@ struct ObjectTable: Sendable {
     /// The identifiers of the objects stored or removed since the index was last brought up to date.
     private var changed = Set<EUUID>()
 
+    /// The objects by the value of their ID attribute, or `nil` until first needed.
+    private var identifierIndex: IdentifierIndex?
+
+    /// The identifiers of the objects stored or removed since the identifier index was last
+    /// brought up to date.
+    private var identifierChanges = Set<EUUID>()
+
     /// Creates an empty table.
     init() {}
 
@@ -100,6 +107,57 @@ struct ObjectTable: Sendable {
         storage.removeAll()
         index = nil
         changed.removeAll()
+        identifierIndex = nil
+        identifierChanges.removeAll()
+    }
+
+    /// The object whose ID attribute holds a value, if any.
+    ///
+    /// The ID attribute of an object is the attribute that its class declares as its ID (see
+    /// ``EClass/eIDAttribute``). If several objects hold the same value, the first in table
+    /// order is returned. The index is built on first use and brought up to date with any
+    /// changes since.
+    ///
+    /// - Parameter text: The textual value of the ID attribute.
+    /// - Returns: The identifier of the object, or `nil` if no object holds the value.
+    mutating func object(identifiedBy text: String) -> EUUID? {
+        prepareIdentifierIndex()
+        guard let candidates = identifierIndex?.objects[text], let first = candidates.first else { return nil }
+        guard candidates.count > 1 else { return first }
+        return candidates.min { (storage.index(forKey: $0) ?? .max) < (storage.index(forKey: $1) ?? .max) }
+    }
+
+    /// The textual value of the ID attribute of an object, if it can identify the object in a fragment.
+    ///
+    /// Values are written as in an XMI document. An empty value, and a value that starts with
+    /// `/` and would thus be read as a fragment path, identify no object.
+    ///
+    /// - Parameter object: The object.
+    /// - Returns: The value as text, or `nil` if the class declares no ID attribute or the
+    ///   object has no usable value for it.
+    static func intrinsicIdentifier(of object: any EObject) -> String? {
+        guard let attribute = (object.eClass as? EClass)?.eIDAttribute else { return nil }
+        return intrinsicIdentifier(of: object, attribute: attribute)
+    }
+
+    /// The textual value of a known ID attribute of an object, if it can identify the object in a fragment.
+    ///
+    /// - Parameters:
+    ///   - object: The object.
+    ///   - attribute: The ID attribute of the class of the object.
+    /// - Returns: The value as text, or `nil` if the object has no usable value for the attribute.
+    static func intrinsicIdentifier(of object: any EObject, attribute: EAttribute) -> String? {
+        guard let value = object.eGet(attribute) else { return nil }
+        return usableIdentifier(value as? String ?? XMISerializer().convertToString(value))
+    }
+
+    /// Returns an identifier if it can name an object in a fragment.
+    ///
+    /// - Parameter text: The identifier.
+    /// - Returns: The identifier, or `nil` if it is empty or starts with `/`.
+    static func usableIdentifier(_ text: String) -> String? {
+        guard let first = text.first, first != CrossReferenceSyntax.segmentSeparator else { return nil }
+        return text
     }
 
     /// The containment references that hold an identifier, in table order.
@@ -118,6 +176,40 @@ struct ObjectTable: Sendable {
     /// Records that the object with an identifier was stored or removed.
     private mutating func noteChange(of id: EUUID) {
         if index != nil { changed.insert(id) }
+        if identifierIndex != nil { identifierChanges.insert(id) }
+    }
+
+    /// Builds the identifier index, or brings it up to date with the recorded changes.
+    private mutating func prepareIdentifierIndex() {
+        guard identifierIndex != nil else {
+            var built = IdentifierIndex()
+            var attributes: [EUUID: EAttribute?] = [:]
+            for (id, object) in storage {
+                guard let eClass = object.eClass as? EClass else { continue }
+                let attribute: EAttribute?
+                if let known = attributes[eClass.id] {
+                    attribute = known
+                } else {
+                    attribute = eClass.eIDAttribute
+                    attributes[eClass.id] = attribute
+                }
+                guard let attribute, let text = Self.intrinsicIdentifier(of: object, attribute: attribute) else {
+                    continue
+                }
+                built.insert(id, as: text)
+            }
+            identifierIndex = built
+            identifierChanges.removeAll()
+            return
+        }
+        guard !identifierChanges.isEmpty else { return }
+        for id in identifierChanges {
+            identifierIndex?.remove(id)
+            if let object = storage[id], let text = Self.intrinsicIdentifier(of: object) {
+                identifierIndex?.insert(id, as: text)
+            }
+        }
+        identifierChanges.removeAll()
     }
 
     /// Builds the containment index, or brings it up to date with the recorded changes.
@@ -231,5 +323,33 @@ private struct ContainmentIndex: Sendable {
         }
         let slot = list.firstIndex { (positionOf($0.container) ?? position) > position } ?? list.endIndex
         list.insert(claim, at: slot)
+    }
+}
+
+/// The objects of a table by the textual value of their ID attribute.
+private struct IdentifierIndex: Sendable {
+    /// The objects that hold each value, in no particular order.
+    var objects: [String: [EUUID]] = [:]
+
+    /// The value that each indexed object holds.
+    var values: [EUUID: String] = [:]
+
+    /// Records that an object holds a value.
+    ///
+    /// - Parameters:
+    ///   - id: The identifier of the object.
+    ///   - text: The value of its ID attribute.
+    mutating func insert(_ id: EUUID, as text: String) {
+        objects[text, default: []].append(id)
+        values[id] = text
+    }
+
+    /// Forgets the value of an object.
+    ///
+    /// - Parameter id: The identifier of the object.
+    mutating func remove(_ id: EUUID) {
+        guard let text = values.removeValue(forKey: id), var list = objects.removeValue(forKey: text) else { return }
+        list.removeAll { $0 == id }
+        if !list.isEmpty { objects[text] = list }
     }
 }

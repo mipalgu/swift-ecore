@@ -457,7 +457,8 @@ public struct XMISerializer: Sendable {
 
     /// Add attributes to element
     ///
-    /// Single primitive values are written as attributes. References, contained objects, and
+    /// The explicit `xmi:id` that the object was read with comes first. Single primitive
+    /// values are written as attributes. References, contained objects, and
     /// many-valued attributes are written as child elements elsewhere; a reference value or an
     /// object held by an undeclared feature, or an object held by a declared non-containment
     /// reference, cannot be written and is recorded as a
@@ -475,6 +476,11 @@ public struct XMISerializer: Sendable {
 
         guard let dynamicObject = object as? DynamicEObject else {
             return attributes
+        }
+
+        // The explicit XML identifier comes first, as EMF writes it
+        if let identifier = await resource.xmlIdentifier(of: dynamicObject.id) {
+            attributes += " \(XMIAttribute.xmiId.rawValue)=\"\(escapeXML(identifier))\""
         }
 
         // Get feature names in insertion order (preserving EMF semantic ordering)

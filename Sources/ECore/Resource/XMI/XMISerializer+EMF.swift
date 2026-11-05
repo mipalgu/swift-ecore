@@ -292,7 +292,8 @@ struct EMFDocumentWriter {
     ///
     /// A proxy to another document is never dangling, since that document is not examined. A
     /// proxy to the resource itself is dangling unless its fragment locates an object (see
-    /// ``JSONFragments/resolve(fragment:in:)``) or is the XML identifier of one.
+    /// ``JSONFragments/resolve(fragment:in:)``) or names one by its identifier (see
+    /// ``Resource/object(identifiedBy:)``).
     ///
     /// - Parameters:
     ///   - proxy: The proxy.
@@ -301,7 +302,8 @@ struct EMFDocumentWriter {
     static func isDangling(_ proxy: ResourceProxy, in resource: Resource) async -> Bool {
         guard proxy.uri.isEmpty || proxy.uri == resource.uri else { return false }
         if await JSONFragments.resolve(fragment: proxy.fragment, in: resource) != nil { return false }
-        return await !resource.ecoreDocumentMetadata.xmlIdentifiers.values.contains(proxy.fragment)
+        guard let identifier = XPathResolver.identifier(inFragment: proxy.fragment) else { return true }
+        return await resource.object(identifiedBy: identifier) == nil
     }
 
     /// Derives a namespace for a class that belongs to no known package.
@@ -384,13 +386,17 @@ struct EMFDocumentWriter {
     /// - Parameters:
     ///   - object: The object.
     ///   - target: The resource that holds the object.
-    /// - Returns: A name-based fragment for Ecore elements if the options ask for it,
+    /// - Returns: The identifier of the object (see ``Resource/identifier(of:)``) if it has
+    ///   one, else a name-based fragment for Ecore elements if the options ask for it,
     ///   otherwise a positional fragment, and whether the fragment locates the object
-    ///   rather than holding its identifier.
+    ///   rather than holding its internal identity.
     /// - Throws: ``XMIError/invalidReference(_:)`` if a positional fragment cannot be built.
     private mutating func fragment(for object: any EObject, in target: Resource) async throws
         -> (text: String, located: Bool)
     {
+        if let identifier = await target.identifier(of: object.id) {
+            return (String(CrossReferenceSyntax.fragmentSeparator) + identifier, true)
+        }
         let navigator = FragmentNavigator(resource: target)
         if options.nameBasedFragments, await navigator.segmentName(of: object) != nil,
             let name = await navigator.fragment(for: object.id)
@@ -483,6 +489,9 @@ struct EMFDocumentWriter {
         if let xsiType {
             needsXSI = true
             allAttributes.append("\(XMIAttribute.xsiType.rawValue)=\"\(xsiType)\"")
+        }
+        if let identifier = await resource.xmlIdentifier(of: object.id) {
+            allAttributes.append("\(XMIAttribute.xmiId.rawValue)=\"\(XMISerializer.escapeAttribute(identifier))\"")
         }
         allAttributes += attributes
         let ending = children.isEmpty ? "/>\n" : ">\n" + children + "\(indentation)</\(elementName)>\n"

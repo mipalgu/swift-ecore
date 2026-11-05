@@ -831,6 +831,9 @@ public enum CrossReferenceSyntax {
     /// from its duplicate index in a name-based segment.
     public static let indexSeparator: Character = "."
 
+    /// Encloses the query that may follow an identifier fragment (`id?query?`).
+    public static let fragmentQueryDelimiter: Character = "?"
+
     /// The relative path component that selects the parent directory.
     public static let parentDirectory = ".."
 
