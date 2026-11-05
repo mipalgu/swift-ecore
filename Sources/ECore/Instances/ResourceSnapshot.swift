@@ -159,6 +159,14 @@ enum ValueList {
         return []
     }
 
+    /// Whether a value is a list of values rather than a single value.
+    ///
+    /// - Parameter value: A feature value.
+    /// - Returns: `true` for an Ecore value list or an array, `false` for a single value.
+    static func isList(_ value: any EcoreValue) -> Bool {
+        value is EcoreValueArray || value is [any EcoreValue]
+    }
+
     /// Rebuilds a value of the same array type as a template from elements.
     static func make(_ elements: [any EcoreValue], like template: (any EcoreValue)?) -> any EcoreValue {
         if template is EcoreValueArray { return EcoreValueArray(elements) }

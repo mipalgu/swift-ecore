@@ -58,6 +58,48 @@ public enum EcoreDefaultValue {
         }
     }
 
+    /// The Java primitive instance class names, whose values always exist.
+    static let primitiveInstanceClassNames: Set<String> = [
+        "boolean", "byte", "char", "double", "float", "int", "long", "short",
+    ]
+
+    /// The built-in Ecore data types whose instances are primitive values.
+    static let primitiveDataTypes: Set<EcoreDataType> = [
+        .eBoolean, .eByte, .eChar, .eDouble, .eFloat, .eInt, .eLong, .eShort,
+    ]
+
+    /// Whether an unset single-valued feature reads as a value in the Eclipse Modeling Framework.
+    ///
+    /// A feature with a default value literal reads as the value that the literal denotes,
+    /// provided the literal names a literal of an enumeration or converts to a built-in data
+    /// type; a literal of any other data type is taken to denote a value. Without a literal,
+    /// an enumeration reads as its first literal, and a primitive data type reads as `false`,
+    /// zero or the null character. A data type is primitive if it is one of the built-in
+    /// primitive Ecore types or if its instance class name is a Java primitive type. Other
+    /// data types and references have no default, and nor does an enumeration without literals.
+    ///
+    /// - Parameter feature: The single-valued attribute or reference to inspect.
+    /// - Returns: `true` if the feature reads as a value while it is unset.
+    static func readsAsValueWhileUnset(_ feature: some EStructuralFeature) -> Bool {
+        guard let attribute = feature as? EAttribute else { return false }
+        if let literal = attribute.defaultValueLiteral {
+            switch attribute.eType {
+            case let eEnum as EEnum: return eEnum.getLiteral(text: literal) != nil
+            case let type as EDataType: return isConvertible(literal, to: type)
+            default: return true
+            }
+        }
+        switch attribute.eType {
+        case let eEnum as EEnum:
+            return !eEnum.literals.isEmpty
+        case let type as EDataType:
+            if let builtIn = dataType(type), primitiveDataTypes.contains(builtIn) { return true }
+            return type.instanceClassName.map(primitiveInstanceClassNames.contains) ?? false
+        default:
+            return false
+        }
+    }
+
     private static let dateFactory = EFactory(ePackage: EcorePackage.instance)
 
     private static func singleValue(of attribute: EAttribute) -> (any EcoreValue)? {
