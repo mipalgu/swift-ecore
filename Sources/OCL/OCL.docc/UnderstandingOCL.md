@@ -57,16 +57,17 @@ both OCL and AQL.
 
 ### Collection Operations
 
-Collection operations query and transform collections of elements.
+Collection operations query and transform collections of elements. In OCL expressions
+they are called with the arrow, as in `col->size()`.
 
 | Operation | Description | Example |
 |-----------|-------------|---------|
-| `size()` | Number of elements | `col.size()` |
-| `isEmpty()` | True if no elements | `col.isEmpty()` |
-| `notEmpty()` | True if has elements | `col.notEmpty()` |
-| `first()` | First element | `col.first()` |
-| `last()` | Last element | `col.last()` |
-| `at(index)` | Element at index | `col.at(0)` |
+| `size()` | Number of elements | `col->size()` |
+| `isEmpty()` | True if no elements | `col->isEmpty()` |
+| `notEmpty()` | True if has elements | `col->notEmpty()` |
+| `first()` | First element | `col->first()` |
+| `last()` | Last element | `col->last()` |
+| `at(index)` | Element at a one-based index | `col->at(1)` |
 
 #### Filtering
 
