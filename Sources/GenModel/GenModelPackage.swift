@@ -30,6 +30,12 @@ public enum GenModelError: Error, Sendable, Equatable {
 /// calls are cheap and always return the same package, including its element
 /// identifiers.
 ///
+/// The package has the namespace URI `http://www.eclipse.org/emf/2002/GenModel`
+/// (``GenModelConstants/nsURI``). It is authored for this library and is structurally
+/// compatible with the generator metamodel of the Eclipse Modeling Framework: its class,
+/// feature and enumeration names, multiplicities, containments and defaults match, so
+/// `.genmodel` files can be exchanged with Eclipse in both directions.
+///
 /// ## Example
 ///
 /// ```swift

@@ -23,36 +23,59 @@ a modern, type-safe Swift API.
 - **Metamodelling**: Define metamodels using ``EClass``, ``EAttribute``, ``EReference``,
   and ``EPackage``
 - **Dynamic instances**: Create model instances at runtime with ``DynamicEObject``
-- **XMI serialisation**: Load and save models in XMI format using ``XMIParser``
+- **XMI serialisation**: Load and save models in XMI format using ``XMIParser`` and
+  ``XMISerializer``
 - **JSON serialisation**: Alternative JSON format with ``JSONParser``, which builds objects
   from the metamodels registered with a ``ResourceSet`` and resolves `$ref` references
 - **Cross-resource references**: Support for models spanning multiple files via
   ``ResourceSet``
 - **Command pattern**: Undoable operations with ``EMFCommand`` and ``CommandStack``
+- **Reflective metamodel**: The Ecore metamodel itself as ``EcorePackage``, so metamodels can
+  be navigated and edited like any other model
+- **Faithful Ecore documents**: Operations, generic types and annotations are kept, and
+  documents can be written in the layout of the Eclipse Modeling Framework
+- **Any format**: ``ModelIO`` loads and saves XMI, JSON and Ecore documents, detecting the
+  format with ``ModelFormat``
+- **Validation**: ``ModelValidator`` checks models and ``EcoreValidator`` checks metamodels
+
+### Interoperability
+
+Models and metamodels are read and written as the Eclipse Modeling Framework reads and writes
+them, including its fragments, date forms and multiplicity rules, and JSON metamodels follow
+the emfjson conventions. The tests also cover example models of
+[emf4cpp](https://github.com/catedrasaes-umu/emf4cpp) and
+[pyecore](https://github.com/pyecore/pyecore). <doc:Compatibility> describes how behaviour
+has changed since version 0.6.
+
+The swift-ecore package also provides the OCL library for constraints and queries, the
+GenModel library for generator models (`.genmodel`) and the ECoreEdit library for editing
+metamodels as values.
 
 ### Quick Example
 
 ```swift
 import ECore
+import Foundation
 
-// Load a metamodel from XMI
-let parser = XMIParser()
-let resource = try await parser.parse(URL(fileURLWithPath: "Company.ecore"))
-let package = resource.rootObjects.first as! EPackage
+// Load a metamodel from an .ecore file and register it
+let resourceSet = ResourceSet()
+let package = try await EPackage(url: URL(fileURLWithPath: "Company.ecore"))
+await resourceSet.registerMetamodel(package, uri: package.nsURI)
 
 // Find an EClass
-let employeeClass = package.eClassifiers.first { $0.name == "Employee" } as! EClass
+guard let employeeClass = package.getEClass("Employee") else {
+    fatalError("Employee class not found")
+}
 
 // Create a dynamic instance
-let employee = DynamicEObject(eClass: employeeClass)
+var employee = DynamicEObject(eClass: employeeClass)
 employee.eSet("name", value: "Alice")
 employee.eSet("salary", value: 50000)
 
-// Save to a new resource
-let outputResource = Resource()
-outputResource.add(employee)
-let serialiser = XMISerializer()
-try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "employees.xmi"))
+// Add it to a new resource and save that as XMI
+let resource = await resourceSet.createResource(uri: "employees.xmi")
+await resource.add(employee)
+try await XMISerializer().serialize(resource, to: URL(fileURLWithPath: "employees.xmi"))
 ```
 
 ## Topics

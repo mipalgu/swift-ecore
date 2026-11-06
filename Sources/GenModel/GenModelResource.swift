@@ -55,6 +55,7 @@ public enum EcoreReferenceResolution: Sendable {
 /// file with the standard XMI parser, loads every source model named by `foreignModel`
 /// (or referenced by an `ecore*` attribute) relative to the generator model into the same
 /// resource set, and registers each loaded package as a metamodel by its namespace URI.
+/// Source models that are not Ecore documents, such as `.xsd` files, are not loaded.
 ///
 /// Resolving `ecore*` references to the loaded Ecore elements is a separate step selected
 /// by ``EcoreReferenceResolution``.

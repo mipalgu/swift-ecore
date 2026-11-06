@@ -30,19 +30,17 @@ Then add the product dependency to your target:
 
 ## Loading a Metamodel
 
-ECore metamodels are typically stored in `.ecore` files using XMI format. Load
-a metamodel using ``XMIParser``:
+ECore metamodels are typically stored in `.ecore` files using XMI format. Load a metamodel
+with ``EPackage/init(url:enableDebugging:)`` and register it with a ``ResourceSet``, so that
+models of the metamodel can be read and written:
 
 ```swift
 import ECore
+import Foundation
 
-let parser = XMIParser()
-let resource = try await parser.parse(URL(fileURLWithPath: "Company.ecore"))
-
-// Access the root package
-guard let package = resource.rootObjects.first as? EPackage else {
-    fatalError("No package found in metamodel")
-}
+let package = try await EPackage(url: URL(fileURLWithPath: "Company.ecore"))
+let resourceSet = ResourceSet()
+await resourceSet.registerMetamodel(package, uri: package.nsURI)
 
 print("Loaded package: \(package.name)")
 ```
@@ -60,9 +58,9 @@ for classifier in package.eClassifiers {
         // List structural features
         for feature in eClass.eStructuralFeatures {
             if let attr = feature as? EAttribute {
-                print("  Attribute: \(attr.name) : \(attr.eType?.name ?? "unknown")")
+                print("  Attribute: \(attr.name) : \(attr.eType.name)")
             } else if let ref = feature as? EReference {
-                print("  Reference: \(ref.name) -> \(ref.eType?.name ?? "unknown")")
+                print("  Reference: \(ref.name) -> \(ref.eType.name)")
             }
         }
     }
@@ -71,16 +69,17 @@ for classifier in package.eClassifiers {
 
 ## Creating Model Instances
 
-Create dynamic instances of metamodel classes using ``DynamicEObject``:
+Create dynamic instances of metamodel classes using ``DynamicEObject``. Instances are values,
+so declare them with `var` to set their features:
 
 ```swift
 // Find the Employee class
-guard let employeeClass = package.eClassifiers.first(where: { $0.name == "Employee" }) as? EClass else {
+guard let employeeClass = package.getEClass("Employee") else {
     fatalError("Employee class not found")
 }
 
 // Create an instance
-let employee = DynamicEObject(eClass: employeeClass)
+var employee = DynamicEObject(eClass: employeeClass)
 
 // Set attribute values
 employee.eSet("name", value: "Alice Smith")
@@ -88,60 +87,64 @@ employee.eSet("employeeId", value: 12345)
 employee.eSet("department", value: "Engineering")
 
 // Read values back
-let name: String? = employee.eGet("name") as? String
+let name = employee.eGet("name") as? String
 print("Employee name: \(name ?? "unknown")")
 ```
 
 ## Working with References
 
-ECore supports both single-valued and multi-valued references:
+ECore supports both single-valued and multi-valued references. An object refers to others by
+their identifiers, which resolve once the objects belong to a ``Resource``:
 
 ```swift
 // Create a company and employees
-let companyClass = package.eClassifiers.first { $0.name == "Company" } as! EClass
-let company = DynamicEObject(eClass: companyClass)
+guard let companyClass = package.getEClass("Company") else {
+    fatalError("Company class not found")
+}
+var company = DynamicEObject(eClass: companyClass)
 company.eSet("name", value: "Acme Corp")
 
-// Add employees (assuming 'employees' is a multi-valued containment reference)
-let alice = DynamicEObject(eClass: employeeClass)
+var alice = DynamicEObject(eClass: employeeClass)
 alice.eSet("name", value: "Alice")
 
-let bob = DynamicEObject(eClass: employeeClass)
+var bob = DynamicEObject(eClass: employeeClass)
 bob.eSet("name", value: "Bob")
 
-// Get the employees reference
-if let employeesRef = companyClass.eStructuralFeatures.first(where: { $0.name == "employees" }) as? EReference {
-    company.eAdd(employeesRef, value: alice)
-    company.eAdd(employeesRef, value: bob)
-}
+// Set the employees (assuming 'employees' is a multi-valued containment reference)
+company.eSet("employees", value: [alice.id, bob.id])
 ```
 
 ## Saving Models
 
-Save model instances to XMI format:
+Add the objects to a resource and save it in XMI format:
 
 ```swift
-// Create a resource and add the root object
-let outputResource = Resource(uri: "file:///path/to/output.xmi")
-outputResource.add(company)
+// Create a resource and add the objects
+let outputResource = await resourceSet.createResource(uri: "output.xmi")
+for object in [company, alice, bob] {
+    await outputResource.add(object)
+}
 
 // Serialise to XMI
-let serialiser = XMISerializer()
-try serialiser.save(resource: outputResource, to: URL(fileURLWithPath: "output.xmi"))
+try await XMISerializer().serialize(outputResource, to: URL(fileURLWithPath: "output.xmi"))
 ```
 
 ## Using ResourceSet for Cross-References
 
-When working with models that reference objects in other files, use ``ResourceSet``:
+When working with models that reference objects in other files, load them into one
+``ResourceSet``:
 
 ```swift
 let resourceSet = ResourceSet()
 
-// Load multiple resources
-let metamodelResource = try await resourceSet.loadResource(from: URL(fileURLWithPath: "Company.ecore"))
-let modelResource = try await resourceSet.loadResource(from: URL(fileURLWithPath: "company-data.xmi"))
+// Load the metamodel and the models
+let metamodelURI = URL(fileURLWithPath: "Company.ecore").absoluteString
+let metamodelResource = try await resourceSet.loadEcoreResource(uri: metamodelURI)
+let modelURI = URL(fileURLWithPath: "company-data.xmi").absoluteString
+let modelResource = try await resourceSet.loadXMIResource(uri: modelURI)
 
-// Cross-resource references are automatically resolved
+// Resolve references to objects in other files
+let report = await resourceSet.resolveAllProxies()
 ```
 
 ## Loading and Saving Models in Any Format
@@ -168,7 +171,166 @@ for warning in diagnostics.warnings {
 
 Registering a metamodel also registers each of its nested packages under its own namespace
 URI, so documents whose objects are qualified by the namespace of a subpackage are read with
-the classes of that subpackage. ``ModelFormat`` detects the format of a document on its own.
+the classes of that subpackage. Explicit registrations take precedence, and
+``ResourceSet/getMetamodelURIs(includingSubpackages:)`` lists both.
+
+``ModelFormat`` detects the format of a document on its own: by the extension of its name,
+ignoring case, or by the start of its contents, where `{` or `[` starts a JSON document, an
+`EPackage` of the Ecore namespace (also inside an `xmi:XMI` wrapper) an Ecore document, and
+any other XML an XMI document. An Ecore input is loaded as native packages and registered as
+a metamodel too. ``ModelIO/LoadOptions`` chooses how XMI references are read and whether the
+classes of a JSON document must come from a registered metamodel, and
+``ModelIO/serialise(_:format:relativeTo:xmiOptions:diagnostics:)`` returns the text of a
+document instead of writing a file.
+
+## Loading Ecore Documents
+
+``EPackage/init(url:enableDebugging:)`` and ``ResourceSet/loadEcoreResource(uri:)`` load an
+`.ecore` document as native ``EPackage``, ``EClass`` and related values, keeping every
+construct of the document: supertypes, nested packages, operations and parameters, generic
+types, annotations, every feature flag, bounds, default value literals, instance type names,
+keys and opposites. Attribute and reference types resolve to the classifiers of the same
+document, of other documents, or of Ecore itself through ``EcorePackage``:
+
+```swift
+let package = try await EPackage(url: libraryURL)
+let book = package.getEClass("Book")
+let borrow = book?.eOperations.first              // an EOperation with its EParameter values
+let supertypes = book?.eSuperTypes.map(\.name)    // every supertype, in order
+```
+
+The package that ``EPackage/init(url:enableDebugging:)`` returns is the root package with its
+subpackages attached. ``EPackage/allPackages`` lists a package and every nested package depth
+first, and ``EPackage/getClassifier(_:includingSubpackages:)`` searches them all. A resource
+keeps every root package of a document in order, and its contents are enumerated in document
+order, the same on every load.
+
+Loading is strict by default. Editors that must open incomplete documents can pass
+``EcoreLoadOptions`` to ``ResourceSet/loadEcoreResource(uri:options:)``: references to
+targets that are not available are then kept, with their original spelling, and missing
+names and package attributes are reported in ``Resource/loadDiagnostics``.
+``EcoreValidator`` checks a loaded metamodel, including keys, generic types and retained
+unresolved references, and each of its constraints can be disabled through its options:
+
+```swift
+let resource = try await resourceSet.loadEcoreResource(
+    uri: URL(fileURLWithPath: "models/draft.ecore").absoluteString,
+    options: EcoreLoadOptions(unresolvedReferences: .keepAsProxies, tolerant: true))
+for diagnostic in await resource.loadDiagnostics {
+    print(diagnostic)
+}
+```
+
+## Writing Ecore Documents as EMF Does
+
+``XMISerializer`` writes a package, including ``EcorePackage/instance``, as an `.ecore`
+document with ``XMISerializer/serialize(_:)-(EPackage)``, and several root packages as one
+document with ``XMISerializer/serialize(_:relativeTo:)-([EPackage],_)``.
+Comments, the XML encoding declaration and explicit `xmi:id` values follow their elements
+through edits and saving, and types and opposites in documents that cannot be loaded are
+written back unchanged.
+
+References to classifiers of other documents are written with URIs relative to the location
+of the document and, as EMF does, the kind of the classifier, such as
+`eType="ecore:EEnum shared.ecore#//Colour"`. Classifiers of Ecore itself are written with the
+Ecore namespace URI.
+
+``XMISerializationOptions`` controls the layout. ``XMISerializationOptions/emf`` writes model
+documents as EMF does, with attribute-style references, type qualifiers, relative URIs,
+name-based fragments, many-valued attributes as elements and without default values.
+``XMISerializationOptions/emfWrapped`` also wraps long attribute lists at
+``XMISerializationOptions/emfLineWidth`` columns, as the editors of EMF do, so that documents
+saved by EMF round trip unchanged. EMF releases differ in how they wrap the root element:
+``XMIRootLayout`` reproduces either layout, and ``XMIRootLayout/detect(in:)`` tells which one
+a document uses. ``XMISerializationOptions/referenceStyle`` chooses whether references within
+a document are written as `#//@entries.0` or `//@entries.0`.
+
+Enumeration-typed attributes are read and written by literal text, and unsettable attributes
+that are set to their default value are still written, as in EMF. An empty resource is
+written as an `xmi:XMI` element alone, and read back as an empty resource.
+
+## Following References Across Documents
+
+References to objects in other documents, written as attributes such as
+`ecoreFeature="ecore:EAttribute library.ecore#//Book/title"`, as space-separated lists, or as
+`href` elements, are read as ``ResourceProxy`` values when the metamodel declares the
+reference. The resource set loads their targets on demand:
+
+```swift
+let resourceSet = ResourceSet()
+let mapping = try await EPackage(url: mappingMetamodelURL)
+await resourceSet.registerMetamodel(mapping, uri: mapping.nsURI)
+
+// References to other documents are parsed as ResourceProxy values
+let resource = try await resourceSet.loadXMIResource(uri: instanceURI)
+
+// Load targets on demand and replace proxies by direct references
+let report = await resourceSet.resolveAllProxies()
+
+// Write the document the way EMF does
+let text = try await XMISerializer(options: .emf).serialize(resource)
+```
+
+`.ecore` documents reached through a proxy are loaded as dynamic objects;
+``ResourceSet/loadEcoreResource(uri:)`` loads one as native packages instead.
+
+## Models and Metamodels as JSON
+
+``JSONParser`` builds objects from the metamodels registered with a ``ResourceSet``: `eClass`
+values, such as `"http://example.org/library#//Book"` or a bare class name, select the
+registered classes, attributes are converted by their data types, enumerations hold literal
+names, and `$ref` values such as `//@authors.0`, `#/authors/0` or `other.json#//@authors.0`
+resolve to objects or proxies. A nested object takes the class that its own `eClass` names,
+and otherwise the type of the reference that contains it. ``JSONParseOptions/requiresMetamodel``
+turns an unknown class into an error. Without a registered metamodel, classes are derived
+from the keys of the document. ``JSONSerializer`` writes package-qualified `eClass` values and
+`{"$ref": ...}` references, leaves out the container side of a containment, and writes an
+empty resource as `[]`. Documents written by earlier releases still load.
+
+Metamodels can be written and read as JSON too, following the emfjson conventions for Ecore
+models. Every construct of an `.ecore` document is kept, and the same packages always give
+the same text. Each object names its metaclass in `eClass`, contained elements are nested
+under their containment feature, attributes are written only where they differ from their
+defaults, and references are `$ref` objects with name-based fragments:
+
+```json
+{
+  "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EPackage",
+  "name": "shop",
+  "nsURI": "http://example.org/shop",
+  "nsPrefix": "shop",
+  "eClassifiers": [
+    {
+      "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EClass",
+      "name": "Order",
+      "eStructuralFeatures": [
+        {
+          "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EAttribute",
+          "name": "total",
+          "eType": {
+            "eClass": "http://www.eclipse.org/emf/2002/Ecore#//EDataType",
+            "$ref": "http://www.eclipse.org/emf/2002/Ecore#//EInt"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+``ModelIO`` converts between the two forms, and ``EPackage/init(url:enableDebugging:)`` and
+``ResourceSet/loadEcoreResource(uri:)`` read either:
+
+```swift
+let resourceSet = ResourceSet()
+let metamodel = try await ModelIO.load(url: ecoreURL, resourceSet: resourceSet)
+try await ModelIO.save(metamodel.resource, to: jsonURL)             // .ecore to JSON
+let fromJSON = try await ModelIO.load(url: jsonURL, resourceSet: ResourceSet())
+try await ModelIO.save(fromJSON.resource, to: ecoreCopyURL)         // JSON to .ecore
+```
+
+Malformed documents, unknown metaclasses and references to missing elements are reported as
+``JSONError`` values.
 
 ## Shipping a Metamodel with a Package
 

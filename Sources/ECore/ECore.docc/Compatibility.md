@@ -1,11 +1,14 @@
 # Compatibility with 0.6
 
-Keep the behaviour of version 0.6, or opt in to newer behaviour.
+See what has changed since version 0.6, and keep its behaviour where an option allows.
 
 ## Overview
 
-Every API of version 0.6 is still available and behaves as it did in 0.6. Newer behaviour is
-offered through additional API, whose default is the new behaviour.
+Every API of version 0.6 is still available. Container lookup keeps the behaviour of version
+0.6 unless newer behaviour is selected through additional API, whose default is the new
+behaviour. Since version 0.7, reading, writing and validating models follow the Eclipse
+Modeling Framework, as described in
+<doc:Compatibility#Behaviour-that-follows-the-Eclipse-Modeling-Framework>.
 
 ### Container lookup scope
 
@@ -76,6 +79,36 @@ if let semantics = try ModellingSemantics.fromEnvironment() {
 `EcoreValueArray` records the kind of collection it represents. Arrays created with
 `EcoreValueArray(_:)` are sequences, as before, and the kind takes no part in equality,
 hashing or the textual form of an array, so code written for version 0.6 is unaffected.
+
+### Behaviour that follows the Eclipse Modeling Framework
+
+Since version 0.7, the following behaviours match those of the Eclipse Modeling Framework.
+They have no option that restores the behaviour of version 0.6.
+
+- **Many-valued attributes in XMI**: a many-valued attribute written as one XML attribute,
+  such as `tags="red green"`, is read as separate values of its data type when the metamodel
+  is known. Without a metamodel the text stays a single value.
+- **Identifier fragments**: a fragment that does not start with `/`, such as
+  `shared.xmi#it`, names the object with that `xmi:id` or, failing that, with that value of
+  its class's ID attribute (``Resource/object(identifiedBy:)``). This applies within a
+  document and to proxies into other documents. Both writers keep `xmi:id` values and refer
+  to an object that has an identifier by that identifier.
+- **Dates**: `EDate` values in XMI, JSON and default value literals are read in every form
+  that EMF reads, from `2024-03-15` up to `2024-03-15T10:30:00.250+1000`, with ISO 8601 time
+  zone designators (`EcoreDateCoding.emfDate(from:)` in EMFBase). The canonical EMF form is
+  written.
+- **Validation**: ``ModelValidator`` checks multiplicities and data values as EMF does. A
+  required single-valued feature is satisfied when it reads as a value, including a default,
+  an unsettable one must be set, an upper bound applies to many-valued features only, and
+  only the values that a model sets are checked against their data types.
+  ``ModelValidator/Options/requiresExplicitValues`` makes every required single-valued
+  feature need a value of its own, for models written by hand or migrated from another
+  format.
+
+The command-line tools of
+[Swift Modelling](https://github.com/mipalgu/swift-modelling) select the behaviours of
+version 0.6 that do have options, such as the container lookup scope, with
+`--semantics legacy`.
 
 ## Topics
 
