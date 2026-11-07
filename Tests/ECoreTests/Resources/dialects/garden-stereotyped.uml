@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="20131001" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:Gardening="http:///schemas/Gardening/_g1/0" xmlns:uml="http://www.eclipse.org/uml2/5.0.0/UML" xsi:schemaLocation="http:///schemas/Gardening/_g1/0 gardening-missing.profile.uml#_g1">
+  <uml:Model xmi:id="yard" name="Yard">
+    <packagedElement xmi:type="uml:Class" xmi:id="Shrub" name="Shrub"/>
+    <profileApplication xmi:id="yard-gardening">
+      <appliedProfile href="gardening-missing.profile.uml#_profile"/>
+    </profileApplication>
+  </uml:Model>
+  <Gardening:Perennial xmi:id="Shrub-perennial" base_Class="Shrub" lifespan="12"/>
+</xmi:XMI>

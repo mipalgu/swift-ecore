@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:emof="http://schema.omg.org/spec/MOF/2.0/emof.xml">
+  <emof:Package xmi:id="library" name="library" uri="http://example.org/library">
+    <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+      <nsPrefix>lib</nsPrefix>
+    </xmi:Extension>
+    <ownedComment body="A small lending library."/>
+    <ownedType xmi:type="emof:Class" xmi:id="library.Item" name="Item" isAbstract="true">
+      <ownedAttribute xmi:id="library.Item.title" name="title" isOrdered="true" lower="0">
+        <type xmi:type="emof:PrimitiveType" href="http://schema.omg.org/spec/MOF/2.0/emof.xml#String"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="library.Item.code" name="code" isOrdered="true" isReadOnly="true" isID="true">
+        <type xmi:type="emof:PrimitiveType" href="http://schema.omg.org/spec/MOF/2.0/emof.xml#String"/>
+      </ownedAttribute>
+    </ownedType>
+    <ownedType xmi:type="emof:Class" xmi:id="library.Book" name="Book" superClass="library.Item">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations source="http://www.eclipse.org/emf/2002/GenModel">
+          <details key="documentation" value="A book that can be lent."/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedAttribute xmi:id="library.Book.pages" name="pages" isOrdered="true" lower="0">
+        <type xmi:type="emof:PrimitiveType" href="http://schema.omg.org/spec/MOF/2.0/emof.xml#Integer"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="library.Book.format" name="format" isOrdered="true" lower="0" type="library.Format" default="Hardback"/>
+      <ownedAttribute xmi:id="library.Book.published" name="published" isOrdered="true" lower="0">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <transient>true</transient>
+        </xmi:Extension>
+        <type xmi:type="emof:PrimitiveType" href="http://www.eclipse.org/emf/2002/Ecore.emof#ecore.EDate"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="library.Book.authors" name="authors" isOrdered="true" lower="0" upper="*" type="library.Author" opposite="library.Author.books"/>
+      <ownedOperation xmi:id="library.Book.lend" name="lend" isOrdered="true" lower="0">
+        <type xmi:type="emof:PrimitiveType" href="http://schema.omg.org/spec/MOF/2.0/emof.xml#Boolean"/>
+        <ownedParameter xmi:id="library.Book.lend.days" name="days" isOrdered="true" lower="0">
+          <type xmi:type="emof:PrimitiveType" href="http://schema.omg.org/spec/MOF/2.0/emof.xml#Integer"/>
+        </ownedParameter>
+      </ownedOperation>
+    </ownedType>
+    <ownedType xmi:type="emof:Class" xmi:id="library.Author" name="Author">
+      <ownedAttribute xmi:id="library.Author.name" name="name" isOrdered="true" lower="0">
+        <type xmi:type="emof:PrimitiveType" href="http://schema.omg.org/spec/MOF/2.0/emof.xml#String"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="library.Author.books" name="books" isOrdered="true" isUnique="false" lower="0" upper="*" type="library.Book" opposite="library.Book.authors"/>
+    </ownedType>
+    <ownedType xmi:type="emof:Class" xmi:id="library.Library" name="Library">
+      <ownedAttribute xmi:id="library.Library.items" name="items" isOrdered="true" lower="0" upper="*" type="library.Item" isComposite="true"/>
+    </ownedType>
+    <ownedType xmi:type="emof:Enumeration" xmi:id="library.Format" name="Format">
+      <ownedLiteral xmi:id="library.Format.Paperback" name="Paperback"/>
+      <ownedLiteral xmi:id="library.Format.Hardback" name="Hardback">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <value>1</value>
+        </xmi:Extension>
+      </ownedLiteral>
+    </ownedType>
+    <ownedType xmi:type="emof:PrimitiveType" xmi:id="library.Isbn" name="Isbn">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <instanceClassName>java.lang.String</instanceClassName>
+      </xmi:Extension>
+    </ownedType>
+    <nestedPackage xmi:id="library.shelving" name="shelving" uri="http://example.org/library/shelving">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <nsPrefix>shelf</nsPrefix>
+      </xmi:Extension>
+      <ownedType xmi:type="emof:Class" xmi:id="library.shelving.Shelf" name="Shelf">
+        <ownedAttribute xmi:id="library.shelving.Shelf.holds" name="holds" isOrdered="true" lower="0" upper="*" type="library.Item"/>
+      </ownedType>
+    </nestedPackage>
+  </emof:Package>
+  <emof:Tag xmi:id="_tag0" name="org.example.audience" value="students" element="library.Book"/>
+</xmi:XMI>

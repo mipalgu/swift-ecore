@@ -40,6 +40,9 @@ struct JSONMetamodelReader {
 
         /// The objects that an annotation holds as free-form content.
         var contents: [EUUID] = []
+
+        /// The namespace features that a root package lacks and that load as empty texts.
+        var missingNamespaces: [EcoreFeatureName] = []
     }
 
     /// An element as a child of its container.
@@ -75,12 +78,20 @@ struct JSONMetamodelReader {
     /// The identifiers of the objects in the order in which they are registered.
     private var order: [EUUID] = []
 
+    /// The diagnostics recorded while the document is read.
+    private var diagnostics: [SourceDiagnostic] = []
+
+    /// The namespace features of a package, which a root package may lack.
+    private static let namespaceFeatures: [EcoreFeatureName] = [.nsURI, .nsPrefix]
+
     /// Prepares to read a document.
     ///
     /// - Parameters:
     ///   - uri: The URI of the document, against which references are resolved.
-    ///   - options: The load options; when they are tolerant, missing names and namespaces are
-    ///     read as empty texts instead of being errors.
+    ///   - options: The load options; when they are tolerant, missing names are read as empty
+    ///     texts instead of being errors. A root package without a namespace URI or prefix is
+    ///     read in either case; without tolerance, the missing values are empty texts that
+    ///     ``Resource/loadDiagnostics`` reports as warnings.
     init(uri: String, options: EcoreLoadOptions = EcoreLoadOptions()) {
         self.uri = uri
         self.tolerant = options.tolerant
@@ -99,7 +110,8 @@ struct JSONMetamodelReader {
     /// Reads a document into a resource of objects that represent its packages.
     ///
     /// - Parameter data: The UTF-8 text of the document.
-    /// - Returns: A resource with the URI of the document whose roots are the package objects.
+    /// - Returns: A resource with the URI of the document whose roots are the package objects,
+    ///   with a warning in ``Resource/loadDiagnostics`` for each missing namespace.
     /// - Throws: ``JSONError`` if the document is not well-formed JSON, if a root is not a
     ///   package, if an `eClass` names no metaclass of Ecore or one that cannot be held where
     ///   it is, if a name is missing, or if a reference names no element.
@@ -131,6 +143,7 @@ struct JSONMetamodelReader {
             if let object = objects[identifier] { await resource.register(object) }
         }
         await resource.add(contentsOf: roots.compactMap { objects[nodes[$0].id] })
+        if !diagnostics.isEmpty { await resource.setLoadDiagnostics(diagnostics) }
         return resource
     }
 
@@ -142,7 +155,7 @@ struct JSONMetamodelReader {
     ///   - value: The JSON object of the element.
     ///   - metaclass: The metaclass of the element.
     ///   - path: The positional fragment of the element.
-    ///   - isRoot: Whether the element is a root package, which must have a namespace.
+    ///   - isRoot: Whether the element is a root package, whose missing namespace is reported.
     /// - Returns: The position of the element among the nodes.
     private mutating func node(
         _ value: OrderedJSON, metaclass: EcoreClassifier, path: String, isRoot: Bool = false
@@ -150,7 +163,14 @@ struct JSONMetamodelReader {
         let position = nodes.count
         let identifier = EUUID()
         nodes.append(Node(id: identifier, metaclass: metaclass, members: value, path: path))
-        nodes[position].name = try name(of: value, metaclass: metaclass, path: path, isRoot: isRoot)
+        nodes[position].name = try name(of: value, metaclass: metaclass, path: path)
+        if metaclass == .ePackage, isRoot, !tolerant {
+            let missing = Self.namespaceFeatures.filter { value[$0.rawValue]?.text == nil }
+            nodes[position].missingNamespaces = missing
+            diagnostics += missing.map {
+                EcoreLoadDiagnostic.missingNamespace($0, package: nodes[position].name ?? "", document: uri)
+            }
+        }
         nodes[position].source = value[EcoreFeatureName.source.rawValue]?.text
         var children: [Child] = []
         for containment in JSONMetamodelSyntax.containments(of: metaclass) {
@@ -191,17 +211,15 @@ struct JSONMetamodelReader {
     ///   - value: The JSON object of the element.
     ///   - metaclass: The metaclass of the element.
     ///   - path: The path of the element, for errors.
-    ///   - isRoot: Whether the element is a root package, which must also have a namespace.
     /// - Returns: The name, an empty name for a missing one when the options are tolerant, or
     ///   `nil` for an element without a name.
-    /// - Throws: ``JSONError/parseError(_:)`` if a name or namespace is missing.
-    private func name(of value: OrderedJSON, metaclass: EcoreClassifier, path: String, isRoot: Bool) throws -> String? {
+    /// - Throws: ``JSONError/parseError(_:)`` if a name is missing.
+    private func name(of value: OrderedJSON, metaclass: EcoreClassifier, path: String) throws -> String? {
         let unnamed: Set<EcoreClassifier> = [.eAnnotation, .eGenericType, .eStringToStringMapEntry]
         guard !unnamed.contains(metaclass) else { return nil }
-        let required: [EcoreFeatureName] = metaclass == .ePackage && isRoot ? [.name, .nsURI, .nsPrefix] : [.name]
-        for feature in required where value[feature.rawValue]?.text == nil && !tolerant {
+        if value[EcoreFeatureName.name.rawValue]?.text == nil && !tolerant {
             throw JSONError.parseError(
-                "The \(metaclass.rawValue) at \(path) of \(uri) has no '\(feature.rawValue)' text")
+                "The \(metaclass.rawValue) at \(path) of \(uri) has no '\(EcoreFeatureName.name.rawValue)' text")
         }
         return value[EcoreFeatureName.name.rawValue]?.text ?? ""
     }
@@ -337,6 +355,7 @@ struct JSONMetamodelReader {
             if let primitive = Self.primitive(member.value) { object.eSet(member.key, value: primitive) }
         }
         if let name = node.name { object.eSet(EcoreFeatureName.name.rawValue, value: name) }
+        for feature in node.missingNamespaces { object.eSet(feature.rawValue, value: "") }
         for containment in JSONMetamodelSyntax.containments(of: node.metaclass) {
             let held = node.children.filter { $0.feature == containment.feature }.map { nodes[$0.node].id }
             guard !held.isEmpty else { continue }

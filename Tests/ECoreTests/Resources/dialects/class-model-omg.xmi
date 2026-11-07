@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="20131001" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.omg.org/spec/UML/20131001">
+  <uml:Model xmi:type="uml:Model" xmi:id="m1" name="Garden">
+    <packagedElement xmi:type="uml:Class" xmi:id="c1" name="Plant">
+      <ownedAttribute xmi:type="uml:Property" xmi:id="c1-name" name="name">
+        <type href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#String"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:type="uml:Property" xmi:id="c1-bed" name="bed" type="c2"/>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="c2" name="Bed">
+      <isAbstract>true</isAbstract>
+      <ownedComment xmi:type="uml:Comment" xmi:id="c2-comment">
+        <body>A bed holds plants.</body>
+        <annotatedElement xmi:idref="c2"/>
+      </ownedComment>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>

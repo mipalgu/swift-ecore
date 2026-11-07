@@ -1,0 +1,80 @@
+@Ecore(nsURI="http://example.org/library", nsPrefix="lib")
+@GenModel(documentation="A small lending library")
+package org.example.library
+
+import org.eclipse.emf.ecore.EObject
+annotation "http://example.org/notes" as Notes
+
+abstract class Item {
+	id String identifier
+	String title
+	int copies = "1"
+	boolean available = "true"
+	unordered String[] tags
+	readonly transient volatile derived int loanCount
+	op boolean isLoanable() {
+		copies > 0
+	}
+}
+
+class Book extends Item, Described {
+	String[1] isbn
+	refers Author[+] authors opposite books
+	unsettable Date published
+	Genre genre = "fiction"
+	int pageCount get {
+		42
+	}
+}
+
+interface Described {
+	String description
+	op void describe(String prefix, int depth) throws LibraryProblem
+}
+
+class Author {
+	String name
+	refers Book[] books opposite authors
+}
+
+@Notes(audience="staff")
+class Library {
+	contains Item[] items
+	contains Member[] members opposite library
+	local refers Author[0..5] featured
+	contains resolving Shelf[] shelves
+	op <T extends Item> T[] itemsOfKind(Class<T> kind)
+}
+
+class Member {
+	container Library library opposite members
+	char initial = "M"
+	refers Item[] loans keys identifier
+	refers EObject anything
+}
+
+class LibraryProblem wraps java.lang.Exception {
+}
+
+class Box<T extends Item> {
+	refers T[] contents
+	op T first()
+}
+
+class BookBox extends Box<Book> {
+}
+
+class Shelf {
+	contains Item[] items
+}
+
+enum Genre {
+	fiction
+	poetry = 1
+	reference as "ref" = 5
+}
+
+type Isbn wraps java.lang.String
+
+@Ecore(serializable="false")
+type Cover wraps byte[]

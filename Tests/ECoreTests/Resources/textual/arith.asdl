@@ -1,0 +1,8 @@
+module Arith {
+    expr = Num(int value)
+         | Var(identifier name)
+         | BinOp(expr left, op operator, expr right)
+         | Let(identifier name, expr init, expr body)
+
+    op = Add | Sub | Mul | Div
+}

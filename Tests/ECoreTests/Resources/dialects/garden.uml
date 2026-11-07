@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<uml:Model xmi:version="20131001" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:uml="http://www.eclipse.org/uml2/5.0.0/UML" xmi:id="garden" name="Garden">
+  <ownedComment xmi:type="uml:Comment" xmi:id="garden-note" annotatedElement="garden">
+    <body>A small model of a garden.</body>
+  </ownedComment>
+  <packagedElement xmi:type="uml:Package" xmi:id="plants" name="plants">
+    <packagedElement xmi:type="uml:Class" xmi:id="Plant" name="Plant" isAbstract="true">
+      <ownedAttribute xmi:id="Plant-name" name="name">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#String"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Plant-height" name="height">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#Real"/>
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Plant-height-lower"/>
+        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Plant-height-upper" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Plant-season" name="season" type="Season"/>
+      <ownedOperation xmi:id="Plant-water" name="water">
+        <ownedParameter xmi:id="Plant-water-litres" name="litres">
+          <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#Integer"/>
+        </ownedParameter>
+      </ownedOperation>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="Rose" name="Rose">
+      <generalization xmi:id="Rose-general" general="Plant"/>
+      <ownedAttribute xmi:id="Rose-thorny" name="thorny">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#Boolean"/>
+        <defaultValue xmi:type="uml:LiteralBoolean" xmi:id="Rose-thorny-default" value="true"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Enumeration" xmi:id="Season" name="Season">
+      <ownedLiteral xmi:id="Season-spring" name="Spring"/>
+      <ownedLiteral xmi:id="Season-summer" name="Summer"/>
+      <ownedLiteral xmi:id="Season-autumn" name="Autumn"/>
+      <ownedLiteral xmi:id="Season-winter" name="Winter"/>
+    </packagedElement>
+  </packagedElement>
+  <packagedElement xmi:type="uml:Class" xmi:id="Bed" name="Bed">
+    <ownedAttribute xmi:id="Bed-plants" name="plants" type="Plant" aggregation="composite" association="Bed-holds">
+      <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Bed-plants-lower"/>
+      <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Bed-plants-upper" value="*"/>
+    </ownedAttribute>
+  </packagedElement>
+  <packagedElement xmi:type="uml:Association" xmi:id="Bed-holds" name="holds" memberEnd="Bed-plants Bed-holds-bed">
+    <ownedEnd xmi:id="Bed-holds-bed" name="bed" type="Bed" association="Bed-holds"/>
+  </packagedElement>
+</uml:Model>

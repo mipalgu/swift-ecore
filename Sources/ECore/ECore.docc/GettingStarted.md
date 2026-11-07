@@ -149,7 +149,8 @@ let report = await resourceSet.resolveAllProxies()
 
 ## Loading and Saving Models in Any Format
 
-``ModelIO`` reads and writes XMI, JSON and Ecore documents through one interface. It
+``ModelIO`` reads and writes XMI, JSON, Ecore, EMOF, UML, KM3, Emfatic, Xcore, OCLinEcore and
+ASDL documents, and reads Langium, Xtext and SDF3 grammars, through one interface. It
 registers the metamodels of a model with a ``ResourceSet`` before the model is read, detects
 the format from the file name or the contents of the document unless it is given, and reports
 whatever a conversion could not keep as ``ConversionDiagnostics``:
@@ -176,12 +177,124 @@ the classes of that subpackage. Explicit registrations take precedence, and
 
 ``ModelFormat`` detects the format of a document on its own: by the extension of its name,
 ignoring case, or by the start of its contents, where `{` or `[` starts a JSON document, an
-`EPackage` of the Ecore namespace (also inside an `xmi:XMI` wrapper) an Ecore document, and
-any other XML an XMI document. An Ecore input is loaded as native packages and registered as
-a metamodel too. ``ModelIO/LoadOptions`` chooses how XMI references are read and whether the
+`EPackage` of the Ecore namespace (also inside an `xmi:XMI` wrapper) an Ecore document,
+XML in an EMOF or UML namespace an EMOF metamodel or a UML model (see
+<doc:DialectsEMOFAndUML>), any other XML an XMI document, and text that starts with
+`package Name {` a KM3 document. When the extension names a generic format, such as `.xmi`,
+contents in a more specific format take precedence. An Ecore, KM3 or EMOF input is loaded as native packages and registered as a metamodel too. ``ModelIO/LoadOptions`` chooses how XMI references are read and whether the
 classes of a JSON document must come from a registered metamodel, and
-``ModelIO/serialise(_:format:relativeTo:xmiOptions:diagnostics:)`` returns the text of a
-document instead of writing a file.
+``ModelIO/serialise(_:format:relativeTo:xmiOptions:registry:diagnostics:)`` returns the text
+of a document instead of writing a file.
+
+### Adding Formats
+
+``ModelIO`` reads and writes every document through the ``ModelFormatHandler`` of its format,
+which ``ModelFormatRegistry/shared`` provides. Registering a handler makes a further format
+available: its file extensions are recognised by name, and a document without a known
+extension is offered to the handlers whose ``ModelFormatHandler/priority`` is highest first,
+so that a format with a distinctive start, such as a keyword, is recognised before the
+generic XMI and JSON formats. A text metamodel format decodes its document as UTF-8 (or in
+``ModelIO/LoadOptions/textEncoding``), and its packages are registered as an Ecore
+document's are, with its syntax errors and warnings in ``Resource/loadDiagnostics``:
+
+```swift
+await ModelFormatRegistry.shared.register(NotationHandler())
+let metamodel = try await ModelIO.load(url: URL(fileURLWithPath: "Shapes.notation"), resourceSet: resourceSet)
+for diagnostic in await metamodel.resource.loadDiagnostics {
+    print(diagnostic.message)
+}
+```
+
+### Metamodels in KM3
+
+KM3 (Kernel MetaMetaModel) is the textual metamodel language of the ATL tool chain. ``ModelIO``
+reads and writes it like any other format, and accepts `.km3` documents as metamodels:
+
+```swift
+let resourceSet = ResourceSet()
+let families = try await ModelIO.load(
+    url: URL(fileURLWithPath: "families.xmi"),
+    resourceSet: resourceSet,
+    metamodels: [URL(fileURLWithPath: "Families.km3")])
+
+let metamodel = try await ModelIO.load(url: URL(fileURLWithPath: "Families.km3"), resourceSet: ResourceSet())
+try await ModelIO.save(metamodel.resource, to: URL(fileURLWithPath: "Families.ecore"))
+```
+
+The `-- @nsURI` and `-- @nsPrefix` comments before a package give its namespace. Many KM3
+documents have none; as in the ATL tool chain, such a package is then registered with the
+resource set under its name, so that a model can name it as its namespace, and a warning
+with the code ``EcoreLoadDiagnostic/registeredUnderName`` is recorded in
+``Resource/loadDiagnostics``. The primitive types that KM3 documents declare, such as `String`
+and `Integer`, stand for the built-in Ecore data types; ``EcoreLoadOptions/km3Options`` set to
+``KM3ReadOptions/declaredDataTypes`` keeps them as declared data types instead, as the KM32EMF
+transformation of the ATL tool chain does. A document that is not valid UTF-8 is read as
+ISO-8859-1 with a warning. ``KM3Reader`` and ``KM3Writer`` can also be used on their own,
+and ``KM3Syntax`` classifies the tokens of KM3 text for editors.
+
+### Metamodels in Emfatic and Xcore
+
+Emfatic (`.emf`) and Xcore (`.xcore`) are further textual notations for Ecore metamodels.
+``ModelIO`` reads and writes them as it does KM3, and recognises a document without a known
+extension by its package declaration (`package library;` in Emfatic, `package org.example`
+followed by its declarations in Xcore). A binary `.emf` file, such as a Windows metafile,
+is refused with ``ModelFormatError/undetectableFormat(_:)`` rather than read as text.
+
+```swift
+let library = try await ModelIO.load(url: URL(fileURLWithPath: "library.emf"), resourceSet: resourceSet)
+try await ModelIO.save(library.resource, to: URL(fileURLWithPath: "library.xcore"))
+```
+
+The bodies of Xcore operations and derived features are kept as text in annotations but are
+not executed, and the metamodels that an Emfatic document imports are not loaded: their
+types are kept as placeholders, with a warning. ``EmfaticReader``, ``XcoreReader`` and their writers can also be used on their
+own, and ``EmfaticSyntax`` and ``XcoreSyntax`` classify tokens for editors.
+
+### Metamodels with OCL Constraints
+
+OCLinEcore (`.oclinecore`) is the textual notation of Eclipse OCL for metamodels with
+embedded constraints. ``ModelIO`` reads and writes it like the other textual notations, and
+its imports may name metamodels registered with the resource set. Invariants, operation
+bodies, preconditions, postconditions, initial values and derivations are kept as the
+annotations that Eclipse OCL writes (see ``OCLConstraintAnnotations``), so they survive
+when the metamodel is saved as an Ecore document.
+
+A Complete OCL document (`.ocl`) adds constraints to metamodels that are already loaded.
+``ModelIO/applyCompleteOCL(at:to:in:options:)`` replaces the packages of the given
+resources, and their registrations, with the constrained packages:
+
+```swift
+let resourceSet = ResourceSet()
+let school = try await ModelIO.load(url: URL(fileURLWithPath: "School.ecore"), resourceSet: resourceSet)
+let applied = try await ModelIO.applyCompleteOCL(
+    at: URL(fileURLWithPath: "School.ocl"), to: [school.resource], in: resourceSet)
+for diagnostic in applied.diagnostics { print(diagnostic.message) }
+try await ModelIO.save(school.resource, to: URL(fileURLWithPath: "School.oclinecore"))
+```
+
+The expressions of the constraints are parsed to report syntax errors (see the
+`OCLExpressionParser` of the `OCL` module) and kept as text.
+
+### Metamodels from Grammars
+
+A metamodel can be derived from the definition of a language's syntax: a Zephyr ASDL
+description (`.asdl`, including the dialect of CPython), a Langium or Xtext grammar
+(`.langium`, `.xtext`), or an SDF3 syntax definition or Stratego signature (`.sdf3`).
+``ModelIO`` reads these like any metamodel format, recognising a document without a known
+extension by its first declaration: `module Name {` is ASDL and `module Name` followed by a
+section such as `context-free syntax` is SDF3; `grammar` with a qualified name or a
+`generate` declaration is Xtext, and any other `grammar` is Langium. Only ASDL is written.
+
+```swift
+let python = try await ModelIO.load(url: URL(fileURLWithPath: "Python.asdl"), resourceSet: resourceSet)
+try await ModelIO.save(python.resource, to: URL(fileURLWithPath: "Python.ecore"))
+```
+
+The readers recover from errors and build every definition they can read. Where a source
+names no package, namespace URI or prefix, they are derived from its name, or taken from
+``EcoreLoadOptions/asdlOptions``, ``EcoreLoadOptions/langiumOptions``,
+``EcoreLoadOptions/xtextOptions`` and ``EcoreLoadOptions/sdf3Options``. The mapping of each
+notation is described on its reader.
 
 ## Loading Ecore Documents
 
@@ -203,12 +316,27 @@ The package that ``EPackage/init(url:enableDebugging:)`` returns is the root pac
 subpackages attached. ``EPackage/allPackages`` lists a package and every nested package depth
 first, and ``EPackage/getClassifier(_:includingSubpackages:)`` searches them all. A resource
 keeps every root package of a document in order, and its contents are enumerated in document
-order, the same on every load.
+order, the same on every load. ``EPackage/rootPackages(url:options:enableDebugging:)`` returns
+all root packages of a document, with the references between them resolved:
+
+```swift
+let packages = try await EPackage.rootPackages(url: libraryURL)
+```
+
+As in EMF, a package need not declare a namespace URI or prefix. Such a package, typically one
+that holds only data types for the other packages of its document, loads with empty values,
+is not registered under a namespace, and is reported as a warning in
+``Resource/loadDiagnostics``; the constraint `WellFormedNsURI` of ``EcoreValidator`` still
+reports its missing URI.
+
+A document is read in the encoding that its XML declaration names, such as `ISO-8859-1` or
+`windows-1252`, unless its bytes are valid UTF-8; documents in UTF-16 are recognised by their
+first bytes. A document read in another encoding is written back in UTF-8.
 
 Loading is strict by default. Editors that must open incomplete documents can pass
 ``EcoreLoadOptions`` to ``ResourceSet/loadEcoreResource(uri:options:)``: references to
 targets that are not available are then kept, with their original spelling, and missing
-names and package attributes are reported in ``Resource/loadDiagnostics``.
+names are reported in ``Resource/loadDiagnostics``.
 ``EcoreValidator`` checks a loaded metamodel, including keys, generic types and retained
 unresolved references, and each of its constraints can be disabled through its options:
 

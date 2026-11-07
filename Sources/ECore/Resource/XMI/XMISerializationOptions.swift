@@ -115,6 +115,20 @@ public struct XMISerializationOptions: Sendable, Equatable {
     /// into other documents, or metamodel (`.ecore`) and generator model documents.
     public var referenceStyle: XMIReferenceStyle
 
+    /// The version of XMI whose namespace and `xmi:version` the document declares.
+    ///
+    /// The default, ``XMIVersion/v2_0``, is the version that EMF writes. A later version,
+    /// such as ``XMIVersion/v2_5`` for Eclipse UML2 documents, declares the namespace of that
+    /// version instead; it applies to model instance documents written in the EMF-style layout.
+    public var xmiVersion: XMIVersion
+
+    /// The attribute that names the class of an object whose class differs from the declared type.
+    ///
+    /// The default, ``XMITypeAttribute/xsi``, is what EMF writes; ``XMITypeAttribute/xmi`` is
+    /// what Eclipse UML2 and documents in the OMG dialect write. It applies to model instance
+    /// documents written in the EMF-style layout.
+    public var typeAttribute: XMITypeAttribute
+
     /// The line width that EMF's editors use when they write `.ecore` documents.
     public static let emfLineWidth = 80
 
@@ -130,6 +144,8 @@ public struct XMISerializationOptions: Sendable, Equatable {
     ///   - lineWidth: The width after which attributes continue on a new line, or `nil` for none.
     ///   - rootLayout: How the root element's start tag is wrapped.
     ///   - referenceStyle: How same-document references are spelt in attribute values.
+    ///   - xmiVersion: The version of XMI that the document declares (default ``XMIVersion/v2_0``).
+    ///   - typeAttribute: The attribute that names the class of an object (default ``XMITypeAttribute/xsi``).
     public init(
         attributeStyleReferences: Bool = false,
         typeQualifiers: Bool = false,
@@ -139,7 +155,9 @@ public struct XMISerializationOptions: Sendable, Equatable {
         manyValuedAttributesAsElements: Bool = false,
         lineWidth: Int? = nil,
         rootLayout: XMIRootLayout = .standard,
-        referenceStyle: XMIReferenceStyle = .encoded
+        referenceStyle: XMIReferenceStyle = .encoded,
+        xmiVersion: XMIVersion = .v2_0,
+        typeAttribute: XMITypeAttribute = .xsi
     ) {
         self.attributeStyleReferences = attributeStyleReferences
         self.typeQualifiers = typeQualifiers
@@ -150,6 +168,8 @@ public struct XMISerializationOptions: Sendable, Equatable {
         self.lineWidth = lineWidth
         self.rootLayout = rootLayout
         self.referenceStyle = referenceStyle
+        self.xmiVersion = xmiVersion
+        self.typeAttribute = typeAttribute
     }
 
     /// The layout this package has always written (all switches off).
@@ -177,5 +197,22 @@ public struct XMISerializationOptions: Sendable, Equatable {
         omitDefaultValues: true,
         manyValuedAttributesAsElements: true,
         lineWidth: emfLineWidth
+    )
+
+    /// The layout in which Eclipse UML2 5.x writes UML models.
+    ///
+    /// This is ``emf`` in XMI 2.5 (``XMIVersion/v2_5``), with `xmi:type` naming the classes
+    /// of objects, same-document references written as plain identifiers or fragments, and
+    /// references written without type qualifiers.
+    public static let uml = XMISerializationOptions(
+        attributeStyleReferences: true,
+        typeQualifiers: false,
+        nameBasedFragments: true,
+        relativeURIs: true,
+        omitDefaultValues: true,
+        manyValuedAttributesAsElements: true,
+        referenceStyle: .plain,
+        xmiVersion: .v2_5,
+        typeAttribute: .xmi
     )
 }

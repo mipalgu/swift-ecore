@@ -1,0 +1,26 @@
+-- @nsURI http://example.org/orchard
+-- @nsPrefix orchard
+package Orchard {
+
+	class Orchard {
+		attribute name : String;
+		reference trees[*] ordered container : Tree oppositeOf orchard;
+	}
+
+	class Tree {
+		attribute variety : String;
+		attribute age[0-1] : Integer;
+		attribute season : Season;
+		reference orchard : Orchard oppositeOf trees;
+	}
+
+	enumeration Season {
+		literal spring;
+		literal autumn;
+	}
+}
+
+package PrimitiveTypes {
+	datatype Integer;
+	datatype String;
+}

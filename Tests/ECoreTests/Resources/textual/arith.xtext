@@ -1,0 +1,10 @@
+grammar org.example.arith.Arith with org.eclipse.xtext.common.Terminals
+
+generate arith "http://www.example.org/arith"
+
+Expr: Num | Var | BinOp | Let;
+Num: value=INT;
+Var: name=ID;
+BinOp: '(' left=Expr operator=Op right=Expr ')';
+Let: 'let' name=ID '=' init=Expr 'in' body=Expr;
+enum Op: Add='+' | Sub='-' | Mul='*' | Div='/';

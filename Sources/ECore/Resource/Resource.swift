@@ -68,9 +68,12 @@ public actor Resource {
     /// The objects by their explicit `xmi:id`, as recorded in ``ecoreDocumentMetadata``.
     var xmlIdentifierTargets: [String: EUUID] = [:]
 
-    /// The diagnostics produced while loading a native Ecore document.
+    /// The diagnostics produced while loading a native Ecore document or a document in a
+    /// registered metamodel format.
     ///
-    /// Tolerant loading retains incomplete elements and records missing attributes here.
+    /// Tolerant loading retains incomplete elements and records missing attributes here. The
+    /// reader of a registered text format records its syntax errors and warnings here, as
+    /// well as a warning that the document was not valid UTF-8 (see ``ModelFormatHandler``).
     public internal(set) var loadDiagnostics: [SourceDiagnostic] = []
 
     /// Records metadata retained by the XML parser.

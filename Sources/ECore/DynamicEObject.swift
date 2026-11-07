@@ -251,9 +251,10 @@ public struct DynamicEObject: EObject {
         // Get all metamodel features (attributes and references) in a single collection
         let allMetamodelFeatures = eClass.allStructuralFeatures
 
-        // Create a mapping from feature ID to feature name for quick lookup
+        // Create a mapping from feature ID to feature name for quick lookup; a feature
+        // inherited along several paths, as in a diamond hierarchy, is listed more than once
         let featureIdToName = Dictionary(
-            uniqueKeysWithValues: allMetamodelFeatures.map { ($0.id, $0.name) })
+            allMetamodelFeatures.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
 
         // Add metamodel feature names in the order they were set (from storage)
         for featureId in storage.getSetFeatureIds() {

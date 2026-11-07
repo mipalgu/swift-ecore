@@ -214,6 +214,44 @@ public struct EPackage: ENamedElement {
         self = package
     }
 
+    /// Loads every root package of an Ecore document.
+    ///
+    /// A document may hold several root packages inside an `xmi:XMI` element, which may
+    /// refer to each other. Whereas ``init(url:enableDebugging:)`` returns only the first
+    /// of them, this function returns all of them in document order, loaded together so
+    /// that references between them resolve. Types that refer to other documents are
+    /// resolved relative to the file, and the document may also be a metamodel in JSON.
+    ///
+    /// The diagnostics of the load, such as a package without a namespace URI, are not
+    /// returned; load the document with ``ResourceSet/loadEcoreResource(uri:options:)`` and
+    /// read ``Resource/loadDiagnostics`` to obtain them.
+    ///
+    /// - Parameters:
+    ///   - url: The location of the `.ecore` document.
+    ///   - options: The policies for unresolved references and incomplete elements
+    ///     (default policies).
+    ///   - enableDebugging: Whether the parser prints a trace (default `false`).
+    /// - Returns: The root packages of the document, in document order.
+    /// - Throws: ``XMIError`` if the document cannot be read or parsed, or has no root
+    ///   package, or ``JSONError`` if a JSON document is not a well-formed metamodel.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// let packages = try await EPackage.rootPackages(url: url)
+    /// print(packages.map(\.name))
+    /// ```
+    public static func rootPackages(
+        url: URL, options: EcoreLoadOptions = EcoreLoadOptions(), enableDebugging: Bool = false
+    ) async throws -> [EPackage] {
+        let resourceSet = ResourceSet()
+        let resource = try await resourceSet.loadEcoreResource(
+            uri: URIReference.canonicalise(url.absoluteString), enableDebugging: enableDebugging, options: options)
+        let packages = await resource.getRootObjects().compactMap { $0 as? EPackage }
+        guard !packages.isEmpty else { throw XMIError.noRootObject }
+        return packages
+    }
+
     /// Initialise an EPackage from a DynamicEObject (without resource context).
     ///
     /// This initialiser handles cases where cross-references are already resolved

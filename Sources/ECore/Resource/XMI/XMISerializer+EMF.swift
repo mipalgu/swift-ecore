@@ -183,7 +183,10 @@ struct EMFDocumentWriter {
 
     /// Computes the reference text that points at an object.
     ///
-    /// Objects of the written resource yield a same-document fragment (`#//@entries.0`
+    /// In the EMF-style layout, a classifier of the Ecore metamodel itself yields its URI in
+    /// the Ecore namespace (`http://www.eclipse.org/emf/2002/Ecore#//EInt`); the legacy layout
+    /// keeps writing its identifier. Objects of the written resource yield
+    /// a same-document fragment (`#//@entries.0`
     /// in a resource with one root, `#/1/@entries.0` in one with several roots).
     /// Objects of another resource in the same resource set yield the URI of that resource
     /// (relative if the options ask for it) and a fragment within it. The positional
@@ -195,6 +198,11 @@ struct EMFDocumentWriter {
     ///   resource and the resource set that might hold it has been released;
     ///   ``XMIError/invalidReference(_:)`` if no resource of the set holds the object.
     mutating func reference(to id: EUUID) async throws -> ResolvedReference {
+        if options != .legacy, let classifier = EcorePackage.classifier(id: id) {
+            let href = EcorePackage.nsURI + String(CrossReferenceSyntax.fragmentSeparator)
+                + CrossReferenceSyntax.fragmentPathPrefix + classifier.name
+            return ResolvedReference(href: href, target: classifier as? any EObject)
+        }
         if let object = await resource.resolve(id) {
             let fragment = try await fragment(for: object, in: resource)
             return ResolvedReference(href: fragment.text, target: object, located: fragment.located)
@@ -328,8 +336,9 @@ struct EMFDocumentWriter {
     /// - Parameter rootPrefix: The prefix of the root object's package.
     /// - Returns: The declaration attributes (`xmlns:ecore="..."`), `xmi:version` first.
     private func namespaceDeclarations(rootPrefix: String) -> [String] {
-        var result = ["\(XMIAttribute.xmiVersion.rawValue)=\"\(CrossReferenceSyntax.xmiVersion)\""]
-        result.append(declaration(CrossReferenceSyntax.xmiPrefix, EcoreURI.xmiNamespace.rawValue))
+        let version = options.xmiVersion == .v2_0 ? CrossReferenceSyntax.xmiVersion : options.xmiVersion.versionText
+        var result = ["\(XMIAttribute.xmiVersion.rawValue)=\"\(version)\""]
+        result.append(declaration(CrossReferenceSyntax.xmiPrefix, options.xmiVersion.namespaceURI))
         if needsXSI { result.append(declaration(CrossReferenceSyntax.xsiPrefix, EcoreURI.xsiNamespace.rawValue)) }
         var ordered: [String] = []
         for prefix in [CrossReferenceSyntax.ecorePrefix, rootPrefix] where usedPrefixes[prefix] != nil && !ordered.contains(prefix) {
@@ -448,7 +457,7 @@ struct EMFDocumentWriter {
             case let attribute as EAttribute where !attribute.transient:
                 if Self.holdsReferences(value) {
                     try await renderReference(
-                        named: attribute.name, declared: nil, value: value, of: object, into: &attributes,
+                        named: ExtendedMetaDataNames.xmlName(of: attribute), declared: nil, value: value, of: object, into: &attributes,
                         children: &children, indentation: childIndentation)
                     continue
                 }
@@ -461,7 +470,8 @@ struct EMFDocumentWriter {
                     children += try await renderContainment(reference, value: value, of: object, indent: indent + 1)
                 } else {
                     try await renderReference(
-                        named: reference.name, declared: reference.eType, value: value, of: object,
+                        named: ExtendedMetaDataNames.xmlName(of: reference), declared: reference.eType, value: value,
+                        of: object,
                         into: &attributes, children: &children, indentation: childIndentation)
                 }
             default:
@@ -487,8 +497,7 @@ struct EMFDocumentWriter {
 
         var allAttributes: [String] = []
         if let xsiType {
-            needsXSI = true
-            allAttributes.append("\(XMIAttribute.xsiType.rawValue)=\"\(xsiType)\"")
+            allAttributes.append(typeAttribute(xsiType))
         }
         if let identifier = await resource.xmlIdentifier(of: object.id) {
             allAttributes.append("\(XMIAttribute.xmiId.rawValue)=\"\(XMISerializer.escapeAttribute(identifier))\"")
@@ -524,16 +533,17 @@ struct EMFDocumentWriter {
         into attributes: inout [String], children: inout String, indentation: String
     ) {
         let serialiser = XMISerializer()
+        let xmlName = ExtendedMetaDataNames.xmlName(of: attribute)
         if let stored = arrayTexts(of: value) {
             let texts = serialiser.attributeTexts(stored, feature: attribute.name, of: object)
             guard !texts.isEmpty else { return }
             if options.manyValuedAttributesAsElements {
                 for text in texts {
-                    children += "\(indentation)<\(attribute.name)>\(escapeXML(text))</\(attribute.name)>\n"
+                    children += "\(indentation)<\(xmlName)>\(escapeXML(text))</\(xmlName)>\n"
                 }
             } else {
                 attributes.append(
-                    "\(attribute.name)=\"\(XMISerializer.escapeAttribute(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\"")
+                    "\(xmlName)=\"\(XMISerializer.escapeAttribute(texts.joined(separator: String(CrossReferenceSyntax.listSeparator))))\"")
             }
             return
         }
@@ -541,7 +551,7 @@ struct EMFDocumentWriter {
         if options.omitDefaultValues && !attribute.unsettable && isDefault(text, of: attribute) { return }
         let written = (value as? Date).map(EcoreDateCoding.emfString(from:))
             ?? serialiser.attributeText(value, feature: attribute.name, of: object)
-        attributes.append("\(attribute.name)=\"\(XMISerializer.escapeAttribute(written))\"")
+        attributes.append("\(xmlName)=\"\(XMISerializer.escapeAttribute(written))\"")
     }
 
     /// Converts an array value into the texts of its elements.
@@ -617,7 +627,9 @@ struct EMFDocumentWriter {
                 continue
             }
             let xsiType = typeQualifier(of: child, declared: reference.eType)
-            text += try await render(child, elementName: reference.name, xsiType: xsiType, indent: indent, isRoot: false)
+            text += try await render(
+                child, elementName: ExtendedMetaDataNames.xmlName(of: reference), xsiType: xsiType, indent: indent,
+                isRoot: false)
         }
         return text
     }
@@ -635,8 +647,19 @@ struct EMFDocumentWriter {
         guard child.eClass.name != declared.name else { return nil }
         let info = namespace(for: child.eClass)
         markUsed(info)
-        needsXSI = true
+        if options.typeAttribute == .xsi { needsXSI = true }
         return "\(info.prefix)\(CrossReferenceSyntax.qualifierSeparator)\(child.eClass.name)"
+    }
+
+    /// The attribute that names the class of an object, as the options ask for it.
+    ///
+    /// The `xsi:type` attribute needs the XML Schema instance namespace, which is then declared.
+    ///
+    /// - Parameter qualifier: The qualified class name, such as `uml:Class`.
+    /// - Returns: The attribute text, `xsi:type="uml:Class"` or `xmi:type="uml:Class"`.
+    private mutating func typeAttribute(_ qualifier: String) -> String {
+        if options.typeAttribute == .xsi { needsXSI = true }
+        return "\(options.typeAttribute.rawValue)=\"\(qualifier)\""
     }
 
     /// Whether a stored value refers to objects by identifier or by proxy.
@@ -705,8 +728,7 @@ struct EMFDocumentWriter {
             for entry in entries {
                 var tag = "\(indentation)<\(name)"
                 if let qualifier = entry.qualifier {
-                    needsXSI = true
-                    tag += " \(XMIAttribute.xsiType.rawValue)=\"\(qualifier)\""
+                    tag += " " + typeAttribute(qualifier)
                 }
                 children += "\(tag) \(CrossReferenceSyntax.hrefAttribute)=\"\(XMISerializer.escapeAttribute(entry.href))\"/>\n"
             }

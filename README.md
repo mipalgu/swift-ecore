@@ -117,7 +117,8 @@ The [swift-ecore documentation](https://mipalgu.github.io/swift-ecore/) covers e
 
 ## Licence
 
-See the details in the LICENCE file.
+See the details in the LICENCE file. The bundled Eclipse UML2 metamodels are under the
+Eclipse Public License 2.0; see `Sources/ECore/Resources/UML/NOTICE`.
 
 ## References
 

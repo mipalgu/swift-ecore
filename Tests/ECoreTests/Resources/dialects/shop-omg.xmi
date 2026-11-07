@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="20131001" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:shop="http://example.org/shop">
+  <xmi:Documentation>
+    <exporter>Hand written</exporter>
+    <exporterVersion>1.0</exporterVersion>
+  </xmi:Documentation>
+  <shop:Shop xmi:id="s1" xmi:uuid="shop-1" name="Corner Shop">
+    <products xmi:type="shop:Book" xmi:id="p1" name="Field Guide" author="A. Writer">
+      <price>12.5</price>
+      <related xmi:idref="p2"/>
+    </products>
+    <products xmi:type="shop:Gadget" xmi:id="p2" name="Torch" wireless="true" related="p1 p3"/>
+    <products xmi:type="shop:Book" xmi:id="p3">
+      <name>Atlas</name>
+    </products>
+    <featured xmi:idref="p2"/>
+    <xmi:Extension extender="Example Tool">
+      <layout x="10" y="20"/>
+    </xmi:Extension>
+  </shop:Shop>
+  <shop:Shop xmi:id="s2" name="Annex">
+    <featured href="shop-stock.xmi#q1"/>
+  </shop:Shop>
+  <xmi:Extension extender="Example Tool">
+    <note>Not part of the model</note>
+  </xmi:Extension>
+</xmi:XMI>

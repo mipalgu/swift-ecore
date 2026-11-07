@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="20131001" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" xmlns:Gardening="http:///schemas/Gardening/_g2/0" xmlns:uml="http://www.eclipse.org/uml2/5.0.0/UML">
+  <uml:Profile xmi:id="gardening" name="Gardening" metaclassReference="gardening-class-import">
+    <eAnnotations xmi:id="gardening-definitions" source="http://www.eclipse.org/uml2/2.0.0/UML">
+      <contents xmi:type="ecore:EPackage" xmi:id="gardening-v0" name="Gardening" nsURI="http:///schemas/Gardening/_g2/0" nsPrefix="Gardening">
+        <eClassifiers xmi:type="ecore:EClass" xmi:id="gardening-v0-Perennial" name="Perennial">
+          <eAnnotations xmi:id="gardening-v0-Perennial-source" source="http://www.eclipse.org/uml2/2.0.0/UML" references="Perennial"/>
+          <eStructuralFeatures xmi:type="ecore:EReference" xmi:id="gardening-v0-Perennial-base" name="base_Class" ordered="false" lowerBound="1">
+            <eType xmi:type="ecore:EClass" href="http://www.eclipse.org/uml2/5.0.0/UML#//Class"/>
+          </eStructuralFeatures>
+          <eStructuralFeatures xmi:type="ecore:EAttribute" xmi:id="gardening-v0-Perennial-lifespan" name="lifespan" ordered="false">
+            <eType xmi:type="ecore:EDataType" href="http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+          </eStructuralFeatures>
+        </eClassifiers>
+      </contents>
+    </eAnnotations>
+    <elementImport xmi:id="gardening-class-import" alias="Class">
+      <importedElement xmi:type="uml:Class" href="pathmap://UML_METAMODELS/UML.metamodel.uml#Class"/>
+    </elementImport>
+    <packagedElement xmi:type="uml:Stereotype" xmi:id="Perennial" name="Perennial">
+      <ownedAttribute xmi:id="Perennial-base" name="base_Class" association="Perennial-extension">
+        <type xmi:type="uml:Class" href="pathmap://UML_METAMODELS/UML.metamodel.uml#Class"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Extension" xmi:id="Perennial-extension" name="E_Perennial_Class" memberEnd="Perennial-extension-end Perennial-base">
+      <ownedEnd xmi:type="uml:ExtensionEnd" xmi:id="Perennial-extension-end" name="extension_Perennial" type="Perennial" aggregation="composite" association="Perennial-extension"/>
+    </packagedElement>
+  </uml:Profile>
+  <uml:Model xmi:id="orchard" name="Orchard">
+    <packagedElement xmi:type="uml:Class" xmi:id="Apple" name="Apple"/>
+    <profileApplication xmi:id="orchard-gardening" applyingPackage="orchard">
+      <eAnnotations xmi:id="orchard-gardening-version" source="http://www.eclipse.org/uml2/2.0.0/UML">
+        <references xmi:type="ecore:EPackage" href="#gardening-v0"/>
+      </eAnnotations>
+      <appliedProfile href="#gardening"/>
+    </profileApplication>
+  </uml:Model>
+  <Gardening:Perennial xmi:id="Apple-perennial" base_Class="Apple" lifespan="40"/>
+</xmi:XMI>

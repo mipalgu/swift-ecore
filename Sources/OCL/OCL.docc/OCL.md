@@ -35,6 +35,9 @@ Swift API.
   oclIsTypeOf, oclIsKindOf, and oclAsType
 - **Side-effect Free**: All operations are pure and do not modify
   the underlying model
+- **Expression Syntax**: ``OCLLexer`` and ``OCLExpressionParser`` read
+  Essential OCL text into ``OCLExpression`` trees, with diagnostics
+  and tokens for editors
 
 ### Quick Example
 
@@ -69,6 +72,38 @@ let absolute = try OCL.abs(value)
 - ``OCLUnaryMethod``
 - ``OCLBinaryMethod``
 - ``OCLTernaryMethod``
+
+### Expression Syntax
+
+Read the text of Essential OCL expressions, as embedded in OCLinEcore
+and Complete OCL documents, into syntax trees. The parser keeps going
+after an error, so that every problem of an expression is reported.
+
+```swift
+let parsed = OCLExpressionParser().parse("self.books->select(b | b.year > 2000)")
+for diagnostic in parsed.diagnostics { print(diagnostic.message) }
+```
+
+- ``OCLExpressionParser``
+- ``OCLExpressionParseResult``
+- ``OCLExpression``
+- ``OCLExpressionKind``
+- ``OCLCall``
+- ``OCLArguments``
+- ``OCLVariableDeclaration``
+- ``OCLTypeReference``
+- ``OCLMultiplicity``
+- ``OCLCollectionPart``
+- ``OCLConditionalBranch``
+- ``OCLMapPart``
+- ``OCLLexer``
+- ``OCLToken``
+- ``OCLTokenisation``
+- ``OCLTokenClassifier``
+- ``OCLTokenCursor``
+- ``OCLSyntaxError``
+- ``OCLSyntax``
+- ``OCLDiagnosticCode``
 
 ### Error Handling
 

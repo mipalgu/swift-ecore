@@ -52,6 +52,9 @@ let package = Package(
                 .product(name: "OrderedCollections", package: "swift-collections"),
                 .product(name: "SwiftXML", package: "SwiftXML"),
             ],
+            resources: [
+                .copy("Resources")
+            ],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]

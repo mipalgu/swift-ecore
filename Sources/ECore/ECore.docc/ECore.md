@@ -34,8 +34,18 @@ a modern, type-safe Swift API.
   be navigated and edited like any other model
 - **Faithful Ecore documents**: Operations, generic types and annotations are kept, and
   documents can be written in the layout of the Eclipse Modeling Framework
-- **Any format**: ``ModelIO`` loads and saves XMI, JSON and Ecore documents, detecting the
-  format with ``ModelFormat``
+- **Any format**: ``ModelIO`` loads and saves XMI, JSON, Ecore, EMOF, UML, KM3, Emfatic,
+  Xcore, OCLinEcore and ASDL documents and reads Langium, Xtext and SDF3 grammars, detecting
+  the format with ``ModelFormat``, and further formats registered with ``ModelFormatRegistry``
+- **Textual metamodels**: ``KM3Reader``, ``EmfaticReader`` and ``XcoreReader`` and their
+  writers read and write the textual metamodel notations of ATL, Emfatic and Xcore, with
+  tokens for editors
+- **Grammar importers**: ``ASDLReader``, ``LangiumReader``, ``XtextReader`` and ``SDF3Reader``
+  derive metamodels from ASDL descriptions, Langium and Xtext grammars and SDF3 syntax
+  definitions, and ``ASDLWriter`` writes ASDL
+- **OCL constraints**: ``OCLinEcoreReader`` and ``OCLinEcoreWriter`` read and write metamodels
+  with embedded OCL, and ``ModelIO/applyCompleteOCL(at:to:in:options:)`` adds the constraints
+  of a Complete OCL document to loaded metamodels
 - **Validation**: ``ModelValidator`` checks models and ``EcoreValidator`` checks metamodels
 
 ### Interoperability
@@ -128,10 +138,123 @@ try await XMISerializer().serialize(resource, to: URL(fileURLWithPath: "employee
 - ``ModelFormatError``
 - ``ModelIO``
 - ``ModelIOError``
+- ``ModelFormatRegistry``
+- ``ModelFormatHandler``
+- ``WritableModelFormatHandler``
+- ``ModelFormatReadRequest``
+- ``ModelFormatReadResult``
+- ``ModelFormatRole``
+- ``ModelFormatPriority``
 - ``BundledMetamodelCache``
 - ``BundledMetamodelError``
 - ``BundledResources``
 - ``ResourceBundleName``
+
+### KM3
+
+- ``KM3Reader``
+- ``KM3ReadOptions``
+- ``KM3ParseResult``
+- ``KM3Writer``
+- ``KM3Syntax``
+- ``KM3PrimitiveTypeMapping``
+- ``KM3PrimitiveTypes``
+- ``KM3PrimitiveType``
+- ``KM3Format``
+- ``KM3Keyword``
+- ``KM3Symbol``
+- ``KM3Directive``
+- ``KM3OutlineKind``
+- ``KM3DiagnosticCode``
+
+### Emfatic and Xcore
+
+- ``EmfaticReader``
+- ``EmfaticWriter``
+- ``EmfaticSyntax``
+- ``EmfaticLanguage``
+- ``EmfaticParseResult``
+- ``EmfaticDiagnosticCode``
+- ``XcoreReader``
+- ``XcoreWriter``
+- ``XcoreSyntax``
+- ``XcoreLanguage``
+- ``XcoreParseResult``
+- ``XcoreDiagnosticCode``
+
+### Grammar Importers
+
+- ``ASDLReader``
+- ``ASDLWriter``
+- ``ASDLSyntax``
+- ``ASDLParseResult``
+- ``ASDLImportOptions``
+- ``ASDLEnumerationStyle``
+- ``ASDLDiagnosticCode``
+- ``ASDLOutlineKind``
+- ``LangiumReader``
+- ``LangiumSyntax``
+- ``LangiumParseResult``
+- ``LangiumImportOptions``
+- ``LangiumTypeMode``
+- ``LangiumDiagnosticCode``
+- ``LangiumOutlineKind``
+- ``XtextReader``
+- ``XtextSyntax``
+- ``XtextParseResult``
+- ``XtextImportOptions``
+- ``XtextDiagnosticCode``
+- ``XtextOutlineKind``
+- ``SDF3Reader``
+- ``SDF3Syntax``
+- ``SDF3ParseResult``
+- ``SDF3ImportOptions``
+- ``SDF3DiagnosticCode``
+- ``SDF3OutlineKind``
+
+### OCLinEcore and Complete OCL
+
+- ``OCLinEcoreReader``
+- ``OCLinEcoreWriter``
+- ``OCLinEcoreSyntax``
+- ``OCLinEcoreParseResult``
+- ``OCLinEcoreImport``
+- ``OCLinEcoreOutlineKind``
+- ``CompleteOCLReader``
+- ``CompleteOCLApplier``
+- ``CompleteOCLApplication``
+- ``CompleteOCLParseResult``
+- ``CompleteOCLDocument``
+- ``CompleteOCLSyntax``
+- ``CompleteOCLOutlineKind``
+- ``CompleteOCLImport``
+- ``CompleteOCLPackageDeclaration``
+- ``CompleteOCLClassifierContext``
+- ``CompleteOCLOperationContext``
+- ``CompleteOCLPropertyContext``
+- ``CompleteOCLConstraint``
+- ``CompleteOCLDefinition``
+- ``CompleteOCLParameter``
+- ``OCLConstraintAnnotations``
+- ``OCLConstraintText``
+- ``OCLAnnotation``
+- ``OCLTypeResolver``
+- ``OCLResolvedType``
+
+### XMI Dialects, EMOF and UML
+
+- <doc:DialectsEMOFAndUML>
+- ``XMIVersion``
+- ``XMITypeAttribute``
+- ``EMOFFormat``
+- ``EMOFSyntax``
+- ``EMOFError``
+- ``UMLFormat``
+- ``UMLMetamodel``
+- ``UMLNamespaces``
+- ``ModelDocumentReadResult``
+- ``ModelDocumentWriteResult``
+- ``ModelDocumentDiagnostic``
 
 ### Commands and Editing
 

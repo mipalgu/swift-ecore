@@ -1,0 +1,74 @@
+import ecore : 'http://www.eclipse.org/emf/2002/Ecore#/';
+
+package school : sch = 'http://example.org/school'
+{
+	documentation 'A neutral school model for tests.';
+	package records : rec = 'http://example.org/school/records'
+	{
+		class Transcript;
+	}
+	enum Level
+	{
+		literal introductory;
+		literal advanced = 5;
+		literal research : 'Research';
+	}
+	datatype Code : 'java.lang.String' { serializable }
+	{
+		invariant WellFormed: self.size() = 6;
+	}
+	abstract class Named
+	{
+		attribute name : String;
+		attribute nickname : String[?];
+	}
+	class School extends Named
+	{
+		property courses#school : Course[*] { composes, ordered };
+		property students : Student[*] { composes }
+		{
+			key name;
+		}
+	}
+	class Course extends Named
+	{
+		invariant HasCapacity: capacity > 0;
+		invariant NotOverfull('Too many enrolments for ' + name): enrolments->size() <= capacity;
+		attribute capacity : Integer = '30';
+		attribute level : Level;
+		attribute topics : String[*] { ordered, !unique };
+		attribute credit : ecore::EDouble[?];
+		property school#courses : School[?];
+		property enrolments : Enrolment[*] { derived, readonly, transient, volatile }
+		{
+			derivation: school.students.enrolments->select(e | e.course = self);
+		}
+		operation isFull() : Boolean
+		{
+			body: enrolments->size() >= capacity;
+		}
+		operation enrol(student : Student) : Enrolment[?]
+		{
+			precondition Open: not isFull();
+			precondition: student <> null;
+			postcondition Recorded: enrolments->exists(e | e.student = student);
+		}
+	}
+	class Student extends Named
+	{
+		invariant: enrolments->isUnique(course);
+		attribute year : Integer
+		{
+			initial: 1;
+		}
+		property enrolments : Enrolment[*] { composes };
+	}
+	class Enrolment
+	{
+		annotation 'http://example.org/notes'(reviewed = 'yes');
+		property course : Course;
+		property student : Student { !resolve };
+		attribute since : ecore::EDate[?];
+		attribute active : Boolean[?];
+	}
+}

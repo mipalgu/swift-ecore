@@ -97,6 +97,9 @@ public actor XMIParser {
     /// The policies used when parsing a native Ecore document.
     private let ecoreLoadOptions: EcoreLoadOptions
 
+    /// The encoding in which the document being parsed was read.
+    private var documentEncoding = TextEncoding.utf8
+
     /// Parsed object identities keyed by their source XML elements.
     private var parsedElementIDs: [ObjectIdentifier: EUUID] = [:]
 
@@ -113,6 +116,17 @@ public actor XMIParser {
 
     /// The names of the classes that the most recent parse fabricated from the document.
     private var fabricatedClassNames: Set<String> = []
+
+    /// The version of XMI whose namespace the root element of the document binds to `xmi`.
+    ///
+    /// The version is `nil` for a document that declares no XMI namespace or an unknown one.
+    private var xmiVersion: XMIVersion?
+
+    /// Whether the document being parsed is in the OMG dialect of XMI (see ``XMIVersion/isOMG``).
+    private var isOMGDialect: Bool { xmiVersion?.isOMG ?? false }
+
+    /// The XML names that the extended metadata of the metamodels give their features.
+    private var extendedNames = ExtendedMetaDataNames()
 
     /// Initialises a new XMI parser.
     ///
@@ -145,23 +159,46 @@ public actor XMIParser {
         package: Bool = false, uri: String) throws -> String {
         if let value = element[attribute.rawValue] { return value }
         guard ecoreLoadOptions.tolerant else { throw XMIError.missingRequiredAttribute(attribute.rawValue) }
-        let code: String
-        switch attribute {
-        case .nsURI: code = EcoreLoadDiagnostic.missingNamespaceURI
-        case .nsPrefix: code = EcoreLoadDiagnostic.missingNamespacePrefix
-        default: code = package ? EcoreLoadDiagnostic.missingPackageName : EcoreLoadDiagnostic.missingElementName
-        }
+        let code = package ? EcoreLoadDiagnostic.missingPackageName : EcoreLoadDiagnostic.missingElementName
         loadDiagnostics.append(SourceDiagnostic(severity: .error, code: code,
             message: "Missing required attribute '\(attribute.rawValue)'", document: uri))
         return ""
     }
 
+    /// Reads the namespace URI or prefix of a root package, which EMF does not require.
+    ///
+    /// A missing attribute loads as an empty value, so the package is not registered under
+    /// a namespace, and is reported in ``Resource/loadDiagnostics``: as a warning normally,
+    /// and as an error in tolerant mode, which reports every omission as an error.
+    ///
+    /// - Parameters:
+    ///   - attribute: ``EcoreFeatureName/nsURI`` or ``EcoreFeatureName/nsPrefix``.
+    ///   - element: The XML element of the package.
+    ///   - name: The name of the package, for the diagnostic.
+    ///   - uri: The document URI used by the diagnostic.
+    /// - Returns: The attribute text, or an empty value if the attribute is missing.
+    private func namespaceAttribute(_ attribute: EcoreFeatureName, on element: XElement,
+        package name: String, uri: String) -> String {
+        if let value = element[attribute.rawValue] { return value }
+        var diagnostic = EcoreLoadDiagnostic.missingNamespace(attribute, package: name, document: uri)
+        if ecoreLoadOptions.tolerant {
+            diagnostic.severity = .error
+            diagnostic.message = "Missing required attribute '\(attribute.rawValue)'"
+        }
+        loadDiagnostics.append(diagnostic)
+        return ""
+    }
+
     /// Collects comments and explicit identities from the parsed XML tree.
+    ///
+    /// The declared encoding is kept as written for a document read in UTF-8; a document
+    /// read in another encoding records UTF-8, the encoding in which it is written.
     ///
     /// - Parameter document: The parsed source document.
     /// - Returns: Metadata associated with the retained model elements.
     private func documentMetadata(_ document: XDocument) -> EcoreDocumentMetadata {
-        var metadata = EcoreDocumentMetadata(encoding: document.encoding ?? EcoreDocumentMetadata.defaultEncoding)
+        let declared = documentEncoding == .utf8 ? document.encoding : nil
+        var metadata = EcoreDocumentMetadata(encoding: declared ?? EcoreDocumentMetadata.defaultEncoding)
         metadata.xmlIdentifiers = Dictionary(xmiIdMap.map { ($0.value, $0.key) }, uniquingKeysWith: { first, _ in first })
         var encounteredRoot = false
         for content in document.content {
@@ -275,18 +312,31 @@ public actor XMIParser {
 
     /// Parses the bytes of an XMI document.
     ///
+    /// The document is decoded as an XML parser decodes it (see
+    /// ``DecodedText/init(decodingXML:encoding:)``): a document in UTF-16 is recognised by
+    /// its first bytes, bytes that are valid UTF-8 are read as UTF-8, and any other document
+    /// is read in the encoding that its XML declaration names, such as `ISO-8859-1` or
+    /// `windows-1252`. A document that was read in an encoding other than UTF-8 records
+    /// UTF-8 in its ``EcoreDocumentMetadata``, as it is written in UTF-8.
+    ///
     /// - Parameters:
-    ///   - data: The UTF-8 encoded document.
+    ///   - data: The encoded document.
     ///   - uri: The URI that the document has; relative references within the document are
     ///     resolved against it.
     /// - Returns: A resource with the URI that contains the parsed objects.
-    /// - Throws: ``XMIError/invalidEncoding`` if the data is not UTF-8, or another
+    /// - Throws: ``XMIError/invalidEncoding`` if the data is neither UTF-8 nor valid in an
+    ///   encoding that ``TextEncoding`` supports and the document declares, or another
     ///   ``XMIError`` if parsing fails.
     public func parse(_ data: Data, uri documentURI: String) async throws -> Resource {
         let uri = URIReference.canonicalise(documentURI)
-        guard let xmlString = String(data: data, encoding: .utf8) else {
+        let decoded: DecodedText
+        do {
+            decoded = try DecodedText(decodingXML: data)
+        } catch {
             throw XMIError.invalidEncoding
         }
+        let xmlString = decoded.text
+        documentEncoding = decoded.encoding
 
         let document = try parseXML(fromText: xmlString, keepComments: true)
         attributeOrder = XMIAttributeOrder(document: document, source: xmlString)
@@ -335,6 +385,8 @@ public actor XMIParser {
         guard let rootElement = document.children.first else {
             throw XMIError.invalidXML("No root element found in document")
         }
+        xmiVersion = rootElement[CrossReferenceSyntax.namespaceAttribute(for: CrossReferenceSyntax.xmiPrefix)]
+            .flatMap(XMIVersion.init(namespaceURI:))
 
         if debug {
             print("[XMI] parseXMIContent: root element name='\(rootElement.name)'")
@@ -359,6 +411,7 @@ public actor XMIParser {
             // Multiple root objects wrapped in xmi:XMI
             var rootObjects: [any EObject] = []
             for childElement in rootElement.children {
+                if isOMGDialect && XMIDialectSyntax.isDocumentationOrExtension(childElement.name) { continue }
                 if let rootObject = try await parseElement(childElement, in: resource) {
                     rootObjects.append(rootObject)
                 }
@@ -558,15 +611,16 @@ public actor XMIParser {
         // Parse all attributes dynamically in document order
         let attributeNames = getAttributeNamesInDocumentOrder(for: element)
 
-        for attributeName in attributeNames {
+        for xmlName in attributeNames {
             // Skip XML namespace and XMI control attributes
-            if attributeName.hasPrefix("xmlns:") || attributeName.hasPrefix("xmi:")
-                || attributeName.hasPrefix("xsi:")
+            if xmlName.hasPrefix("xmlns:") || xmlName.hasPrefix("xmi:")
+                || xmlName.hasPrefix("xsi:")
             {
                 continue
             }
 
-            guard let attributeValue = element[attributeName] else { continue }
+            guard let attributeValue = element[xmlName] else { continue }
+            let attributeName = extendedNames.featureName(forXMLName: xmlName, in: enhancedEClass)
 
             // References declared by the metamodel hold one or more (possibly cross-document) references
             if referenceParsing == .interpreted,
@@ -644,11 +698,12 @@ public actor XMIParser {
         var childAttributeValues: OrderedDictionary<String, [String]> = [:]
 
         for child in element.children {
-            let childName = child.name
+            if isOMGDialect && XMIDialectSyntax.isDocumentationOrExtension(child.name) { continue }
+            let childName = extendedNames.featureName(forXMLName: child.name, in: enhancedEClass)
             let declaredFeature = enhancedEClass.getStructuralFeature(name: childName)
 
             // Check if it's a reference or a contained object
-            if let href = child[CrossReferenceSyntax.hrefAttribute] {
+            if let href = Self.referenceText(of: child) {
                 if referenceParsing == .interpreted, let reference = declaredFeature as? EReference,
                     !reference.containment
                 {
@@ -865,20 +920,24 @@ public actor XMIParser {
     ///
     /// Parses an Ecore package with its classifiers and nested packages.
     ///
+    /// As in EMF, no package needs to declare `nsURI` and `nsPrefix`. A missing value loads
+    /// as an empty one; for a root package, the omission is reported in
+    /// ``Resource/loadDiagnostics``.
+    ///
     /// - Parameters:
     ///   - element: The ecore:EPackage XML element
     ///   - resource: The Resource for object storage
-    ///   - isSubpackage: Whether the element is a nested package, which need not declare `nsURI` and `nsPrefix`
+    ///   - isSubpackage: Whether the element is a nested package, whose omissions are not reported
     /// - Returns: A DynamicEObject representing the EPackage
-    /// - Throws: `XMIError.missingRequiredAttribute` if name, nsURI, or nsPrefix is missing
+    /// - Throws: `XMIError.missingRequiredAttribute` if the name is missing
     private func parseEPackage(_ element: XElement, in resource: Resource, isSubpackage: Bool = false)
         async throws -> DynamicEObject
     {
         let name = try requiredAttribute(.name, on: element, package: true, uri: resource.uri)
         let nsURI = isSubpackage ? element[EcoreFeatureName.nsURI.rawValue] ?? ""
-            : try requiredAttribute(.nsURI, on: element, package: true, uri: resource.uri)
+            : namespaceAttribute(.nsURI, on: element, package: name, uri: resource.uri)
         let nsPrefix = isSubpackage ? element[EcoreFeatureName.nsPrefix.rawValue] ?? ""
-            : try requiredAttribute(.nsPrefix, on: element, package: true, uri: resource.uri)
+            : namespaceAttribute(.nsPrefix, on: element, package: name, uri: resource.uri)
 
         // Create EPackage class if not already in resource
         let ePackageClass = await getOrCreateEClass(EcoreClassifier.ePackage.rawValue, in: resource)
@@ -1113,8 +1172,12 @@ public actor XMIParser {
     /// - Returns: The reference text, or `nil` if the element has no type.
     private func typeReference(of element: XElement) -> String? {
         if let eType = element[.eType] { return eType }
-        return element.children(EcoreFeatureName.eGenericType.rawValue).first?[
+        if let classifier = element.children(EcoreFeatureName.eGenericType.rawValue).first?[
             EcoreFeatureName.eClassifier.rawValue]
+        {
+            return classifier
+        }
+        return element.children(XMIAttribute.eType.rawValue).first.flatMap(Self.referenceText(of:))
     }
 
     /// Parse an EOperation element together with its parameters.
@@ -1515,8 +1578,10 @@ public actor XMIParser {
                     print("[XMI DEBUG] resolveReferences: Resolving eOpposite reference '\(eOppositeRef)' for object \(object.id)")
                 }
 
-                if let resolved = await resolveReference(
-                    eOppositeRef, using: xpathResolver, in: resource) {
+                if let opposite = CrossReference.parseList(eOppositeRef).first,
+                    let resolved = await resolveReference(
+                        Self.documentHref(of: opposite), using: xpathResolver, in: resource)
+                {
                     // Determine which attribute type was used and store accordingly
                     let oppositeType = await resource.eGet(objectId: object.id, feature: EcoreClassifier.XMIParsingConstants.tempOppositeType) as? String
                     let targetAttribute = oppositeType == XMIAttribute.eOpposite.rawValue ? XMIAttribute.eOpposite.rawValue : XMIAttribute.opposite.rawValue
@@ -1609,7 +1674,7 @@ public actor XMIParser {
         var kinds: [Bool] = []  // true for same-document identifiers
 
         for reference in references {
-            let href = reference.uri.isEmpty ? "#\(reference.fragment)" : reference.href
+            let href = Self.documentHref(of: reference)
             guard let resolved = await resolveReference(href, using: xpathResolver, in: resource) else {
                 if debug { print("[XMI DEBUG] Declared reference '\(href)' could not be resolved") }
                 proxies.append(ResourceProxy(uri: resource.uri, fragment: reference.fragment, qualifier: reference.qualifier))
@@ -1641,6 +1706,19 @@ public actor XMIParser {
             value = proxies
         }
         await resource.eSet(objectId: object.id, feature: featureName, value: value)
+    }
+
+    /// The text that ``resolveReference(_:using:in:)`` resolves for a parsed reference.
+    ///
+    /// As in EMF, a reference without a resource URI, such as `/0/Class/feature`,
+    /// `//Class/feature` or an `xmi:id`, names an object of the same document and becomes
+    /// a fragment; any other reference keeps its `uri#fragment` form.
+    ///
+    /// - Parameter reference: The parsed reference.
+    /// - Returns: `#fragment` for a reference into the same document, or the `uri#fragment` text.
+    private static func documentHref(of reference: CrossReference) -> String {
+        reference.uri.isEmpty
+            ? String(CrossReferenceSyntax.fragmentSeparator) + reference.fragment : reference.href
     }
 
     /// Resolve a reference string to an object ID or ResourceProxy
@@ -1708,7 +1786,8 @@ public actor XMIParser {
         // External reference - create ResourceProxy
         // Parse reference format: "uri#fragment" or just "uri"
         if let hashIndex = reference.firstIndex(of: "#") {
-            let uri = String(reference[..<hashIndex])
+            let written = String(reference[..<hashIndex])
+            let uri = UMLNamespaces.eclipseDocument(for: written) ?? written
             let fragment = String(reference[reference.index(after: hashIndex)...])
 
             // Resolve relative URI
@@ -1916,7 +1995,7 @@ public actor XMIParser {
         // (e.g., "AssignmentIntegerLHS") and should take precedence over the
         // reference's declared type (e.g., "Statement"). Use the reference type
         // name only when className matches the element name (no xsi:type).
-        let hasXsiType = element[XMIAttribute.xsiType.rawValue] != nil
+        let hasXsiType = Self.typeQualifier(of: element) != nil
         let effectiveName = hasXsiType ? className : (referenceTypeName ?? className)
 
         // Step 2: Always prefer canonical version from the metamodel
@@ -1925,7 +2004,7 @@ public actor XMIParser {
                 if debug {
                     print("[XMI] Resolving class '\(effectiveName)' with namespace '\(namespaceURI)'")
                 }
-                if let metamodel = await resourceSet.getMetamodel(uri: namespaceURI) {
+                if let metamodel = await metamodel(forNamespace: namespaceURI, in: resourceSet) {
                     if debug {
                         print("[XMI]   Found metamodel: \(metamodel.name)")
                     }
@@ -1958,8 +2037,9 @@ public actor XMIParser {
             if debug {
                 print("[XMI] Using reference type fallback for '\(effectiveName)'")
             }
-            eClassCache[effectiveName] = fallback
-            return fallback
+            let canonical = Self.canonicalEcoreClass(of: fallback) ?? fallback
+            eClassCache[effectiveName] = canonical
+            return canonical
         }
 
         // Step 5: Fall back to dynamic EClass creation
@@ -1992,7 +2072,7 @@ public actor XMIParser {
     /// - Returns: The namespace URI if found, nil otherwise
     private func extractNamespaceURI(from element: XElement) -> String? {
         // Case 1: The type qualifier of the element (xsi:type or a prefixed element name)
-        if let xsiType = element[XMIAttribute.xsiType.rawValue] {
+        if let xsiType = Self.typeQualifier(of: element) {
             if let namespaceURI = namespaceURI(ofQualifiedName: xsiType, at: element) {
                 return namespaceURI
             }
@@ -2036,12 +2116,11 @@ public actor XMIParser {
     /// - Parameter element: The XML element to examine.
     /// - Returns: The metamodel namespace URI if found, `nil` otherwise.
     private func extractMetamodelNamespace(from element: XElement) -> String? {
-        let standardNamespaces: Set<String> = [
-            EcoreURI.xmiNamespace.rawValue,
+        let standardNamespaces: Set<String> = XMIVersion.namespaceURIs.union([
             EcoreURI.xsiNamespace.rawValue,
             EcoreURI.ecoreNamespace.rawValue,
-        ]
-        let qualifier = element[XMIAttribute.xsiType.rawValue] ?? element.name
+        ])
+        let qualifier = Self.typeQualifier(of: element) ?? element.name
         guard qualifiedNameParts(qualifier).prefix != nil,
             let uri = namespaceURI(ofQualifiedName: qualifier, at: element),
             !standardNamespaces.contains(uri)
@@ -2083,6 +2162,61 @@ public actor XMIParser {
             String(qualifiedName[qualifiedName.index(after: separator)...]))
     }
 
+    /// The class of the reflective Ecore package that a reference type stands for.
+    ///
+    /// A metamodel whose classes extend those of Ecore, as the classes of UML extend
+    /// `EModelElement`, refers to an Ecore class such as `EAnnotation` by a copy that need not
+    /// carry its features. The class of ``EcorePackage`` with the same identity does.
+    ///
+    /// - Parameter type: The declared type of a containment reference.
+    /// - Returns: The Ecore class with the identity of the type, or `nil` if the type is not one.
+    private static func canonicalEcoreClass(of type: EClass) -> EClass? {
+        guard let known = EcoreClassifier(rawValue: type.name) else { return nil }
+        let metaClass = EcorePackage.metaClass(known)
+        return metaClass.id == type.id ? metaClass : nil
+    }
+
+    /// The type qualifier of an element: its `xsi:type`, or else its `xmi:type`.
+    ///
+    /// EMF writes `xsi:type`; Eclipse UML2 and documents in the OMG dialect write `xmi:type`.
+    /// An element that carries both is typed by `xsi:type`, as before.
+    ///
+    /// - Parameter element: The XML element.
+    /// - Returns: The qualifier, such as `uml:Class`, or `nil` if the element has neither attribute.
+    static func typeQualifier(of element: XElement) -> String? {
+        element[XMITypeAttribute.xsi.rawValue] ?? element[XMITypeAttribute.xmi.rawValue]
+    }
+
+    /// The reference that a child element written in reference style holds.
+    ///
+    /// A reference element carries an `href` (`<type href="other.xmi#_1"/>`), or, in the OMG
+    /// dialect, an `xmi:idref` naming an object of the same document (`<type xmi:idref="_1"/>`),
+    /// which is read as the fragment reference `#_1`.
+    ///
+    /// - Parameter element: The child element.
+    /// - Returns: The reference text, or `nil` if the element holds no reference.
+    static func referenceText(of element: XElement) -> String? {
+        if let href = element[CrossReferenceSyntax.hrefAttribute] { return href }
+        guard let identifier = element[XMIDialectSyntax.idref] else { return nil }
+        return String(CrossReferenceSyntax.fragmentSeparator) + identifier
+    }
+
+    /// The registered metamodel of a namespace, or of the Eclipse namespace that stands for it.
+    ///
+    /// A namespace that has no registered metamodel of its own but that ``UMLNamespaces``
+    /// maps onto an Eclipse UML2 namespace, such as an OMG UML namespace, is read with the
+    /// metamodel registered under that Eclipse namespace.
+    ///
+    /// - Parameters:
+    ///   - namespaceURI: The namespace URI of an element.
+    ///   - resourceSet: The resource set with the registered metamodels.
+    /// - Returns: The registered package, or `nil` if there is none.
+    private func metamodel(forNamespace namespaceURI: String, in resourceSet: ResourceSet) async -> EPackage? {
+        if let metamodel = await resourceSet.getMetamodel(uri: namespaceURI) { return metamodel }
+        guard let eclipse = UMLNamespaces.eclipseNamespace(for: namespaceURI) else { return nil }
+        return await resourceSet.getMetamodel(uri: eclipse)
+    }
+
     /// Lookup tables that make name-based fragment resolution linear.
     private struct ClassIndex {
         /// The identifier of the first class of each name.
@@ -2104,7 +2238,7 @@ public actor XMIParser {
     private func collectStructuralInfo(from element: XElement) -> ElementStructureInfo {
         // Extract class name, preferring xsi:type if present (for polymorphic elements)
         let className: String
-        if let xsiType = element[XMIAttribute.xsiType.rawValue] {
+        if let xsiType = Self.typeQualifier(of: element) {
             // xsi:type="prefix:TypeName": extract the type name after the colon
             if xsiType.contains(":") {
                 let parts = xsiType.split(separator: ":")
@@ -2140,9 +2274,10 @@ public actor XMIParser {
         var childCounts: OrderedDictionary<String, Int> = [:]
         for child in element.children {
             let childName = child.name
+            if isOMGDialect && XMIDialectSyntax.isDocumentationOrExtension(childName) { continue }
             childCounts[childName, default: 0] += 1
 
-            if child["href"] != nil {
+            if Self.referenceText(of: child) != nil {
                 // Cross-reference
                 if !crossRefs.contains(childName) {
                     crossRefs.append(childName)

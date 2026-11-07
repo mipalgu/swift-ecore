@@ -273,7 +273,8 @@ Models are persisted through ``Resource`` objects:
 
 - A Resource contains model objects
 - Resources belong to a ``ResourceSet`` for cross-reference resolution
-- XMI and JSON serialisation formats are supported
+- XMI and JSON serialisation formats are supported, and metamodels can also be read and
+  written as Ecore documents and as KM3 text
 
 ### Fragments
 
@@ -288,6 +289,10 @@ it, as in the Eclipse Modeling Framework:
   with several roots is `#/n` and its contents `#/n/@feature.index` (``PositionalFragments``).
 - **Identifier fragments**, which do not start with `/`, name the object with that `xmi:id`
   or, failing that, with that value of its class's ID attribute.
+
+As in EMF, a reference within the same document may omit the `#`, so `/1/Bed/plants` and
+`#/1/Bed/plants` name the same object, whether they are the type, the supertype or the
+opposite of a metamodel element.
 
 ### Proxies and Containers
 

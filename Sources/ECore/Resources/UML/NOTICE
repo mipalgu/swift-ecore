@@ -1,0 +1,19 @@
+Third-party content: Eclipse UML2 metamodels
+============================================
+
+The files UML.ecore and Types.ecore in this directory are unmodified copies of
+the metamodels of the Eclipse UML2 project:
+
+  Project:    Eclipse UML2 (https://github.com/eclipse-uml2/uml2)
+  Revision:   eac42a01032d5dcc634e962b03624194a8687f6f
+  UML.ecore:  plugins/org.eclipse.uml2.uml/model/UML.ecore
+  Types.ecore: plugins/org.eclipse.uml2.types/model/Types.ecore
+
+They are made available by the Eclipse Foundation under the terms of the
+Eclipse Public License 2.0 (SPDX-License-Identifier: EPL-2.0), a copy of
+which is provided in the file LICENSE in this directory. The source code of
+the Eclipse UML2 project may be obtained from the repository named above.
+
+These files are distributed as data only. They are not covered by the licence
+of the rest of this package, and the licence of the rest of this package does
+not apply to them.

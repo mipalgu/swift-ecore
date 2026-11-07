@@ -4,6 +4,7 @@
 //
 //  Copyright © 2026 Rene Hexel. All rights reserved.
 //
+public import EMFBase
 import Foundation
 
 /// A condition under which reading or writing a document could not keep all information.
@@ -54,6 +55,14 @@ public struct ConversionWarning: Sendable, Hashable, CustomStringConvertible {
         ///   - uri: The URI of the document that the reference names.
         ///   - fragment: The fragment that names no object of that document.
         case unresolvedProxy(uri: String, fragment: String)
+
+        /// A reader or writer of a registered format reported a problem.
+        ///
+        /// A text format writer reports, for example, a construct that its notation cannot
+        /// express (see ``WritableModelFormatHandler/writePackages(of:relativeTo:diagnostics:write:)``).
+        ///
+        /// - Parameter diagnostic: The problem as the reader or writer reported it.
+        case sourceDiagnostic(SourceDiagnostic)
     }
 
     /// What was lost.
@@ -79,6 +88,8 @@ public struct ConversionWarning: Sendable, Hashable, CustomStringConvertible {
             return "A contained '\(className)' is not registered with the resource and was left out"
         case .unresolvedProxy(let uri, let fragment):
             return "Reference '\(uri)\(CrossReferenceSyntax.fragmentSeparator)\(fragment)' names no object"
+        case .sourceDiagnostic(let diagnostic):
+            return diagnostic.message
         }
     }
 
