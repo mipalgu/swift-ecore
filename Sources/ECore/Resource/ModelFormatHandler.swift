@@ -241,6 +241,35 @@ public protocol WritableModelFormatHandler: ModelFormatHandler {
     ) async throws -> String
 }
 
+/// A document format of models whose documents can also serve as metamodels, once converted.
+///
+/// A document of a format that holds models, such as a UML class model, describes classes
+/// that other documents can instantiate. When such a document is given as a metamodel, as
+/// to ``ModelIO/registerMetamodels(at:in:options:registry:)`` or among the `metamodels` of
+/// ``ModelIO/load(url:format:resourceSet:metamodels:options:registry:)``, ``ModelIO`` reads it
+/// with ``readMetamodel(_:)`` rather than ``ModelFormatHandler/read(_:)``. The built-in UML
+/// handler converts a UML class model in this way (see ``UMLToEcore``).
+///
+/// ```swift
+/// let resourceSet = ResourceSet()
+/// try await ModelIO.registerMetamodels(at: [classModelURL], in: resourceSet)
+/// let model = try await ModelIO.load(url: instanceURL, resourceSet: resourceSet)
+/// ```
+public protocol MetamodelConvertingModelFormatHandler: ModelFormatHandler {
+    /// Reads a document in the role of a metamodel.
+    ///
+    /// A handler either returns the converted root packages, which ``ModelIO`` places in a
+    /// resource of the document and registers as it registers the packages of a metamodel
+    /// format, or a resource of the document that it has loaded into the resource set of the
+    /// request, with the packages it has registered there. What the conversion reports
+    /// belongs in the ``Resource/loadDiagnostics`` of that resource.
+    ///
+    /// - Parameter request: The document and the resource set that receives the metamodel.
+    /// - Returns: The metamodel packages, or the resource of the metamodel with its packages.
+    /// - Throws: An error if the document cannot be read or converted.
+    func readMetamodel(_ request: ModelFormatReadRequest) async throws -> ModelFormatReadResult
+}
+
 extension ModelFormatHandler {
     /// The specific priority, with which a handler examines a document before the generic formats.
     public var priority: ModelFormatPriority { .specific }

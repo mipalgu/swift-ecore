@@ -89,6 +89,7 @@ struct EMFDocumentWriter {
     private var packagesByClassId: [EUUID: PackageInfo] = [:]
     private var packagesByClassName: [String: PackageInfo] = [:]
     private var packagesByPrefix: [String: PackageInfo] = [:]
+    private var fabricatedNamespaces: [EUUID: PackageInfo] = [:]
     private(set) var usedPrefixes: [String: String] = [:]
     private(set) var needsXSI = false
     private var rootAttributes: [String] = []
@@ -119,6 +120,8 @@ struct EMFDocumentWriter {
     /// released, the metamodels that it held remain available through the resource.
     mutating func prepare() async {
         resourceSet = await resource.resourceSet
+        let fabricated = await resource.fabricatedClassNamespaces
+        defer { indexFabricatedNamespaces(of: fabricated) }
         if let resourceSet {
             for uri in await resourceSet.getMetamodelURIs().sorted() {
                 if let package = await resourceSet.getMetamodel(uri: uri) {
@@ -131,6 +134,21 @@ struct EMFDocumentWriter {
             return
         }
         packagesByPrefix[Self.ecorePackage.prefix] = Self.ecorePackage
+    }
+
+    /// Records the namespaces in which the source document named the classes that its parser
+    /// fabricated.
+    ///
+    /// A namespace whose prefix a registered metamodel uses with another URI is left out, so
+    /// that objects of its classes take the namespace that ``packageInfo(for:)`` derives.
+    ///
+    /// - Parameter namespaces: The prefix and namespace URI of each class, by class identifier.
+    private mutating func indexFabricatedNamespaces(of namespaces: [EUUID: XMLNamespaceBinding]) {
+        for (identifier, binding) in namespaces {
+            let info = PackageInfo(prefix: binding.prefix, nsURI: binding.uri)
+            if let registered = packagesByPrefix[info.prefix], registered.nsURI != info.nsURI { continue }
+            fabricatedNamespaces[identifier] = info
+        }
     }
 
     // MARK: - Document
@@ -260,16 +278,18 @@ struct EMFDocumentWriter {
 
     /// Finds the namespace of a class.
     ///
-    /// The namespace is that of the registered package holding the class. Ecore's own
-    /// metaclasses take the Ecore namespace. A class of no registered package takes the
-    /// namespace of a registered class of the same name, and failing that the namespace
-    /// that ``fallbackPackageInfo(for:)`` derives from its name.
+    /// The namespace is that of the registered package holding the class. A class that the
+    /// parser of the source document fabricated takes the namespace in which the document
+    /// named it. Ecore's own metaclasses take the Ecore namespace. A class of no registered
+    /// package takes the namespace of a registered class of the same name, and failing that
+    /// the namespace that ``fallbackPackageInfo(for:)`` derives from its name.
     ///
     /// - Parameter eClass: The class (or Ecore metaclass).
     /// - Returns: The namespace of the class and whether it was derived from the class name.
     func packageInfo(for eClass: any EClassifier) -> (info: PackageInfo, derived: Bool) {
         let identifier = (eClass as? EClass)?.id
         if let identifier, let info = packagesByClassId[identifier] { return (info, false) }
+        if let identifier, let info = fabricatedNamespaces[identifier] { return (info, false) }
         if FragmentNavigator.isEcoreMetaclass(eClass.name) { return (Self.ecorePackage, false) }
         if let info = packagesByClassName[eClass.name] { return (info, false) }
         return (Self.fallbackPackageInfo(for: eClass.name), true)
@@ -444,6 +464,10 @@ struct EMFDocumentWriter {
     private mutating func render(
         _ object: DynamicEObject, elementName: String, xsiType: String?, indent: Int, isRoot: Bool
     ) async throws -> String {
+        #if os(WASI)
+        // Bound the cooperative executor's continuation stack while writing objects.
+        await Task.yield()
+        #endif
         let indentation = String(repeating: XMIDocumentSyntax.indentUnit, count: indent)
         let childIndentation = indentation + XMIDocumentSyntax.indentUnit
         var attributes: [String] = []

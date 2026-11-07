@@ -117,6 +117,26 @@ public actor XMIParser {
     /// The names of the classes that the most recent parse fabricated from the document.
     private var fabricatedClassNames: Set<String> = []
 
+    /// The namespaces in which the document names the classes that the most recent parse
+    /// fabricated, by class identifier.
+    ///
+    /// The namespace of a fabricated class is kept if the class is named like an Ecore
+    /// metaclass, so that its objects are not written in the Ecore namespace, and of every
+    /// fabricated class if ``retainsFabricatedNamespaces`` is set.
+    private var fabricatedClassNamespaces: [EUUID: XMLNamespaceBinding] = [:]
+
+    /// Whether the namespace of every fabricated class is kept, as for stereotype
+    /// applications of a UML model whose profile is not available.
+    private(set) var retainsFabricatedNamespaces = false
+
+    /// Keeps the namespace of every class that later parses fabricate.
+    ///
+    /// - Parameter retains: Whether the namespaces are kept for every fabricated class rather
+    ///   than only for those named like Ecore metaclasses.
+    func retainFabricatedNamespaces(_ retains: Bool = true) {
+        retainsFabricatedNamespaces = retains
+    }
+
     /// The version of XMI whose namespace the root element of the document binds to `xmi`.
     ///
     /// The version is `nil` for a document that declares no XMI namespace or an unknown one.
@@ -356,11 +376,13 @@ public actor XMIParser {
         // Parse XMI content
         diagnostics = ConversionDiagnostics()
         fabricatedClassNames.removeAll()
+        fabricatedClassNamespaces.removeAll()
         eClassCache.removeAll()
         loadDiagnostics.removeAll()
         parsedElementIDs.removeAll()
         try await parseXMIContent(document, into: resource)
         await resource.setLoadDiagnostics(loadDiagnostics)
+        await resource.setFabricatedClassNamespaces(fabricatedClassNamespaces)
         await resource.setEcoreDocumentMetadata(documentMetadata(document))
         return resource
     }
@@ -2049,8 +2071,29 @@ public actor XMIParser {
         let eClass = EClass(name: effectiveName)
         eClassCache[effectiveName] = eClass
         fabricatedClassNames.insert(effectiveName)
+        if retainsFabricatedNamespaces || FragmentNavigator.isEcoreMetaclass(effectiveName),
+            let binding = metamodelNamespaceBinding(of: element)
+        {
+            fabricatedClassNamespaces[eClass.id] = binding
+        }
         diagnostics.record(.untypedClass(name: effectiveName))
         return eClass
+    }
+
+    /// The prefix and namespace with which an element names its class, if it names a metamodel namespace.
+    ///
+    /// The class is named by the type qualifier of the element: its `xsi:type` value if
+    /// present, otherwise its element name. A qualifier without a prefix, or one whose prefix
+    /// is bound to a standard XMI, XSI or Ecore namespace, names no metamodel namespace.
+    ///
+    /// - Parameter element: The XML element of an object.
+    /// - Returns: The prefix and the namespace URI bound to it, or `nil`.
+    private func metamodelNamespaceBinding(of element: XElement) -> XMLNamespaceBinding? {
+        let qualifier = Self.typeQualifier(of: element) ?? element.name
+        guard let prefix = qualifiedNameParts(qualifier).prefix,
+            let uri = extractMetamodelNamespace(from: element)
+        else { return nil }
+        return XMLNamespaceBinding(prefix: prefix, uri: uri)
     }
 
     /// Extracts the namespace URI from an XML element

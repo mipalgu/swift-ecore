@@ -125,6 +125,8 @@ struct ModelIOFidelityTests {
                 await read.resource.setLoadDiagnostics(read.profileDiagnostics + (await read.resource.loadDiagnostics))
             }
             return ModelIO.Loaded(resource: read.resource, format: format, diagnostics: read.conversion)
+        case .metadepth:
+            throw ModelFormatError.unsupportedFormat(format.rawValue)
         }
     }
 
@@ -142,6 +144,9 @@ struct ModelIOFidelityTests {
     ) async throws -> String {
         if [.langium, .xtext, .sdf3].contains(format) {
             throw ModelFormatError.unwritableFormat(format.description)
+        }
+        if format == .metadepth {
+            throw ModelFormatError.unsupportedFormat(format.rawValue)
         }
         if format == .uml {
             return try await UMLFormat.serialise(
@@ -170,6 +175,8 @@ struct ModelIOFidelityTests {
         switch format {
         case .ecore, .km3, .emof, .emfatic, .xcore, .oclinecore, .asdl, .langium, .xtext, .sdf3:
             throw ModelIOError.notAMetamodel(documentURL?.absoluteString ?? resource.uri)
+        case .metadepth:
+            throw ModelFormatError.unsupportedFormat(format.rawValue)
         case .xmi, .uml:
             let serializer = XMISerializer(options: xmiOptions)
             if let documentURL {

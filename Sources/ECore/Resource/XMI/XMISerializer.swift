@@ -124,6 +124,10 @@ public struct XMISerializer: Sendable {
     /// - Returns: XMI formatted string
     /// - Throws: `XMIError` if serialisation fails
     public func serialize(_ resource: Resource, diagnostics: inout ConversionDiagnostics) async throws -> String {
+        #if os(WASI)
+        // Bound the cooperative executor's continuation stack across successive documents.
+        await Task.yield()
+        #endif
         if options != .legacy {
             return try await serializeEMFStyle(resource, diagnostics: &diagnostics)
         }
@@ -188,6 +192,10 @@ public struct XMISerializer: Sendable {
     private func serializeObject(
         _ object: any EObject, in resource: Resource, indentLevel: Int, references writer: inout EMFDocumentWriter
     ) async throws -> String {
+        #if os(WASI)
+        // Bound the cooperative executor's continuation stack while writing objects.
+        await Task.yield()
+        #endif
         let indent = String(repeating: "    ", count: indentLevel)
 
         // Determine namespace and element name
@@ -261,6 +269,10 @@ public struct XMISerializer: Sendable {
         _ object: any EObject, featureName: String, of container: any EObject, in resource: Resource,
         indentLevel: Int, references writer: inout EMFDocumentWriter
     ) async throws -> String {
+        #if os(WASI)
+        // Containment writing calls this method directly, bypassing serializeObject.
+        await Task.yield()
+        #endif
         let indent = String(repeating: "    ", count: indentLevel)
 
         guard let dynamicObject = object as? DynamicEObject else {
@@ -521,10 +533,15 @@ public struct XMISerializer: Sendable {
 
     /// Whether a stored value holds objects themselves rather than their identifiers.
     ///
+    /// An empty list holds no objects, whatever its element type, so an empty list of
+    /// identifiers, such as an unused many-valued reference, is not mistaken for one.
+    ///
     /// - Parameter value: The stored value.
-    /// - Returns: `true` for an object or a list of objects.
+    /// - Returns: `true` for an object or a non-empty list of objects.
     private static func holdsObjects(_ value: any EcoreValue) -> Bool {
-        value is any EObject || value is [any EObject]
+        if value is any EObject { return true }
+        guard let objects = value as? [any EObject] else { return false }
+        return !objects.isEmpty
     }
 
     /// Get contained children of an object

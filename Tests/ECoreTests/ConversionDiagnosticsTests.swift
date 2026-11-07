@@ -214,6 +214,29 @@ struct ConversionDiagnosticsTests {
         #expect(warnings[2].isEmpty, "\(warnings[2])")
     }
 
+    @Test("writers report nothing for an empty many-valued reference")
+    func writersAcceptEmptyReferenceLists() async throws {
+        let string = EcorePackage.dataType(.eString) ?? EDataType(name: "EString")
+        let book = EClass(name: "Book", eStructuralFeatures: [EAttribute(name: "title", eType: string)])
+        let list = EClass(
+            name: "ReadingList",
+            eStructuralFeatures: [
+                EAttribute(name: "title", eType: string), EReference(name: "books", eType: book, upperBound: -1),
+            ])
+        let package = EPackage(
+            name: "library", nsURI: "http://www.example.org/library", nsPrefix: "library", eClassifiers: [list, book])
+        let set = ResourceSet()
+        await set.registerMetamodel(package, uri: package.nsURI)
+        var object = DynamicEObject(eClass: list)
+        object.eSet("title", value: "Holidays")
+        object.eSet("books", value: [EUUID]())
+        let resource = await set.createResource(uri: "file:///library.xmi")
+        await resource.add(object)
+        for warnings in try await Self.writerWarnings(resource) {
+            #expect(warnings.isEmpty, "\(warnings)")
+        }
+    }
+
     @Test("writers report contained objects that the resource does not hold")
     func writersReportUnregisteredContainedObjects() async throws {
         let (_, resource, _) = try await Self.shelf { shelf, _ in

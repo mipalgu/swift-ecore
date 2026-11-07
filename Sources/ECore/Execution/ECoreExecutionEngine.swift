@@ -51,8 +51,14 @@ public actor ECoreExecutionEngine: Sendable {
     /// Type provider for ECore type operations.
     private let typeProvider: EcoreTypeProvider
 
-    /// Navigation result cache for performance optimisation.
-    private var navigationCache: [String: any EcoreValue] = [:]
+    /// Navigation result cache for performance optimisation, by object and feature name.
+    private var navigationCache: [EUUID: [String: any EcoreValue]] = [:]
+
+    /// The cached navigation results that were computed rather than stored, by object.
+    ///
+    /// A computed value may depend on other objects, so it is discarded whenever
+    /// ``invalidateCaches(for:)`` reports any change.
+    private var computedNavigationEntries: [EUUID: Set<String>] = [:]
 
     /// Type instance cache for frequent queries.
     private var typeCache: [String: OrderedSet<EUUID>] = [:]
@@ -116,6 +122,7 @@ public actor ECoreExecutionEngine: Sendable {
     public func setUnsetFeatureReads(_ mode: UnsetFeatureReads) {
         unsetFeatureReads = mode
         navigationCache.removeAll()
+        computedNavigationEntries.removeAll()
     }
 
     /// Chooses whether navigation reads unset features as their defaults.
@@ -181,8 +188,7 @@ public actor ECoreExecutionEngine: Sendable {
             print("[ECORE] Navigate: \(source.eClass.name).\(property)")
         }
 
-        let cacheKey = "\(source.id).\(property)"
-        if let cached = navigationCache[cacheKey] {
+        if let cached = navigationCache[source.id]?[property] {
             if debug {
                 print("[ECORE]   Cached value: \(String(describing: cached))")
             }
@@ -200,8 +206,10 @@ public actor ECoreExecutionEngine: Sendable {
 
         let feature = try findStructuralFeature(for: currentObject, named: property)
         var rawResult = currentObject.eGet(feature)
+        var isComputed = false
         if rawResult == nil, let computed = await derivedValue(of: currentObject, feature: feature.name) {
             rawResult = computed
+            isComputed = true
         }
         if rawResult == nil, unsetFeatureReads == .defaults,
             let dynamic = currentObject as? DynamicEObject
@@ -218,7 +226,8 @@ public actor ECoreExecutionEngine: Sendable {
 
         // Cache the result for future use if it's an EcoreValue
         if let ecoreResult = result {
-            navigationCache[cacheKey] = ecoreResult
+            navigationCache[source.id, default: [:]][property] = ecoreResult
+            if isComputed { computedNavigationEntries[source.id, default: []].insert(property) }
         }
 
         return result
@@ -394,8 +403,54 @@ public actor ECoreExecutionEngine: Sendable {
     /// Clear all caches to free memory.
     public func clearCaches() {
         navigationCache.removeAll()
+        computedNavigationEntries.removeAll()
         typeCache.removeAll()
         resolutionCache.removeAll()
+    }
+
+    /// Discards the cached results that changes to the registered models may have made stale.
+    ///
+    /// The engine caches navigation results, resolved references and the instances of each
+    /// type. When the registered models are changed while the engine is in use, for example
+    /// by an incremental evaluator that keeps the engine across model edits, passing the
+    /// changes here discards exactly the entries that they may affect: the cached features
+    /// and resolved state of every changed object, every cached value that was computed
+    /// rather than stored, and, after a creation, deletion, rebinding or change of a
+    /// reference, the cached instances of types. Other cached results are kept.
+    ///
+    /// - Parameter changes: The changes made to the registered models.
+    public func invalidateCaches(for changes: [ResourceChange]) {
+        guard !changes.isEmpty else { return }
+        var dropsTypes = false
+        for change in changes {
+            if let feature = change.feature, change.kind != .delete, change.kind != .rebind {
+                if navigationCache[change.objectID]?.removeValue(forKey: feature) != nil,
+                    navigationCache[change.objectID]?.isEmpty == true
+                {
+                    navigationCache.removeValue(forKey: change.objectID)
+                }
+            } else {
+                navigationCache.removeValue(forKey: change.objectID)
+            }
+            resolutionCache.removeValue(forKey: change.objectID)
+            switch change.kind {
+            case .create, .delete, .rebind:
+                dropsTypes = true
+            case .set, .add, .remove, .move:
+                if change.oldValue is EUUID || change.newValue is EUUID || change.oldValue is [EUUID]
+                    || change.newValue is [EUUID] || change.oldValue is EcoreValueArray
+                    || change.newValue is EcoreValueArray
+                {
+                    dropsTypes = true
+                }
+            }
+        }
+        for (objectID, features) in computedNavigationEntries {
+            for feature in features { navigationCache[objectID]?.removeValue(forKey: feature) }
+            if navigationCache[objectID]?.isEmpty == true { navigationCache.removeValue(forKey: objectID) }
+        }
+        computedNavigationEntries.removeAll()
+        if dropsTypes { typeCache.removeAll() }
     }
 
     /// Get cache statistics for performance monitoring.
@@ -403,7 +458,7 @@ public actor ECoreExecutionEngine: Sendable {
     /// - Returns: Dictionary containing cache hit rates and sizes
     public func getCacheStatistics() -> [String: Int] {
         return [
-            "navigationCacheSize": navigationCache.count,
+            "navigationCacheSize": navigationCache.values.reduce(0) { $0 + $1.count },
             "typeCacheSize": typeCache.count,
             "resolutionCacheSize": resolutionCache.count,
         ]
@@ -569,10 +624,8 @@ public actor ECoreExecutionEngine: Sendable {
     }
 
     private func invalidateCache(for object: any EObject) {
-        let objectId = object.id.uuidString
-        navigationCache.keys
-            .filter { $0.hasPrefix(objectId) }
-            .forEach { navigationCache.removeValue(forKey: $0) }
+        navigationCache.removeValue(forKey: object.id)
+        computedNavigationEntries.removeValue(forKey: object.id)
     }
 
     /// Computes a feature that is derived or held by the container, using the model's resource.

@@ -18,13 +18,13 @@ public struct ResourceSnapshot: Sendable {
     public let uri: String
 
     let storage: ObjectTable
-    let rootIdentifiers: [EUUID]
+    let rootIdentifiers: OrderedSet<EUUID>
     let nativeContents: OrderedDictionary<EUUID, any EObject>
     let nativeContainers: [EUUID: EUUID]
     let nativeOwned: [EUUID: [EUUID]]
 
     init(
-        uri: String, storage: ObjectTable, rootIdentifiers: [EUUID],
+        uri: String, storage: ObjectTable, rootIdentifiers: OrderedSet<EUUID>,
         nativeContents: OrderedDictionary<EUUID, any EObject>,
         nativeContainers: [EUUID: EUUID], nativeOwned: [EUUID: [EUUID]]
     ) {
@@ -40,7 +40,7 @@ public struct ResourceSnapshot: Sendable {
     public var objects: [any EObject] { Array(storage.values) }
 
     /// The identifiers of the root objects, in order.
-    public var rootIDs: [EUUID] { rootIdentifiers }
+    public var rootIDs: [EUUID] { rootIdentifiers.elements }
 
     /// The root objects, in order.
     public var roots: [any EObject] { rootIdentifiers.compactMap { storage[$0] } }

@@ -28,6 +28,10 @@ let package = Package(
             name: "ECoreEdit",
             targets: ["ECoreEdit"]
         ),
+        .library(
+            name: "MultiLevel",
+            targets: ["MultiLevel"]
+        ),
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-collections", from: "1.0.0"),
@@ -61,6 +65,17 @@ let package = Package(
         ),
         .target(
             name: "ECoreEdit",
+            dependencies: [
+                "ECore",
+                "EMFBase",
+                .product(name: "OrderedCollections", package: "swift-collections"),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .target(
+            name: "MultiLevel",
             dependencies: [
                 "ECore",
                 "EMFBase",
@@ -123,6 +138,13 @@ let package = Package(
         .testTarget(
             name: "ECoreEditTests",
             dependencies: ["ECoreEdit", "ECore", "EMFBase"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .testTarget(
+            name: "MultiLevelTests",
+            dependencies: ["MultiLevel", "ECore", "EMFBase"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]

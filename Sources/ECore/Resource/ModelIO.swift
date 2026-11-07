@@ -160,8 +160,10 @@ public enum ModelIO {
     /// Each document is loaded into the resource set as native packages, and every root
     /// package with a namespace URI is registered under that URI, together with its nested
     /// packages. A package registered later replaces an earlier one with the same URI. A
-    /// document may be an `.ecore` document, a metamodel in JSON, a KM3 document, or a
-    /// document in another metamodel format of the registry.
+    /// document may be an `.ecore` document, a metamodel in JSON, a KM3 document, a document
+    /// in another metamodel format of the registry, or a model that the handler of its format
+    /// converts into a metamodel (see ``MetamodelConvertingModelFormatHandler``), such as a
+    /// UML class model.
     ///
     /// The format of a document is the one whose handler claims its file extension, else the
     /// one whose handler recognises its contents (see
@@ -232,6 +234,11 @@ public enum ModelIO {
             data = read
             handler = recognised
         }
+        if let converting = handler as? any MetamodelConvertingModelFormatHandler {
+            let request = ModelFormatReadRequest(
+                data: data, uri: uri, resourceSet: resourceSet, options: LoadOptions(ecoreLoadOptions: options))
+            return try await place(converting.readMetamodel(request), uri: uri, in: resourceSet).packages
+        }
         return try await load(
             data: data, uri: uri, handler: handler, resourceSet: resourceSet,
             options: LoadOptions(ecoreLoadOptions: options), registry: registry
@@ -241,16 +248,18 @@ public enum ModelIO {
     /// Whether ``registerMetamodels(at:in:options:registry:)`` reads a document through a handler.
     ///
     /// Documents of the built-in XMI, JSON and Ecore formats, and of formats that hold only
-    /// models, such as UML, are loaded as Ecore documents instead.
+    /// models, are loaded as Ecore documents instead, unless the handler converts them into
+    /// metamodels (see ``MetamodelConvertingModelFormatHandler``), as the UML handler does.
     ///
     /// - Parameter handler: The handler of the format of a document.
     /// - Returns: `true` if the handler reads the document as a metamodel.
     private static func readsAsMetamodelFormat(_ handler: any ModelFormatHandler) -> Bool {
+        if handler is any MetamodelConvertingModelFormatHandler { return true }
         guard handler.role != .model else { return false }
         switch handler.format {
         case .xmi?, .json?, .ecore?: return false
         case .km3?, .emof?, .emfatic?, .xcore?, .oclinecore?, .asdl?, .langium?, .xtext?, .sdf3?, nil: return true
-        case .uml?: return false
+        case .uml?, .metadepth?: return false
         }
     }
 
@@ -408,25 +417,40 @@ public enum ModelIO {
         if let handler { recognised = handler } else { recognised = await registry.handler(recognising: data) }
         guard let handler = recognised else { throw ModelFormatError.undetectableFormat(uri) }
         let request = ModelFormatReadRequest(data: data, uri: uri, resourceSet: resourceSet, options: options)
-        let resource: Resource
-        let packages: [EPackage]
-        var diagnostics = ConversionDiagnostics()
-        switch try await handler.read(request) {
+        let placed = try await place(handler.read(request), uri: uri, in: resourceSet)
+        let format = handler.format ?? (placed.packages.isEmpty ? .xmi : .ecore)
+        return Loaded(
+            resource: placed.resource, format: format, diagnostics: placed.diagnostics, packages: placed.packages,
+            formatIdentifier: handler.identifier)
+    }
+
+    /// Places what a handler has read in the resource set.
+    ///
+    /// Metamodel packages become the roots of a new resource of the document and are
+    /// registered, those without a namespace URI under their names, with the diagnostics of
+    /// the handler and the warnings of that registration as the ``Resource/loadDiagnostics``
+    /// of the resource. A resource that the handler has created is taken as it is.
+    ///
+    /// - Parameters:
+    ///   - result: What the handler has read.
+    ///   - uri: The canonical URI of the document.
+    ///   - resourceSet: The resource set that receives the resource.
+    /// - Returns: The resource of the document, its registered root packages, and what the
+    ///   handler could not keep.
+    private static func place(_ result: ModelFormatReadResult, uri: String, in resourceSet: ResourceSet) async
+        -> (resource: Resource, packages: [EPackage], diagnostics: ConversionDiagnostics)
+    {
+        switch result {
         case .packages(let roots, let sourceDiagnostics):
-            resource = await resourceSet.createResource(uri: uri)
+            let resource = await resourceSet.createResource(uri: uri)
             for package in roots { await resource.registerNativePackage(package) }
-            packages = await registerRootPackages(of: resource, in: resourceSet)
+            let packages = await registerRootPackages(of: resource, in: resourceSet)
             let warnings = await registerUnnamespacedPackages(packages, of: uri, in: resourceSet)
             await resource.setLoadDiagnostics(sourceDiagnostics + warnings)
+            return (resource, packages, ConversionDiagnostics())
         case .resource(let read, let registered, let warnings):
-            resource = read
-            packages = registered
-            diagnostics = warnings
+            return (read, registered, warnings)
         }
-        let format = handler.format ?? (packages.isEmpty ? .xmi : .ecore)
-        return Loaded(
-            resource: resource, format: format, diagnostics: diagnostics, packages: packages,
-            formatIdentifier: handler.identifier)
     }
 
     // MARK: - Saving

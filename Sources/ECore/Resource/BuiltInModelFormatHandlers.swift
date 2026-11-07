@@ -24,6 +24,7 @@ extension ModelFormat {
         case .langium: return LangiumFormatHandler()
         case .xtext: return XtextFormatHandler()
         case .sdf3: return SDF3FormatHandler()
+        case .metadepth: return MetaDepthPlaceholderHandler()
         }
     }
 }
@@ -306,7 +307,10 @@ struct EMOFFormatHandler: BuiltInModelFormatHandler, WritableModelFormatHandler 
 /// the generic formats. A model in an OMG UML namespace is therefore read as UML even from
 /// an `.xmi` file (see ``ModelFormatRegistry/handler(for:contents:)``), while every XMI
 /// document in another namespace is still read as XMI.
-struct UMLFormatHandler: BuiltInModelFormatHandler, WritableModelFormatHandler {
+///
+/// A UML class model given as a metamodel is converted into an Ecore metamodel by
+/// ``UMLToEcore/read(data:uri:resourceSet:options:modelResourceSet:)``.
+struct UMLFormatHandler: BuiltInModelFormatHandler, WritableModelFormatHandler, MetamodelConvertingModelFormatHandler {
     var builtInFormat: ModelFormat { .uml }
     var role: ModelFormatRole { .model }
 
@@ -326,6 +330,23 @@ struct UMLFormatHandler: BuiltInModelFormatHandler, WritableModelFormatHandler {
             await read.resource.setLoadDiagnostics(read.profileDiagnostics + (await read.resource.loadDiagnostics))
         }
         return .resource(read.resource, diagnostics: read.conversion)
+    }
+
+    /// Reads a UML class model as an Ecore metamodel.
+    ///
+    /// The model is read into a resource set of its own and converted with the standard
+    /// options of ``UMLToEcore``. The metamodel is loaded into the resource set of the request
+    /// under the URI of the document, its packages are registered there, and what the reader
+    /// and the conversion reported becomes the ``Resource/loadDiagnostics`` of its resource.
+    ///
+    /// - Parameter request: The document and the resource set that receives the metamodel.
+    /// - Returns: The resource of the metamodel with its root packages.
+    /// - Throws: ``XMIError`` if the document is not well-formed XMI or the metamodel cannot
+    ///   be loaded, or ``UMLToEcoreError/noPackage(_:)`` if the document holds no UML package.
+    func readMetamodel(_ request: ModelFormatReadRequest) async throws -> ModelFormatReadResult {
+        let read = try await UMLToEcore.read(data: request.data, uri: request.uri, resourceSet: request.resourceSet)
+        await read.resource.setLoadDiagnostics(read.diagnostics)
+        return .resource(read.resource, packages: read.packages)
     }
 
     /// Writes a resource in the layout of Eclipse UML2.
@@ -629,5 +650,47 @@ struct SDF3FormatHandler: TextMetamodelFormatHandler {
             let result = SDF3Reader.parse(text, sourceName: sourceName, options: options)
             return (result.packages, result.diagnostics)
         }
+    }
+}
+
+/// Stands for the MetaDepth format until the MultiLevel module registers its handler.
+///
+/// The MetaDepth notation is implemented by the MultiLevel module, which depends on this
+/// one, so the built-in handler only names the format and claims its extension. Reading or
+/// writing throws ``ModelFormatError/unsupportedFormat(_:)`` until a handler with the same
+/// identifier replaces this one.
+struct MetaDepthPlaceholderHandler: BuiltInModelFormatHandler, WritableModelFormatHandler {
+    var builtInFormat: ModelFormat { .metadepth }
+    var role: ModelFormatRole { .model }
+
+    /// Recognises no document, as the notation is recognised by the registered handler.
+    ///
+    /// - Parameter prefix: The start of the document.
+    /// - Returns: `false`.
+    func recognises(_ prefix: Data) -> Bool { false }
+
+    /// Throws, as no handler for the notation is registered.
+    ///
+    /// - Parameter request: The document to read.
+    /// - Returns: Never.
+    /// - Throws: ``ModelFormatError/unsupportedFormat(_:)``.
+    func read(_ request: ModelFormatReadRequest) async throws -> ModelFormatReadResult {
+        throw ModelFormatError.unsupportedFormat(builtInFormat.rawValue)
+    }
+
+    /// Throws, as no handler for the notation is registered.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource to write.
+    ///   - documentURL: Not used.
+    ///   - xmiOptions: Not used.
+    ///   - diagnostics: Not used.
+    /// - Returns: Never.
+    /// - Throws: ``ModelFormatError/unsupportedFormat(_:)``.
+    func write(
+        _ resource: Resource, relativeTo documentURL: URL?, xmiOptions: XMISerializationOptions,
+        diagnostics: inout ConversionDiagnostics
+    ) async throws -> String {
+        throw ModelFormatError.unsupportedFormat(builtInFormat.rawValue)
     }
 }

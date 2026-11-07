@@ -34,15 +34,18 @@ struct ModelFormatTests {
 
     @Test("the raw value of each format is its file extension")
     func rawValuesAreExtensions() {
-        #expect(ModelFormat.allCases == [.xmi, .json, .ecore, .km3, .emof, .uml, .emfatic, .xcore, .oclinecore, .asdl, .langium, .xtext, .sdf3])
+        #expect(ModelFormat.allCases == [.xmi, .json, .ecore, .km3, .emof, .uml, .emfatic, .xcore, .oclinecore, .asdl, .langium, .xtext, .sdf3, .metadepth])
         #expect(ModelFormat.allCases.map(\.rawValue) == [
             "xmi", "json", "ecore", "km3", "emof", "uml", "emf", "xcore", "oclinecore", "asdl", "langium", "xtext", "sdf3",
+            "mdepth",
         ])
         #expect(ModelFormat.allCases.map(\.fileExtension) == [
             "xmi", "json", "ecore", "km3", "emof", "uml", "emf", "xcore", "oclinecore", "asdl", "langium", "xtext", "sdf3",
+            "mdepth",
         ])
         #expect(ModelFormat.allCases.map(\.description) == [
             "XMI", "JSON", "Ecore", "KM3", "EMOF", "UML", "Emfatic", "Xcore", "OCLinEcore", "ASDL", "Langium", "Xtext", "SDF3",
+            "MetaDepth",
         ])
     }
 

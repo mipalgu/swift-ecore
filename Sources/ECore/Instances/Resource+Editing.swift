@@ -292,11 +292,11 @@ extension Resource {
         for id in ids where objects[id] != nil { doomed.formUnion(subtree(of: id)) }
         guard !doomed.isEmpty else { return [] }
         var changes: [ResourceChange] = []
+        removeRoots(doomed)
         for id in doomed {
             if let slot = findContainer(of: id), !doomed.contains(slot.container) {
                 await detach(id, &changes, unlinking: false)
             }
-            rootObjects.removeAll { $0 == id }
         }
         if cleaningReferences {
             for object in Array(objects.values) where !doomed.contains(object.id) {
@@ -310,8 +310,8 @@ extension Resource {
             guard let object = objects[id] else { continue }
             changes.append(ResourceChange(kind: .delete, objectID: id, oldValue: object))
             objects.removeValue(forKey: id)
-            rootObjects.removeAll { $0 == id }
         }
+        removeRoots(doomed)
         return record(changes)
     }
 
@@ -359,6 +359,7 @@ extension Resource {
 
     private func record(_ changes: [ResourceChange]) -> [ResourceChange] {
         if changeJournal != nil { changeJournal?.append(contentsOf: changes) }
+        if !changeObservers.isEmpty { notifyChangeObservers(changes) }
         return changes
     }
 
@@ -447,7 +448,7 @@ extension Resource {
 
     /// Removes an object from its container and from the roots.
     private func detach(_ id: EUUID, _ changes: inout [ResourceChange], unlinking: Bool = true) async {
-        rootObjects.removeAll { $0 == id }
+        rootObjects.remove(id)
         guard let slot = findContainer(of: id), let container = objects[slot.container] as? DynamicEObject else { return }
         let current = container.eGet(slot.reference)
         if slot.reference.isMany {
@@ -598,6 +599,7 @@ extension Resource {
         guard add(object) else { return [] }
         let change = [ResourceChange(kind: .create, objectID: object.id, newValue: object)]
         if changeJournal != nil { changeJournal?.append(contentsOf: change) }
+        if !changeObservers.isEmpty { notifyChangeObservers(change) }
         return change
     }
 }

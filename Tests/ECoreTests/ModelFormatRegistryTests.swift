@@ -45,7 +45,7 @@ struct ModelFormatRegistryTests {
         #expect(handlers.map(\.format) == ModelFormat.allCases.map { Optional($0) })
         #expect(handlers.map(\.role) == [
             .model, .both, .metamodel, .metamodel, .metamodel, .model, .metamodel, .metamodel, .metamodel, .metamodel,
-            .metamodel, .metamodel, .metamodel,
+            .metamodel, .metamodel, .metamodel, .model,
         ])
         #expect(handlers.filter { ![.km3, .emof, .uml, .emfatic, .xcore, .oclinecore, .asdl, .langium, .xtext, .sdf3].contains($0.format) }.allSatisfy { $0.priority == .generic })
         #expect(handlers.first { $0.format == .km3 }?.priority == .specific)
@@ -116,7 +116,7 @@ struct ModelFormatRegistryTests {
         await registry.register(SketchFormatHandler())
         #expect(await registry.handlers.map(\.identifier) == [
             "xmi", "json", "ecore", "km3", "emof", "uml", "emf", "xcore", "oclinecore", "asdl", "langium", "xtext", "sdf3",
-            "sketch",
+            "mdepth", "sketch",
         ])
         #expect(await registry.handler(identifier: "Sketch")?.name == SketchSyntax.name)
         #expect(await registry.handler(forFileExtension: "SKETCH")?.identifier == SketchSyntax.identifier)
@@ -132,7 +132,8 @@ struct ModelFormatRegistryTests {
         await registry.register(GreedyXMLFormatHandler(identifier: "XMI", priority: .specific))
         let handlers = await registry.handlers
         #expect(handlers.map(\.identifier) == [
-            "json", "ecore", "km3", "emof", "uml", "emf", "xcore", "oclinecore", "asdl", "langium", "xtext", "sdf3", "XMI",
+            "json", "ecore", "km3", "emof", "uml", "emf", "xcore", "oclinecore", "asdl", "langium", "xtext", "sdf3", "mdepth",
+            "XMI",
         ])
         #expect(await registry.handler(for: .xmi)?.name == "Greedy XML")
         #expect(await registry.handler(forFileExtension: "xmi") == nil)
@@ -153,6 +154,7 @@ struct ModelFormatRegistryTests {
         #expect(await registry.handler(for: .xmi) == nil)
         #expect(ModelFormatRegistry.builtInHandlers.map(\.identifier) == [
             "xmi", "json", "ecore", "km3", "emof", "uml", "emf", "xcore", "oclinecore", "asdl", "langium", "xtext", "sdf3",
+            "mdepth",
         ])
     }
 

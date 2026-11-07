@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lend:Library xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:lend="http://example.org/lending">
+  <items xsi:type="lend:Book" title="Coastal Walks" published="2019" isbnCode="978-0-00-000001-1" genre="Fiction" pages="240" authors="//@authors.0">
+    <tags>travel</tags>
+    <tags>travel</tags>
+  </items>
+  <items xsi:type="lend:Book" title="Night Verses" isbnCode="978-0-00-000002-2" authors="//@authors.0 //@authors.1"/>
+  <authors name="Ada Example" books="//@items.0 //@items.1"/>
+  <authors name="Ben Sample" books="//@items.1"/>
+  <members name="Casey Member">
+    <address street="1 Main Street"/>
+    <loans days="14"/>
+  </members>
+</lend:Library>

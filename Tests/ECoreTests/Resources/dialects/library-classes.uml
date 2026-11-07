@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmi:version="20131001" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:Ecore="http://www.eclipse.org/uml2/schemas/Ecore/5" xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" xmlns:uml="http://www.eclipse.org/uml2/5.0.0/UML" xsi:schemaLocation="http://www.eclipse.org/uml2/schemas/Ecore/5 pathmap://UML_PROFILES/Ecore.profile.uml#_z1OFcHjqEdy8S4Cr8Rc_NA">
+  <uml:Model xmi:id="library" name="library">
+    <ownedComment xmi:id="library-note" annotatedElement="Book">
+      <body>A book that the library holds.</body>
+    </ownedComment>
+    <packagedElement xmi:type="uml:Class" xmi:id="Library" name="Library">
+      <ownedAttribute xmi:id="Library-items" name="items" type="Item" aggregation="composite" association="Library-holds">
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Library-items-lower"/>
+        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Library-items-upper" value="*"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Library-authors" name="authors" type="Author" aggregation="composite" association="Library-employs">
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Library-authors-lower"/>
+        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Library-authors-upper" value="*"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Library-members" name="members" type="Member" aggregation="composite" association="Library-serves">
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Library-members-lower"/>
+        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Library-members-upper" value="*"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Association" xmi:id="Library-holds" name="holds" memberEnd="Library-items Library-holds-library">
+      <ownedEnd xmi:id="Library-holds-library" name="library" type="Library" association="Library-holds"/>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Association" xmi:id="Library-employs" name="employs" memberEnd="Library-authors Library-employs-library">
+      <ownedEnd xmi:id="Library-employs-library" name="library" type="Library" association="Library-employs"/>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Association" xmi:id="Library-serves" name="serves" memberEnd="Library-members Library-serves-library">
+      <ownedEnd xmi:id="Library-serves-library" name="library" type="Library" association="Library-serves"/>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="Item" name="Item" isAbstract="true">
+      <ownedAttribute xmi:id="Item-title" name="title">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#String"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Item-published" name="published">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#Integer"/>
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Item-published-lower"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Item-tags" name="tags" isOrdered="true" isUnique="false">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#String"/>
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Item-tags-lower"/>
+        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Item-tags-upper" value="*"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Item-price" name="price">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#Real"/>
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Item-price-lower"/>
+        <defaultValue xmi:type="uml:LiteralReal" xmi:id="Item-price-default" value="9.5"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Item-copies" name="copies">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#UnlimitedNatural"/>
+        <defaultValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Item-copies-default" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Item-summary" name="summary" isReadOnly="true" isDerived="true">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#String"/>
+      </ownedAttribute>
+      <ownedOperation xmi:id="Item-label" name="label" bodyCondition="Item-label-body">
+        <ownedRule xmi:id="Item-label-body" name="labelBody" constrainedElement="Item-label">
+          <specification xmi:type="uml:OpaqueExpression" xmi:id="Item-label-body-spec">
+            <language>OCL</language>
+            <body>result = (title)</body>
+          </specification>
+        </ownedRule>
+        <ownedParameter xmi:id="Item-label-result" name="result" direction="return">
+          <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#String"/>
+        </ownedParameter>
+      </ownedOperation>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Interface" xmi:id="Borrowable" name="Borrowable">
+      <ownedOperation xmi:id="Borrowable-borrow" name="borrow">
+        <ownedParameter xmi:id="Borrowable-borrow-days" name="days">
+          <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#Integer"/>
+        </ownedParameter>
+        <ownedParameter xmi:id="Borrowable-borrow-result" name="result" direction="return">
+          <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#Boolean"/>
+        </ownedParameter>
+      </ownedOperation>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="Book" name="Book">
+      <ownedRule xmi:id="Book-hasTitle" name="hasTitle" constrainedElement="Book">
+        <specification xmi:type="uml:OpaqueExpression" xmi:id="Book-hasTitle-spec">
+          <language>OCL</language>
+          <body>title.size() > 0</body>
+        </specification>
+      </ownedRule>
+      <generalization xmi:id="Book-general" general="Item"/>
+      <interfaceRealization xmi:id="Book-borrowable" client="Book" supplier="Borrowable" contract="Borrowable"/>
+      <ownedAttribute xmi:id="Book-isbn" name="isbn" type="Isbn" isID="true"/>
+      <ownedAttribute xmi:id="Book-genre" name="genre" type="Genre">
+        <defaultValue xmi:type="uml:InstanceValue" xmi:id="Book-genre-default" type="Genre" instance="Genre-poetry"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Book-pages" name="pages">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#Integer"/>
+        <defaultValue xmi:type="uml:LiteralInteger" xmi:id="Book-pages-default" value="100"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Book-authors" name="authors" type="Author" association="Author-writes">
+        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Book-authors-upper" value="*"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Class" xmi:id="Author" name="Author">
+      <ownedAttribute xmi:id="Author-name" name="name">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#String"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Author-books" name="books" type="Book" association="Author-writes">
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Author-books-lower"/>
+        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Author-books-upper" value="*"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Association" xmi:id="Author-writes" name="writes" memberEnd="Author-books Book-authors"/>
+    <packagedElement xmi:type="uml:Class" xmi:id="Member" name="Member">
+      <ownedAttribute xmi:id="Member-name" name="name">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#String"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Member-address" name="address" type="Address">
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Member-address-lower"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="Member-loans" name="loans" type="Loan" aggregation="composite" association="Member-borrows">
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Member-loans-lower"/>
+        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Member-loans-upper" value="*"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Association" xmi:id="Member-borrows" name="borrows" memberEnd="Member-loans Loan-member"/>
+    <packagedElement xmi:type="uml:Class" xmi:id="Loan" name="Loan">
+      <ownedAttribute xmi:id="Loan-member" name="member" type="Member" association="Member-borrows"/>
+      <ownedAttribute xmi:id="Loan-days" name="days">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#Integer"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Association" xmi:id="Loan-covers" name="covers" memberEnd="Loan-covers-item Loan-covers-loan" navigableOwnedEnd="Loan-covers-item">
+      <ownedEnd xmi:id="Loan-covers-item" name="item" type="Book" association="Loan-covers"/>
+      <ownedEnd xmi:id="Loan-covers-loan" name="loan" type="Loan" association="Loan-covers">
+        <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Loan-covers-loan-lower"/>
+        <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Loan-covers-loan-upper" value="*"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xmi:type="uml:DataType" xmi:id="Address" name="Address">
+      <ownedAttribute xmi:id="Address-street" name="street">
+        <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#String"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xmi:type="uml:PrimitiveType" xmi:id="Isbn" name="Isbn"/>
+    <packagedElement xmi:type="uml:Enumeration" xmi:id="Genre" name="Genre">
+      <ownedLiteral xmi:id="Genre-fiction" name="Fiction"/>
+      <ownedLiteral xmi:id="Genre-poetry" name="Poetry"/>
+      <ownedLiteral xmi:id="Genre-science" name="Science">
+        <specification xmi:type="uml:LiteralInteger" xmi:id="Genre-science-value" value="7"/>
+      </ownedLiteral>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Package" xmi:id="circulation" name="circulation">
+      <packagedElement xmi:type="uml:Class" xmi:id="Shelf" name="Shelf">
+        <ownedTemplateSignature xmi:type="uml:RedefinableTemplateSignature" xmi:id="Shelf-signature" name="Shelf" parameter="Shelf-T">
+          <ownedParameter xmi:type="uml:ClassifierTemplateParameter" xmi:id="Shelf-T" parameteredElement="Shelf-T-class">
+            <ownedParameteredElement xmi:type="uml:Class" xmi:id="Shelf-T-class" name="T" templateParameter="Shelf-T"/>
+          </ownedParameter>
+        </ownedTemplateSignature>
+        <ownedAttribute xmi:id="Shelf-contents" name="contents" type="Shelf-T-class">
+          <lowerValue xmi:type="uml:LiteralInteger" xmi:id="Shelf-contents-lower"/>
+          <upperValue xmi:type="uml:LiteralUnlimitedNatural" xmi:id="Shelf-contents-upper" value="*"/>
+        </ownedAttribute>
+        <ownedAttribute xmi:id="Shelf-label" name="label">
+          <type xmi:type="uml:PrimitiveType" href="pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#String"/>
+        </ownedAttribute>
+      </packagedElement>
+    </packagedElement>
+    <profileApplication xmi:id="library-ecore">
+      <appliedProfile href="pathmap://UML_PROFILES/Ecore.profile.uml#_0"/>
+    </profileApplication>
+  </uml:Model>
+  <Ecore:EPackage xmi:id="library-epackage" base_Package="library" nsURI="http://example.org/lending" nsPrefix="lend"/>
+  <Ecore:EDataType xmi:id="Isbn-edatatype" base_PrimitiveType="Isbn" instanceClassName="java.lang.String"/>
+  <Ecore:EAttribute xmi:id="Book-isbn-eattribute" base_Property="Book-isbn" attributeName="isbnCode"/>
+  <Ecore:EAttribute xmi:id="Book-pages-eattribute" base_Property="Book-pages" isUnsettable="true"/>
+  <Ecore:EReference xmi:id="Book-authors-ereference" base_Property="Book-authors" isResolveProxies="false"/>
+  <Ecore:EClass xmi:id="Author-eclass" base_Class="Author" className="Writer"/>
+</xmi:XMI>

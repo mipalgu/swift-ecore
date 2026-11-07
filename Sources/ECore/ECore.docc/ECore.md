@@ -47,6 +47,9 @@ a modern, type-safe Swift API.
   with embedded OCL, and ``ModelIO/applyCompleteOCL(at:to:in:options:)`` adds the constraints
   of a Complete OCL document to loaded metamodels
 - **Validation**: ``ModelValidator`` checks models and ``EcoreValidator`` checks metamodels
+- **Incremental evaluation**: Change observers, dependency records and their reverse index
+  let query and transformation engines redo only what changes affect; see
+  <doc:IncrementalEvaluation>
 
 ### Interoperability
 
@@ -95,6 +98,7 @@ try await XMISerializer().serialize(resource, to: URL(fileURLWithPath: "employee
 - <doc:GettingStarted>
 - <doc:UnderstandingEcore>
 - <doc:Compatibility>
+- <doc:IncrementalEvaluation>
 
 ### Core Types
 
@@ -141,6 +145,7 @@ try await XMISerializer().serialize(resource, to: URL(fileURLWithPath: "employee
 - ``ModelFormatRegistry``
 - ``ModelFormatHandler``
 - ``WritableModelFormatHandler``
+- ``MetamodelConvertingModelFormatHandler``
 - ``ModelFormatReadRequest``
 - ``ModelFormatReadResult``
 - ``ModelFormatRole``
@@ -252,6 +257,9 @@ try await XMISerializer().serialize(resource, to: URL(fileURLWithPath: "employee
 - ``UMLFormat``
 - ``UMLMetamodel``
 - ``UMLNamespaces``
+- <doc:UMLClassModelsAsMetamodels>
+- ``UMLToEcore``
+- ``UMLToEcoreError``
 - ``ModelDocumentReadResult``
 - ``ModelDocumentWriteResult``
 - ``ModelDocumentDiagnostic``

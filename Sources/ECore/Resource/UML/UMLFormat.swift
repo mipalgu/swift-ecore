@@ -168,6 +168,7 @@ public enum UMLFormat {
         let parser = XMIParser(
             resourceSet: resourceSet, enableDebugging: options.enableDebugging,
             referenceParsing: options.referenceParsing, ecoreLoadOptions: options.ecoreLoadOptions)
+        await parser.retainFabricatedNamespaces()
         let resource = try await parser.parse(data, uri: uri)
         return (resource, profileDiagnostics, await parser.diagnostics)
     }

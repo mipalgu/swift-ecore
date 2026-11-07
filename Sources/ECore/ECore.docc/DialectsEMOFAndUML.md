@@ -67,12 +67,17 @@ registered, or is defined in the same document or in the document that the model
 `xsi:schemaLocation` names. Otherwise it is read as an object of a class made up from the
 document, and a warning names the namespace of the missing profile.
 
+A UML class model can also serve as a metamodel: ``UMLToEcore`` converts its packages into
+native Ecore packages (see <doc:UMLClassModelsAsMetamodels>).
+
 ### Through ModelIO
 
 EMOF and UML are formats of ``ModelFormatRegistry``, as ``ModelFormat/emof`` and
 ``ModelFormat/uml``, so ``ModelIO`` reads and writes them like any other format. An EMOF
 document is a metamodel: its packages are registered, and it can be given among the
-metamodels of a load. A UML model is written in the layout of Eclipse UML2.
+metamodels of a load. A UML model is written in the layout of Eclipse UML2. A UML class model
+given among the metamodels of a load is converted into an Ecore metamodel (see
+<doc:UMLClassModelsAsMetamodels>).
 
 Both formats are recognised by their namespaces, before XMI. A file whose extension names a
 generic format, such as `.xmi`, is therefore read as EMOF or UML when its contents are, while

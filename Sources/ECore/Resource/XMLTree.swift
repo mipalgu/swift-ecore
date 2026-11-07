@@ -194,3 +194,12 @@ struct XMLTextBuilder {
         close()
     }
 }
+
+/// A namespace prefix of an XML document with the namespace URI bound to it.
+struct XMLNamespaceBinding: Sendable, Hashable {
+    /// The prefix, such as `uml`.
+    var prefix: String
+
+    /// The namespace URI bound to the prefix.
+    var uri: String
+}

@@ -18,10 +18,13 @@ macOS, Linux, Windows and WebAssembly.
   written back in the layout that EMF writes
 - **XMI and JSON**: models and metamodels in either format, with cross-document references,
   proxies and the fragment forms of EMF; JSON metamodels follow the emfjson conventions
+- **UML class models as metamodels**: converted into Ecore as Eclipse UML2 converts them
 - **EMF semantics**: dates, identifiers, many-valued attributes and validation of
   multiplicities and data values behave as in EMF
 - **Libraries for tools**: OCL constraints and queries, generator models (`.genmodel`), and
   value-based metamodel editing with undo and redo
+- **Incremental evaluation**: change observers and dependency records for incremental engines
+- **Multi-level modelling**: deep models with potency, in the MetaDepth notation
 
 ## Requirements
 
@@ -55,6 +58,7 @@ Then add the libraries you need to your target:
 | `OCL` | The OCL standard library for constraints and queries |
 | `GenModel` | The generator model metamodel, loader and a facade for code generators |
 | `ECoreEdit` | Editing metamodels as values, for metamodel editors and diagram tools |
+| `MultiLevel` | Multi-level models, the MetaDepth notation, and Ecore views of their levels |
 | `EMFBase` | Primitive Ecore types and diagnostics shared by the other libraries |
 
 ## Building
@@ -113,6 +117,7 @@ The [swift-ecore documentation](https://mipalgu.github.io/swift-ecore/) covers e
 - [OCL](https://mipalgu.github.io/swift-ecore/documentation/ocl/)
 - [GenModel](https://mipalgu.github.io/swift-ecore/documentation/genmodel/)
 - [ECoreEdit](https://mipalgu.github.io/swift-ecore/documentation/ecoreedit/)
+- [MultiLevel](https://mipalgu.github.io/swift-ecore/documentation/multilevel/)
 - [EMFBase](https://mipalgu.github.io/swift-ecore/documentation/emfbase/)
 
 ## Licence

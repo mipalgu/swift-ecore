@@ -55,12 +55,19 @@ public actor Resource {
     /// The number of times the containment index of the objects has been built.
     var containerIndexBuilds = 0
 
+    /// The number of times the root objects have been searched one by one.
+    ///
+    /// Adding an object and holding objects in a containment reference look up the root
+    /// objects by identifier, so they search the roots one by one at most once for each
+    /// change rather than once for each object involved.
+    var rootListScans = 0
+
     /// Root objects that are not contained by other objects in this resource.
     ///
     /// Root objects serve as entry points for model traversal and are typically
     /// the top-level objects that contain the entire model hierarchy.
-    /// Maintains insertion order.
-    var rootObjects: [EUUID]
+    /// Maintains insertion order and finds a root by identifier in constant time.
+    var rootObjects: OrderedSet<EUUID>
 
     /// The XML metadata retained for native package conversion.
     var ecoreDocumentMetadata = EcoreDocumentMetadata()
@@ -90,6 +97,20 @@ public actor Resource {
     /// - Parameter diagnostics: The findings in source order.
     func setLoadDiagnostics(_ diagnostics: [SourceDiagnostic]) {
         loadDiagnostics = diagnostics
+    }
+
+    /// The namespaces in which the source document named the classes that its parser
+    /// fabricated because no registered metamodel defines them, by class identifier.
+    ///
+    /// A writer places the objects of these classes in the same namespaces, so that they are
+    /// read back as objects of the same classes.
+    var fabricatedClassNamespaces: [EUUID: XMLNamespaceBinding] = [:]
+
+    /// Records the namespaces of the classes that a document parser fabricated.
+    ///
+    /// - Parameter namespaces: The prefix and namespace URI of each class, by class identifier.
+    func setFabricatedClassNamespaces(_ namespaces: [EUUID: XMLNamespaceBinding]) {
+        fabricatedClassNamespaces = namespaces
     }
 
     /// Native metamodel objects indexed by identifier.
@@ -163,6 +184,9 @@ public actor Resource {
 
     /// The journal that ``recordingChanges(_:)`` is collecting, if a recording is active.
     var changeJournal: [ResourceChange]?
+
+    /// The handlers registered with ``addChangeObserver(_:)``, by observation identifier.
+    var changeObservers: [UUID: @Sendable ([ResourceChange]) -> Void] = [:]
 
     /// Enable debug output.
     public var debug = false
@@ -243,7 +267,7 @@ public actor Resource {
         // was registered before
         let isContained = containerClaim(of: object.id, where: Self.containsForAdd) != nil
 
-        if !isContained && !rootObjects.contains(object.id) {
+        if !isContained {
             rootObjects.append(object.id)
         }
 
@@ -266,11 +290,8 @@ public actor Resource {
             objects[object.id] = object
             indexNativeContents(of: object)
         }
-        var known = Set(rootObjects)
         for object in newObjects
-        where containerClaim(of: object.id, where: Self.containsForBatchAdd) == nil
-            && known.insert(object.id).inserted
-        {
+        where containerClaim(of: object.id, where: Self.containsForBatchAdd) == nil {
             rootObjects.append(object.id)
         }
         return added
@@ -292,7 +313,7 @@ public actor Resource {
     @discardableResult
     public func remove(id: EUUID) -> Bool {
         guard objects.removeValue(forKey: id) != nil else { return false }
-        rootObjects.removeAll { $0 == id }
+        rootObjects.remove(id)
         unindexNativeContents(of: id)
         return true
     }
@@ -701,19 +722,37 @@ public actor Resource {
             if reference.isMany {
                 // Multi-valued containment - remove all targets from roots
                 if let targetIds = value as? [EUUID] {
-                    for targetId in targetIds {
-                        rootObjects.removeAll { $0 == targetId }
-                    }
+                    removeRoots(targetIds)
                 }
             } else {
                 // Single-valued containment - remove target from roots
                 if let targetId = value as? EUUID {
-                    rootObjects.removeAll { $0 == targetId }
+                    removeRoots([targetId])
                 }
             }
         }
 
         return true
+    }
+
+    /// Removes objects from the root objects, keeping the order of the remaining roots.
+    ///
+    /// Identifiers that are not roots are ignored. The roots are searched one by one at most
+    /// once, however many identifiers are given.
+    ///
+    /// - Parameter ids: The identifiers of the objects that are no longer roots.
+    func removeRoots<S: Sequence>(_ ids: S) where S.Element == EUUID {
+        var present = Set<EUUID>()
+        for id in ids where rootObjects.contains(id) { present.insert(id) }
+        switch present.count {
+        case 0:
+            return
+        case 1:
+            rootObjects.remove(present.first!)
+        default:
+            rootListScans += 1
+            rootObjects.removeAll { present.contains($0) }
+        }
     }
 
     /// Gets a feature value from an object managed by this resource.

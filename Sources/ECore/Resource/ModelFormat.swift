@@ -113,6 +113,13 @@ public enum ModelFormat: String, CaseIterable, Sendable {
     /// See ``SDF3Reader``.
     case sdf3
 
+    /// A multi-level model in the MetaDepth notation, a chain of models at several levels.
+    ///
+    /// The notation is implemented by the MultiLevel module, whose handler replaces the
+    /// built-in one when it is registered; until then, documents of the format can be named
+    /// but neither read nor written.
+    case metadepth = "mdepth"
+
     /// The conventional file extension of the format, without the leading dot.
     public var fileExtension: String { rawValue }
 
@@ -190,7 +197,8 @@ public enum ModelFormat: String, CaseIterable, Sendable {
 
 extension ModelFormat: CustomStringConvertible {
     /// The name of the format as it is written in prose, such as `XMI`, `JSON`, `Ecore`, `KM3`,
-    /// `EMOF`, `UML`, `Emfatic`, `Xcore`, `OCLinEcore`, `ASDL`, `Langium`, `Xtext` or `SDF3`.
+    /// `EMOF`, `UML`, `Emfatic`, `Xcore`, `OCLinEcore`, `ASDL`, `Langium`, `Xtext`, `SDF3` or
+    /// `MetaDepth`.
     public var description: String {
         switch self {
         case .xmi: return "XMI"
@@ -206,6 +214,7 @@ extension ModelFormat: CustomStringConvertible {
         case .langium: return "Langium"
         case .xtext: return "Xtext"
         case .sdf3: return "SDF3"
+        case .metadepth: return "MetaDepth"
         }
     }
 }

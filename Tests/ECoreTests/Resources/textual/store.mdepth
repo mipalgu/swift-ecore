@@ -1,0 +1,18 @@
+Model Commerce@2 {
+  Node ProductType {
+    vat@1 : double = 7.5;
+    price : double = 10.0;
+  }
+}
+
+Commerce Store {
+  ProductType Book {
+    vat = 4.0;
+  }
+}
+
+Store Shelf {
+  Book manual {
+    price = 35.0;
+  }
+}
