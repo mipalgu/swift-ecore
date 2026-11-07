@@ -95,7 +95,9 @@ public struct JSONSerializer: Sendable {
     /// references to objects of other documents as `{"$ref": "<uri>#<fragment>"}`. The
     /// container side of a containment reference is implied by the nesting and left out of
     /// nested objects.
-    /// Keys are sorted.
+    /// Keys are sorted, and a number with a fraction or an exponent is written in its
+    /// shortest form that reads back as the same number (`87.2`, `1e-07`), so the same
+    /// resource is written as the same text on every platform.
     ///
     /// A resource without root objects is written as an empty array (`[]`). A resource whose
     /// root objects are all native packages is written as a metamodel, as
@@ -125,7 +127,8 @@ public struct JSONSerializer: Sendable {
     ///   - resource: The Resource containing objects to serialise
     ///   - diagnostics: Receives the warnings, in the order in which they first occur
     /// - Returns: JSON string
-    /// - Throws: `JSONError` if serialisation fails
+    /// - Throws: `JSONError` if serialisation fails, such as for a number that is infinite or
+    ///   not a number, which JSON cannot hold
     public func serialize(_ resource: Resource, diagnostics: inout ConversionDiagnostics) async throws -> String {
         let roots = await resource.getRootObjects()
 
@@ -145,13 +148,7 @@ public struct JSONSerializer: Sendable {
         diagnostics.merge(context.diagnostics)
         let document: Any = documents.count == 1 ? documents[0] : documents
 
-        let data = try JSONSerialization.data(
-            withJSONObject: document, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
-        guard let jsonString = String(data: data, encoding: .utf8) else {
-            throw JSONError.encodingFailed
-        }
-
-        return jsonString
+        return try JSONText.document(document)
     }
 
     // MARK: - Metamodels

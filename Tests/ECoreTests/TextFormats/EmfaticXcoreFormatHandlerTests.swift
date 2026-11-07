@@ -140,7 +140,7 @@ struct EmfaticXcoreFormatHandlerTests {
         let directory = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("library.emf")
-        try EmfaticFixtures.library.write(to: url, atomically: true, encoding: .utf8)
+        try EmfaticFixtures.library.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         let resourceSet = ResourceSet()
         let loaded = try await ModelIO.load(url: url, resourceSet: resourceSet)
         let direct = EmfaticReader.parse(EmfaticFixtures.library, sourceName: URIReference.canonicalise(url.absoluteString))
@@ -158,7 +158,7 @@ struct EmfaticXcoreFormatHandlerTests {
         let directory = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("library.xcore")
-        try XcoreFixtures.library.write(to: url, atomically: true, encoding: .utf8)
+        try XcoreFixtures.library.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         let loaded = try await ModelIO.load(url: url, resourceSet: ResourceSet())
         let direct = XcoreReader.parse(XcoreFixtures.library, sourceName: URIReference.canonicalise(url.absoluteString))
         #expect(loaded.format == .xcore)
@@ -185,9 +185,9 @@ struct EmfaticXcoreFormatHandlerTests {
         let directory = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let metamodel = directory.appendingPathComponent(name)
-        try text.write(to: metamodel, atomically: true, encoding: .utf8)
+        try text.write(to: metamodel, atomically: testWritesAtomically, encoding: .utf8)
         let model = directory.appendingPathComponent("book.xmi")
-        try Self.libraryModel.write(to: model, atomically: true, encoding: .utf8)
+        try Self.libraryModel.write(to: model, atomically: testWritesAtomically, encoding: .utf8)
         let resourceSet = ResourceSet()
         let loaded = try await ModelIO.load(url: model, resourceSet: resourceSet, metamodels: [metamodel])
         let book = try #require(await loaded.resource.getRootObjects().first)

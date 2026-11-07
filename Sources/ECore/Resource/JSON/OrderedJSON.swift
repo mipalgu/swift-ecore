@@ -428,7 +428,9 @@ extension OrderedJSON {
     ///
     /// Members and elements are written one per line, indented by two spaces per level, with
     /// a space after each colon. Empty arrays and objects are written as `[]` and `{}`.
-    /// Strings escape quotes, backslashes and control characters only.
+    /// Strings escape quotes, backslashes and control characters only. Numbers are written
+    /// in their shortest form that reads back as the same number, as ``JSONText/number(_:)``
+    /// writes them.
     var document: String {
         var output = ""
         write(to: &output, depth: 0)
@@ -442,9 +444,9 @@ extension OrderedJSON {
     ///   - depth: The nesting depth of the value.
     private func write(to output: inout String, depth: Int) {
         switch self {
-        case .string(let text): Self.writeString(text, to: &output)
+        case .string(let text): JSONText.writeString(text, to: &output)
         case .integer(let value): output += String(value)
-        case .number(let value): output += String(value)
+        case .number(let value): output += JSONText.number(value) ?? String(value)
         case .boolean(let value): output += value ? "true" : "false"
         case .null: output += "null"
         case .array(let elements):
@@ -466,7 +468,7 @@ extension OrderedJSON {
             output += "{"
             for (index, member) in members.enumerated() {
                 output += (index == 0 ? "\n" : ",\n") + Self.indentation(depth + 1)
-                Self.writeString(member.key, to: &output)
+                JSONText.writeString(member.key, to: &output)
                 output += ": "
                 member.value.write(to: &output, depth: depth + 1)
             }
@@ -480,33 +482,5 @@ extension OrderedJSON {
     /// - Returns: The spaces that indent it.
     private static func indentation(_ depth: Int) -> String {
         String(repeating: " ", count: depth * indentWidth)
-    }
-
-    /// The escapes of the characters that a JSON string cannot hold as they are.
-    private static let escapes: [Unicode.Scalar: String] = [
-        "\"": "\\\"", "\\": "\\\\", "\n": "\\n", "\r": "\\r", "\t": "\\t", "\u{08}": "\\b", "\u{0C}": "\\f",
-    ]
-
-    /// The first code point that a JSON string holds without an escape.
-    private static let firstPrintable: UInt32 = 0x20
-
-    /// Appends a quoted, escaped string.
-    ///
-    /// - Parameters:
-    ///   - text: The text of the string.
-    ///   - output: The text written so far.
-    private static func writeString(_ text: String, to output: inout String) {
-        output += "\""
-        for scalar in text.unicodeScalars {
-            if let escape = escapes[scalar] {
-                output += escape
-            } else if scalar.value < firstPrintable {
-                let hex = String(scalar.value, radix: 16, uppercase: false)
-                output += "\\u" + String(repeating: "0", count: 4 - hex.count) + hex
-            } else {
-                output.unicodeScalars.append(scalar)
-            }
-        }
-        output += "\""
     }
 }

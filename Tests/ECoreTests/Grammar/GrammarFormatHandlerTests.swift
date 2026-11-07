@@ -131,7 +131,7 @@ struct GrammarFormatHandlerTests {
         let directory = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("Arith.\(format.fileExtension)")
-        try text.write(to: url, atomically: true, encoding: .utf8)
+        try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         let resourceSet = ResourceSet()
         let loaded = try await ModelIO.load(url: url, resourceSet: resourceSet)
         let direct = Self.direct(format, text, sourceName: URIReference.canonicalise(url.absoluteString))
@@ -213,7 +213,7 @@ struct GrammarFormatHandlerTests {
         var urls: [URL] = []
         for (format, text) in Self.fixtures {
             let url = directory.appendingPathComponent("Arith.\(format.fileExtension)")
-            try text.write(to: url, atomically: true, encoding: .utf8)
+            try text.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
             urls.append(url)
         }
         let packages = try await ModelIO.registerMetamodels(at: urls, in: ResourceSet())

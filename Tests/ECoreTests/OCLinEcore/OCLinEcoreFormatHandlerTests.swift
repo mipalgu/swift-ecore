@@ -76,7 +76,7 @@ struct OCLinEcoreFormatHandlerTests {
         let directory = try Self.temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let url = directory.appendingPathComponent("school.oclinecore")
-        try OCLinEcoreFixtures.school.write(to: url, atomically: true, encoding: .utf8)
+        try OCLinEcoreFixtures.school.write(to: url, atomically: testWritesAtomically, encoding: .utf8)
         let resourceSet = ResourceSet()
         let loaded = try await ModelIO.load(url: url, resourceSet: resourceSet)
         let direct = OCLinEcoreReader.parse(

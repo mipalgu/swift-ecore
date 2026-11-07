@@ -394,16 +394,16 @@ struct AssemblerTests {
         link.defaultValue = "x"
         let result = assemble([packageDraft("shop", [classDraft("Item", features: [title, link])])])
         let item = try #require(eClass(result.packages[0], "Item"))
-        let attribute = try #require(attribute(item, "title"))
-        #expect(attribute.lowerBound == 1 && attribute.upperBound == -1)
-        #expect(!attribute.changeable && attribute.volatile && attribute.transient)
-        #expect(attribute.unsettable && attribute.derived && !attribute.unique && !attribute.ordered)
-        #expect(attribute.isID)
-        #expect(attribute.defaultValueLiteral == "none")
-        #expect(attribute.eAnnotations.first?.details["a"] == "b")
-        let reference = try #require(reference(item, "link"))
-        #expect(reference.containment && !reference.resolveProxies)
-        #expect(reference.defaultValueLiteral == "x")
+        let titleAttribute = try #require(attribute(item, "title"))
+        #expect(titleAttribute.lowerBound == 1 && titleAttribute.upperBound == -1)
+        #expect(!titleAttribute.changeable && titleAttribute.volatile && titleAttribute.transient)
+        #expect(titleAttribute.unsettable && titleAttribute.derived && !titleAttribute.unique && !titleAttribute.ordered)
+        #expect(titleAttribute.isID)
+        #expect(titleAttribute.defaultValueLiteral == "none")
+        #expect(titleAttribute.eAnnotations.first?.details["a"] == "b")
+        let linkReference = try #require(reference(item, "link"))
+        #expect(linkReference.containment && !linkReference.resolveProxies)
+        #expect(linkReference.defaultValueLiteral == "x")
     }
 
     // MARK: Operations
