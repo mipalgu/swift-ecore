@@ -152,7 +152,9 @@ public enum EcoreLoadDiagnostic {
     ///
     /// As the ATL tool chain does, ``ModelIO`` registers a root package of a text metamodel,
     /// such as KM3, that has no namespace URI under its name with the resource set, so that
-    /// documents of the same load can refer to it. The package itself keeps its empty URI.
+    /// documents of the same load can refer to it. The package itself keeps its empty URI,
+    /// which the constraint `WellFormedNsURI` of the validator reports as in EMF, and the
+    /// warning says so.
     ///
     /// - Parameters:
     ///   - package: The name of the package.
@@ -162,7 +164,8 @@ public enum EcoreLoadDiagnostic {
         SourceDiagnostic(
             severity: .warning, code: registeredUnderName,
             message: "The package '\(package)' has no '\(EcoreFeatureName.nsURI.rawValue)' "
-                + "and is registered under its name in this resource set",
+                + "and is registered under its name in this resource set only; its '\(EcoreFeatureName.nsURI.rawValue)' "
+                + "stays empty, which validation reports as an error",
             document: document)
     }
 }

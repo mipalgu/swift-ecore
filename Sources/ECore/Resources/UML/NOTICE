@@ -2,12 +2,15 @@ Third-party content: Eclipse UML2 metamodels
 ============================================
 
 The files UML.ecore and Types.ecore in this directory are unmodified copies of
-the metamodels of the Eclipse UML2 project:
+the metamodels of the Eclipse UML2 project, and UMLPrimitiveTypes.library.uml
+is an unmodified copy of its library of UML primitive types:
 
   Project:    Eclipse UML2 (https://github.com/eclipse-uml2/uml2)
   Revision:   eac42a01032d5dcc634e962b03624194a8687f6f
   UML.ecore:  plugins/org.eclipse.uml2.uml/model/UML.ecore
   Types.ecore: plugins/org.eclipse.uml2.types/model/Types.ecore
+  UMLPrimitiveTypes.library.uml:
+              plugins/org.eclipse.uml2.uml.resources/libraries/UMLPrimitiveTypes.library.uml
 
 They are made available by the Eclipse Foundation under the terms of the
 Eclipse Public License 2.0 (SPDX-License-Identifier: EPL-2.0), a copy of

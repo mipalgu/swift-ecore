@@ -199,6 +199,9 @@ struct KM3FormatHandlerTests {
         #expect(diagnostics.first?.severity == .warning)
         #expect(diagnostics.first?.message.contains("Garden") == true)
         #expect(diagnostics.first?.document == "memory:/Garden.km3")
+        let message = diagnostics.first?.message ?? ""
+        #expect(message.contains("in this resource set only"), "\(message)")
+        #expect(message.contains("validation reports"), "\(message)")
     }
 
     @Test("a KM3 metamodel without a namespace URI is usable by the models of a load")

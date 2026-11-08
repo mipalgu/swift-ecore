@@ -8,8 +8,9 @@ import Foundation
 
 /// The Eclipse UML2 metamodel that this package ships, with which UML models are read.
 ///
-/// The package ships the metamodel of Eclipse UML2 5.x (`UML.ecore`) and the primitive types
-/// it refers to (`Types.ecore`) unchanged, under the terms of the Eclipse Public License 2.0,
+/// The package ships the metamodel of Eclipse UML2 5.x (`UML.ecore`), the primitive types
+/// it refers to (`Types.ecore`) and the library of UML primitive types that UML models refer
+/// to (`UMLPrimitiveTypes.library.uml`) unchanged, under the terms of the Eclipse Public License 2.0,
 /// whose text and a notice of their origin accompany them among the resources of this module.
 ///
 /// The metamodel is loaded once per program on first use and then shared. ``register(in:)``
@@ -35,6 +36,14 @@ public enum UMLMetamodel {
     /// The name of the document of the UML primitive types, without its extension.
     public static let typesName = "Types"
 
+    /// The name of the document of the Eclipse UML2 library of UML primitive types, without
+    /// its extension.
+    public static let primitiveTypesLibraryName = "UMLPrimitiveTypes.library"
+
+    /// The location by which UML models refer to the library of UML primitive types, such as
+    /// `pathmap://UML_LIBRARIES/UMLPrimitiveTypes.library.uml#String`.
+    public static let primitiveTypesLibraryURI = UMLToEcore.Syntax.Library.umlPrimitiveTypes
+
     /// The location by which the UML metamodel refers to its primitive types.
     static let typesPlatformURI = "platform:/plugin/org.eclipse.uml2.types/model/Types.ecore"
 
@@ -52,6 +61,16 @@ public enum UMLMetamodel {
     public static func url(of name: String) -> URL? {
         BundledResources.url(
             forResource: name, withExtension: ModelFormat.ecore.fileExtension, subdirectory: subdirectory,
+            in: .module, bundleName: bundleName)
+    }
+
+    /// The location of the bundled Eclipse UML2 library of UML primitive types.
+    ///
+    /// - Returns: The location of `UMLPrimitiveTypes.library.uml`, or `nil` if the resources
+    ///   of this module are not available.
+    public static func primitiveTypesLibraryURL() -> URL? {
+        BundledResources.url(
+            forResource: primitiveTypesLibraryName, withExtension: UMLFormat.fileExtension, subdirectory: subdirectory,
             in: .module, bundleName: bundleName)
     }
 
@@ -73,6 +92,10 @@ public enum UMLMetamodel {
     /// ``UMLNamespaces/types``. A namespace under which another package is already registered
     /// keeps that package.
     ///
+    /// ``primitiveTypesLibraryURI`` is also mapped to the bundled library of UML primitive
+    /// types, unless the resource set already maps it elsewhere, so that references of a model
+    /// to its primitive types, such as `String`, resolve as they do in Eclipse.
+    ///
     /// - Parameter resourceSet: The resource set to register the packages with.
     /// - Returns: The UML package.
     /// - Throws: The errors of ``packages()``.
@@ -83,6 +106,12 @@ public enum UMLMetamodel {
             for uri in uris where await resourceSet.getMetamodel(uri: uri) == nil {
                 await resourceSet.registerMetamodel(package, uri: uri)
             }
+        }
+        if let library = primitiveTypesLibraryURL(),
+            await resourceSet.convertURI(primitiveTypesLibraryURI) == primitiveTypesLibraryURI
+        {
+            await resourceSet.mapURI(
+                from: primitiveTypesLibraryURI, to: URIReference.canonicalise(library.absoluteString))
         }
         return uml
     }

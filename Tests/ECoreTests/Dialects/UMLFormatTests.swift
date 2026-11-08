@@ -261,6 +261,38 @@ struct UMLFormatTests {
         #expect(await read.resource.eGet(objectId: roots[1].id, feature: "lifespan") as? Int == 12)
     }
 
+    @Test("References to the UML primitive types resolve to the bundled library", arguments: [
+        "class-model-omg.xmi", "garden.uml",
+    ])
+    func primitiveTypesResolve(name: String) async throws {
+        let resourceSet = ResourceSet()
+        let read = try await Self.read(name, in: resourceSet)
+        var resolved: [String] = []
+        for object in await read.resource.getAllObjects() {
+            guard let proxy = await read.resource.eGet(objectId: object.id, feature: "type") as? ResourceProxy,
+                proxy.uri == UMLMetamodel.primitiveTypesLibraryURI
+            else { continue }
+            let target = try #require(await proxy.resolveObject(in: resourceSet), "\(proxy.fragment)")
+            #expect(target.eClass.name == "PrimitiveType")
+            let library = try #require(await proxy.targetResource(in: resourceSet))
+            resolved.append(try #require(await library.eGet(objectId: target.id, feature: "name") as? String))
+        }
+        #expect(!resolved.isEmpty)
+        #expect(resolved.allSatisfy { ["Boolean", "Integer", "Real", "String", "UnlimitedNatural"].contains($0) })
+        #expect(UMLMetamodel.primitiveTypesLibraryURL() != nil)
+    }
+
+    @Test("The bundled library of primitive types is the unmodified Eclipse UML2 document")
+    func primitiveTypesLibraryIsBundled() throws {
+        let url = try #require(UMLMetamodel.primitiveTypesLibraryURL())
+        let text = try String(contentsOf: url, encoding: .utf8)
+        #expect(text.contains("name=\"PrimitiveTypes\" URI=\"http://www.omg.org/spec/PrimitiveTypes/20131001\""))
+        #expect(text.contains("xmi:id=\"UnlimitedNatural\""))
+        let notice = try String(
+            contentsOf: url.deletingLastPathComponent().appendingPathComponent("NOTICE"), encoding: .utf8)
+        #expect(notice.contains("UMLPrimitiveTypes.library.uml"))
+    }
+
     @Test("UML documents are recognised by their namespaces")
     func sniffsUML() throws {
         for name in ["garden.uml", "garden-stereotyped.uml", "garden-profiled.uml", "class-model-omg.xmi"] {
