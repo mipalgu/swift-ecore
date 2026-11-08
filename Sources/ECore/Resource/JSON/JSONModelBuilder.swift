@@ -198,7 +198,8 @@ struct JSONModelBuilder {
     private mutating func build(_ document: [String: Any], expected: EClass?) throws -> DynamicEObject {
         let eClass = try resolveClass(of: document, expected: expected)
         var object = DynamicEObject(eClass: eClass)
-        for attribute in eClass.allAttributes {
+        let attributes = Self.distinct(eClass.allAttributes)
+        for attribute in attributes {
             guard let json = document[attribute.name], !(json is NSNull) else { continue }
             let value = try convert(json, for: attribute)
             object.eSet(attribute, value)
@@ -207,8 +208,8 @@ struct JSONModelBuilder {
             }
         }
         var known = Set([JSONSyntax.eClassKey])
-        known.formUnion(eClass.allAttributes.map(\.name))
-        for reference in eClass.allReferences {
+        known.formUnion(attributes.map(\.name))
+        for reference in Self.distinct(eClass.allReferences) {
             known.insert(reference.name)
             guard let json = document[reference.name], !(json is NSNull) else { continue }
             var items: [PendingLink.Item] = []
@@ -236,6 +237,20 @@ struct JSONModelBuilder {
         }
         objects.append(object)
         return object
+    }
+
+    /// The features of a class with each one once, in the order of their first occurrence.
+    ///
+    /// A class inherits a feature once for each path to the class that declares it, so that
+    /// the features of a class whose supertypes share a supertype, as many classes of UML do,
+    /// list the features of the shared supertype more than once. Reading such a feature once
+    /// keeps the objects that it holds from being built more than once.
+    ///
+    /// - Parameter features: The features, such as the `allReferences` of a class.
+    /// - Returns: The features without repetitions.
+    static func distinct<Feature: EStructuralFeature>(_ features: [Feature]) -> [Feature] {
+        var seen = Set<EUUID>()
+        return features.filter { seen.insert($0.id).inserted }
     }
 
     /// Finds the class of an object.
@@ -274,9 +289,9 @@ struct JSONModelBuilder {
     private static func scalar(_ json: Any) -> (any EcoreValue)? {
         switch JSONScalarKind.of(json) {
         case .string: return json as? String
-        case .boolean: return (json as? NSNumber)?.boolValue ?? (json as? Bool)
-        case .integer: return (json as? NSNumber)?.intValue ?? (json as? Int)
-        case .double: return (json as? NSNumber)?.doubleValue ?? (json as? Double)
+        case .boolean: return JSONNumbers.number(json)?.boolValue ?? (json as? Bool)
+        case .integer: return JSONNumbers.number(json)?.intValue ?? (json as? Int)
+        case .double: return JSONNumbers.number(json).map(JSONNumbers.double) ?? (json as? Double)
         case nil: return nil
         }
     }
@@ -309,7 +324,7 @@ struct JSONModelBuilder {
     ///
     /// Enumeration values are literal names or values. Dates are read in any form that EMF
     /// reads (see ``EcoreDateCoding/emfDate(from:)``); other data types are converted by the
-    /// Ecore factory.
+    /// Ecore factory, from text that holds the exact value of a number (see ``JSONNumbers``).
     ///
     /// - Parameters:
     ///   - json: The JSON value.
@@ -319,20 +334,22 @@ struct JSONModelBuilder {
     private func single(_ json: Any, for attribute: EAttribute) throws -> (any EcoreValue)? {
         if let eEnum = attribute.eType as? EEnum {
             if let text = json as? String { return eEnum.storedValue(forText: text) }
-            if let number = json as? NSNumber {
+            if let number = JSONNumbers.number(json) {
                 return eEnum.getLiteral(value: number.intValue)?.name ?? number.stringValue
             }
             throw mismatch(json, attribute)
         }
         guard let dataType = attribute.eType as? EDataType else { throw mismatch(json, attribute) }
         let literal: String
-        switch json {
-        case let text as String: literal = text
-        case let number as NSNumber:
+        if let text = json as? String {
+            literal = text
+        } else if let number = JSONNumbers.number(json) {
             let isBoolean = [EcoreDataType.eBoolean.rawValue, EcoreDataType.eBooleanObject.rawValue]
                 .contains(dataType.name) || JSONScalarKind.of(number) == .boolean
-            literal = isBoolean ? (number.boolValue ? "true" : "false") : number.stringValue
-        default: throw mismatch(json, attribute)
+            let exact = JSONNumbers.literal(json) ?? number.stringValue
+            literal = isBoolean ? (number.boolValue ? "true" : "false") : exact
+        } else {
+            throw mismatch(json, attribute)
         }
         if dataType.name == EcoreDataType.eDate.rawValue {
             guard let date = EcoreDateCoding.emfDate(from: literal) else { throw mismatch(json, attribute) }

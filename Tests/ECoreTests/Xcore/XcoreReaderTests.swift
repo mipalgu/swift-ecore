@@ -327,6 +327,28 @@ struct XcoreReaderTests {
         #expect(body(count.eAnnotations, .get) == "{\n        if (true) { 1 } else { 2 }\n    }")
     }
 
+    /// Each warning about a body that is not executed names the kind of body in plain words.
+    @Test func bodyWarningsNameTheKindOfBody() throws {
+        let result = XcoreReader.parse("""
+            package shop
+            class Order {
+                int total get { 1 } set { } isSet { true } unset { }
+                op int twice() { 2 }
+            }
+            type Money wraps java.math.BigDecimal create { null } convert { null }
+            """)
+        let messages = result.warnings.filter { $0.code == XcoreDiagnosticCode.bodyNotExecuted.rawValue }.map(\.message)
+        #expect(messages == [
+            "The Xbase getter of the feature is kept as text but not executed",
+            "The Xbase setter of the feature is kept as text but not executed",
+            "The Xbase is-set body of the feature is kept as text but not executed",
+            "The Xbase unset body of the feature is kept as text but not executed",
+            "The Xbase body of the operation is kept as text but not executed",
+            "The Xbase creation body of the data type is kept as text but not executed",
+            "The Xbase conversion body of the data type is kept as text but not executed",
+        ])
+    }
+
     /// Operation bodies and data type bodies are kept verbatim; their lexical problems are ignored.
     @Test func operationAndDataTypeBodies() throws {
         let result = XcoreReader.parse("""

@@ -62,7 +62,8 @@ enum GrammarNaming {
 
     /// Generates names for unnamed positional fields.
     ///
-    /// The names follow the convention of the ASDL paper's generated code:
+    /// The names follow the convention of the generated code of the
+    /// [ASDL paper](https://www.usenix.org/conference/dsl-97/zephyr-abstract-syntax-description-language):
     /// the field type's name in lower case, followed by its occurrence among the
     /// fields of that type, so the fields of `Assign(identifier, exp)` are
     /// `identifier1` and `exp1`. A name given explicitly is kept, and a

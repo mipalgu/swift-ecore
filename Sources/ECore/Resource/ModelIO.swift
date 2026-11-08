@@ -69,10 +69,12 @@ public enum ModelIO {
         /// The encoding in which a document in a text format is read, or `nil` to detect it.
         ///
         /// Without an explicit encoding, a text document is read as UTF-8 and, if it is not
-        /// valid UTF-8, as ISO-8859-1 with a warning (see `DecodedText`). This applies to KM3
-        /// documents, but not to the metamodels that are registered before a document is read.
-        /// XMI, Ecore, EMOF, UML and JSON documents are decoded as their own rules prescribe
-        /// and ignore this option.
+        /// valid UTF-8, as ISO-8859-1 with a warning (see `DecodedText`). This applies to
+        /// documents in text formats, such as KM3; the metamodels that are registered before a
+        /// document is read follow the ``EcoreLoadOptions/textEncoding`` of
+        /// ``ecoreLoadOptions``, which also applies when this option is `nil`. XMI, Ecore, EMOF,
+        /// UML and JSON documents are decoded as their own rules prescribe and ignore this
+        /// option.
         public var textEncoding: TextEncoding?
 
         /// Creates load options.

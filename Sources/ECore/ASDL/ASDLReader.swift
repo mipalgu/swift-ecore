@@ -9,7 +9,8 @@ public import EMFBase
 /// Reads Zephyr ASDL descriptions as Ecore metamodels.
 ///
 /// The Abstract Syntax Description Language (Wang, Appel, Korn and Serra,
-/// USENIX DSL 1997) describes tree-shaped data such as abstract syntax trees.
+/// [USENIX DSL 1997](https://www.usenix.org/conference/dsl-97/zephyr-abstract-syntax-description-language))
+/// describes tree-shaped data such as abstract syntax trees.
 /// The reader accepts the grammar of the paper together with CPython's
 /// dialect, whose `Parser/asdl.py` adds attributes on product types and
 /// combined quantifiers, a module's `version` string from older CPython

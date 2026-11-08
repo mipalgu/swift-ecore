@@ -74,6 +74,17 @@ public struct EcoreLoadOptions: Sendable, Hashable {
     /// namespace URI and prefix where a module has none.
     public var sdf3Options: SDF3ImportOptions
 
+    /// The encoding in which documents in text formats are read, or `nil` to detect it.
+    ///
+    /// It applies to the metamodels that ``ModelIO`` registers and to every document whose
+    /// ``ModelIO/LoadOptions`` name no encoding of their own (see
+    /// ``ModelFormatReadRequest/encoding``). Without an encoding, a text document is read as
+    /// UTF-8 and, if it is not valid UTF-8, as ISO-8859-1 with a warning (see `DecodedText`);
+    /// with one, it is read in that encoding alone, and bytes that are not valid in it are
+    /// an error. XMI, Ecore, EMOF, UML and JSON documents are decoded as their own rules
+    /// prescribe and ignore it.
+    public var textEncoding: TextEncoding?
+
     /// Creates load options.
     ///
     /// - Parameters:
@@ -84,11 +95,14 @@ public struct EcoreLoadOptions: Sendable, Hashable {
     ///   - langiumOptions: How a metamodel is inferred from a Langium grammar (default options).
     ///   - xtextOptions: How the packages of an Xtext grammar are imported (default options).
     ///   - sdf3Options: How a metamodel is imported from SDF3 (default options).
+    ///   - textEncoding: The encoding of documents in text formats, or `nil` (the default) to
+    ///     detect it.
     public init(
         unresolvedReferences: UnresolvedReferences = .useDefaults, tolerant: Bool = false,
         km3Options: KM3ReadOptions = .standard, asdlOptions: ASDLImportOptions = ASDLImportOptions(),
         langiumOptions: LangiumImportOptions = LangiumImportOptions(),
-        xtextOptions: XtextImportOptions = XtextImportOptions(), sdf3Options: SDF3ImportOptions = SDF3ImportOptions()
+        xtextOptions: XtextImportOptions = XtextImportOptions(), sdf3Options: SDF3ImportOptions = SDF3ImportOptions(),
+        textEncoding: TextEncoding? = nil
     ) {
         self.unresolvedReferences = unresolvedReferences
         self.tolerant = tolerant
@@ -97,6 +111,7 @@ public struct EcoreLoadOptions: Sendable, Hashable {
         self.langiumOptions = langiumOptions
         self.xtextOptions = xtextOptions
         self.sdf3Options = sdf3Options
+        self.textEncoding = textEncoding
     }
 
     /// The namespace from which the identifiers of placeholder classifiers derive.

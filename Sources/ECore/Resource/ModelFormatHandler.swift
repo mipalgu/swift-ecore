@@ -101,7 +101,10 @@ public struct ModelFormatReadRequest: Sendable {
     }
 
     /// The encoding in which a text document is to be read, or `nil` to detect it.
-    public var encoding: TextEncoding? { options.textEncoding }
+    ///
+    /// It is the ``ModelIO/LoadOptions/textEncoding`` of the options, else the
+    /// ``EcoreLoadOptions/textEncoding`` of their Ecore load options.
+    public var encoding: TextEncoding? { options.textEncoding ?? options.ecoreLoadOptions.textEncoding }
 
     /// Decodes the document as text.
     ///

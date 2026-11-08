@@ -140,6 +140,32 @@ struct UMLFormatTests {
         #expect(rewritten.text == text)
     }
 
+    @Test("A class model round-trips through JSON with the classes of the UML metamodel")
+    func roundTripsThroughJSON() async throws {
+        let first = try await Self.read("garden.uml")
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("uml-json-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let json = directory.appendingPathComponent("garden.json")
+        _ = try await ModelIO.save(first.resource, to: json, format: .json)
+
+        let loaded = try await ModelIO.load(url: json, format: .json, resourceSet: ResourceSet())
+
+        #expect(loaded.diagnostics.warnings.isEmpty, "\(loaded.diagnostics.warnings.map(\.message))")
+        let (uml, _) = try await UMLMetamodel.packages()
+        let roots = await loaded.resource.getRootObjects()
+        #expect(roots.first?.eClass.id == uml.getEClass("Model")?.id)
+        #expect(await Self.classCounts(in: loaded.resource) == Self.classCounts(in: first.resource))
+        let copy = directory.appendingPathComponent("garden-copy.uml")
+        let written = try await UMLFormat.write(loaded.resource, relativeTo: copy)
+        #expect(written.text.contains("xmlns:uml=\"http://www.eclipse.org/uml2/5.0.0/UML\""), "\(written.text)")
+        #expect(written.text.contains("<packagedElement xmi:type=\"uml:Class\""), "\(written.text)")
+        let second = try await UMLFormat.read(data: Data(written.text.utf8), uri: copy.absoluteString, resourceSet: ResourceSet())
+        #expect(second.diagnostics.isEmpty, "\(second.diagnostics.map(\.message))")
+        #expect(await Self.classCounts(in: second.resource) == Self.classCounts(in: first.resource))
+    }
+
     @Test("A stereotype application without its profile loads with a warning")
     func stereotypeWithoutProfile() async throws {
         let read = try await Self.read("garden-stereotyped.uml")

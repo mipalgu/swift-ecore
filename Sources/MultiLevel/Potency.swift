@@ -233,7 +233,7 @@ extension PotencyScheme {
     }
 }
 
-/// MetaDepth potency (de Lara and Guerra).
+/// MetaDepth potency ([de Lara and Guerra](https://doi.org/10.1007/978-3-642-13953-6_1)).
 ///
 /// A feature of potency *p* is a definition for *p* levels and becomes a slot exactly *p*
 /// levels below its declaration; values given above that level are defaults. Unbounded
@@ -268,7 +268,8 @@ public struct MetaDepthPotencyScheme: PotencyScheme {
     }
 }
 
-/// Melanee potency (Atkinson and Gerbig): durability and mutability.
+/// Melanee potency ([Atkinson and Gerbig](https://madoc.bib.uni-mannheim.de/40981)): durability
+/// and mutability.
 ///
 /// A feature of durability *d* endures *d* levels below its declaration and holds a value at
 /// every level where it exists; its value may be changed at the declaring level and at the

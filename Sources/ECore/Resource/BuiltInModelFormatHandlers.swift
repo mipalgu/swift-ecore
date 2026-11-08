@@ -113,7 +113,10 @@ struct JSONFormatHandler: BuiltInModelFormatHandler, WritableModelFormatHandler 
     ///
     /// Unless the options say otherwise, the classes of the document must be defined by a
     /// registered metamodel whenever the resource set has one. A document whose roots are
-    /// all packages is a metamodel, whose packages are registered.
+    /// all packages is a metamodel, whose packages are registered. A document that refers to
+    /// classes of the UML metamodel, such as a UML model converted to JSON, is read with the
+    /// bundled UML metamodel (see ``UMLMetamodel/registerIfReferenced(by:in:)``), so that its
+    /// objects keep their UML classes.
     ///
     /// - Parameter request: The document to read.
     /// - Returns: The resource of the document with its registered packages and the
@@ -127,6 +130,7 @@ struct JSONFormatHandler: BuiltInModelFormatHandler, WritableModelFormatHandler 
         } else {
             requiresMetamodel = !(await resourceSet.getMetamodelURIs().isEmpty)
         }
+        _ = try? await UMLMetamodel.registerIfReferenced(by: request.data, in: resourceSet)
         let parser = JSONParser(resourceSet: resourceSet, options: JSONParseOptions(requiresMetamodel: requiresMetamodel))
         let resource = try await parser.parse(request.data, uri: request.uri)
         let packages = await ModelIO.metamodelPackages(of: resource) != nil

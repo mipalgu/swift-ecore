@@ -181,6 +181,22 @@ public enum XcoreLanguage {
         case create
         /// The conversion body of a data type.
         case convert
+
+        /// The kind of body and the element that has it, in plain words for diagnostics.
+        ///
+        /// For example, `getter of the feature` for ``get`` or `body of the operation` for
+        /// ``body``.
+        public var phrase: String {
+            switch self {
+            case .body: return "body of the operation"
+            case .get: return "getter of the feature"
+            case .set: return "setter of the feature"
+            case .isSet: return "is-set body of the feature"
+            case .unset: return "unset body of the feature"
+            case .create: return "creation body of the data type"
+            case .convert: return "conversion body of the data type"
+            }
+        }
     }
 
     /// The Ecore attributes that the `@Ecore` annotation can set.

@@ -284,4 +284,53 @@ struct JSONMetamodelAwareTests {
             #expect(chapters.map { $0.eGet("heading") as? String } == ["One", "Two"])
         }
     }
+
+    @Test("a feature inherited along several paths is read once")
+    func diamondInheritance() async throws {
+        let metamodel = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI"
+                xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="diamond"
+                nsURI="http://example.org/diamond" nsPrefix="diamond">
+              <eClassifiers xsi:type="ecore:EClass" name="Element" abstract="true">
+                <eStructuralFeatures xsi:type="ecore:EReference" name="notes" upperBound="-1"
+                    eType="#//Note" containment="true"/>
+                <eStructuralFeatures xsi:type="ecore:EReference" name="related" upperBound="-1"
+                    eType="#//Element"/>
+              </eClassifiers>
+              <eClassifiers xsi:type="ecore:EClass" name="Named" abstract="true" eSuperTypes="#//Element"/>
+              <eClassifiers xsi:type="ecore:EClass" name="Typed" abstract="true" eSuperTypes="#//Element"/>
+              <eClassifiers xsi:type="ecore:EClass" name="Field" eSuperTypes="#//Named #//Typed">
+                <eStructuralFeatures xsi:type="ecore:EReference" name="fields" upperBound="-1"
+                    eType="#//Field" containment="true"/>
+              </eClassifiers>
+              <eClassifiers xsi:type="ecore:EClass" name="Note" eSuperTypes="#//Element">
+                <eStructuralFeatures xsi:type="ecore:EAttribute" name="text"
+                    eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+              </eClassifiers>
+            </ecore:EPackage>
+            """
+        let json = """
+            {"eClass": "http://example.org/diamond#//Field",
+             "notes": [{"eClass": "http://example.org/diamond#//Note", "text": "first"}],
+             "fields": [{"eClass": "http://example.org/diamond#//Field", "related": [{"$ref": "//"}]}]}
+            """
+        let resourceSet = ResourceSet()
+        let loaded = try await resourceSet.loadEcoreResource(text: metamodel, uri: "memory:/diamond.ecore")
+        let packages = await loaded.getRootObjects().compactMap { $0 as? EPackage }
+        for package in packages {
+            await resourceSet.registerMetamodel(package, uri: package.nsURI)
+        }
+
+        let resource = try await JSONParser(resourceSet: resourceSet).parse(Data(json.utf8), uri: "memory:/diamond.json")
+
+        let objects = await resource.getAllObjects()
+        let names = objects.map { $0.eClass.name }.sorted()
+        #expect(names == ["Field", "Field", "Note"])
+        let root = try await Self.root(of: resource)
+        #expect(await Self.objects("notes", of: root, in: resource).count == 1)
+        let child = try #require(await Self.objects("fields", of: root, in: resource).first)
+        #expect(Self.targets(child.eGet("related")) == [root.id])
+    }
 }

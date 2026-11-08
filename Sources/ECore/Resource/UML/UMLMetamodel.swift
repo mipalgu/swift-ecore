@@ -87,6 +87,32 @@ public enum UMLMetamodel {
         return uml
     }
 
+    /// Registers the UML metamodel with a resource set if a document refers to its classes.
+    ///
+    /// A UML model written in a format other than UML, such as JSON, names the class of each
+    /// object by a URI in one of the namespaces that ``register(in:)`` registers, such as
+    /// `http://www.eclipse.org/uml2/5.0.0/UML#//Class`. Registering the metamodel before the
+    /// document is read lets its objects keep the classes of UML, so that the model can be
+    /// written as UML again. Nothing is registered for a document that refers to no such class.
+    ///
+    /// - Parameters:
+    ///   - data: The contents of the document.
+    ///   - resourceSet: The resource set to register the packages with.
+    /// - Returns: Whether the document refers to a class of the UML metamodel.
+    /// - Throws: The errors of ``register(in:)``.
+    @discardableResult
+    public static func registerIfReferenced(by data: Data, in resourceSet: ResourceSet) async throws -> Bool {
+        let namespaces = [UMLNamespaces.uml, UMLNamespaces.types] + UMLNamespaces.metamodelAliases
+        guard namespaces.contains(where: { data.range(of: Data(($0 + classReferenceSeparator).utf8)) != nil }) else {
+            return false
+        }
+        try await register(in: resourceSet)
+        return true
+    }
+
+    /// The text between a namespace URI and the path of a class in a reference to the class.
+    static let classReferenceSeparator = "#//"
+
     /// Loads the bundled documents into a new resource set.
     ///
     /// The primitive types are made available under the location by which the metamodel

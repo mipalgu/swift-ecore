@@ -94,7 +94,9 @@ struct ASDLModule: Sendable, Hashable {
 
 /// A recursive-descent parser for ASDL that recovers from errors.
 ///
-/// The parser accepts the grammar of the ASDL paper and CPython's dialect,
+/// The parser accepts the grammar of the
+/// [ASDL paper](https://www.usenix.org/conference/dsl-97/zephyr-abstract-syntax-description-language)
+/// and CPython's dialect,
 /// which adds attributes on product types and repeated quantifiers, together
 /// with a module's `version` string, several modules in one text, the
 /// asdlGen import list `module M (imports N) { ... }` and qualified type

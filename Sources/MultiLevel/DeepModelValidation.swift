@@ -407,8 +407,8 @@ struct DeepModelValidator {
         let expected = feature.targetLevel ?? sourceLevel
         if objectLevel != expected {
             let reason = feature.targetLevel == nil
-                ? "references within level \(sourceLevel) unless declared to cross levels"
-                : "references level \(expected)"
+                ? "may refer only to level \(sourceLevel), as it declares no other target level"
+                : "is declared to refer to level \(expected)"
             report(
                 MultiLevelDiagnosticCode.levelCrossing,
                 "'\(name)' refers to '\(objectName)' at level \(objectLevel), but it \(reason)")

@@ -373,7 +373,7 @@ struct XcoreParser {
     private mutating func addBody(_ key: XcoreLanguage.BodyKey, range: SourceRange, to annotations: inout [DraftAnnotation]) {
         document.bodies.append(range)
         cursor.report(cursor.factory.warning(
-            .bodyNotExecuted, "The Xbase '\(key.rawValue)' body is kept as text but is not executed", at: range))
+            .bodyNotExecuted, "The Xbase \(key.phrase) is kept as text but not executed", at: range))
         let detail = DraftDetail(key: key.rawValue, value: sourceText(range))
         if let index = annotations.firstIndex(where: { $0.source == XcoreLanguage.namespaceURI }) {
             Self.put(detail, into: &annotations[index])

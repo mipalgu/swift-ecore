@@ -56,6 +56,18 @@ struct DeepModelValidationTests {
         #expect(try Self.codes(Self.crossing) == [MultiLevelDiagnosticCode.levelCrossing])
     }
 
+    @Test("the message of a level crossing says which level the reference may refer to")
+    func crossingMessages() throws {
+        #expect(try Self.messages(Self.crossing) == [
+            "'Inventory.bike.alternative' refers to 'Catalogue.Racer' at level 1, "
+                + "but it may refer only to level 0, as it declares no other target level",
+        ])
+        let wrongLevel = Self.crossing.replacingOccurrences(of: "[0..1];", with: "[0..1] {level=0};")
+        #expect(try Self.messages(wrongLevel) == [
+            "'Inventory.bike.alternative' refers to 'Catalogue.Racer' at level 1, but it is declared to refer to level 0",
+        ])
+    }
+
     @Test("the non-strict policy lets any reference cross levels")
     func nonStrictAdmitsCrossing() throws {
         #expect(try Self.codes(Self.crossing, policy: .nonStrict).isEmpty)

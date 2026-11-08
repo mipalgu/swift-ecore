@@ -44,7 +44,8 @@ import EMFBase
 /// default: the sort of the argument (of its elements, for lists and options)
 /// in lower case, followed by its occurrence among the arguments of that sort,
 /// such as `exp1` and `exp2`. This is the convention of the generated code in
-/// the ASDL paper of Wang, Appel, Korn and Serra (1997). With
+/// the [ASDL paper](https://www.usenix.org/conference/dsl-97/zephyr-abstract-syntax-description-language)
+/// of Wang, Appel, Korn and Serra (1997). With
 /// ``SDF3ImportOptions/useLabels``, labelled arguments such as `<lhs:Exp>` are
 /// named after their labels.
 ///

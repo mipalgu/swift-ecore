@@ -73,11 +73,12 @@ enum JSONScalarKind: Hashable, Sendable {
     ///
     /// Booleans are told apart from numbers by their Core Foundation type where it exists,
     /// and by the type encoding of the number elsewhere; Swift values of the standard
-    /// types are classified directly.
+    /// types are classified directly, and a ``JSONNumberText`` by the number it holds.
     ///
     /// - Parameter json: The JSON value.
     /// - Returns: The kind, or `nil` for arrays, objects, and `null`.
     static func of(_ json: Any) -> JSONScalarKind? {
+        if let written = json as? JSONNumberText { return of(written.number) }
         if json is String { return .string }
         if let number = json as? NSNumber {
             if isBoolean(number) { return .boolean }

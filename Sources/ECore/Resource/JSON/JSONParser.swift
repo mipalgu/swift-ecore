@@ -139,7 +139,8 @@ public actor JSONParser {
         let uri = URIReference.canonicalise(documentURI)
 
         diagnostics = ConversionDiagnostics()
-        let json = try JSONSerialization.jsonObject(with: data, options: [])
+        let read = try JSONSerialization.jsonObject(with: data, options: [])
+        let json = JSONNumbers.restoringNegativeZeros(in: read, of: data)
         guard let documents = (json as? [[String: Any]]) ?? (json as? [String: Any]).map({ [$0] }) else {
             throw JSONError.invalidFormat("JSON must be an object with eClass field")
         }

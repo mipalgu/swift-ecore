@@ -140,6 +140,37 @@ struct ModelIORegistryTests {
         #expect(await loaded.resource.loadDiagnostics.isEmpty)
     }
 
+    @Test("the text encoding of the Ecore load options applies to documents and to registered metamodels")
+    func ecoreLoadOptionsEncoding() async throws {
+        let text = "-- Fa\u{E7}ade\npackage Shapes {\n  class Square {}\n}\n"
+        let bytes = try #require(text.data(using: .isoLatin1))
+        let options = EcoreLoadOptions(textEncoding: .isoLatin1)
+        #expect(EcoreLoadOptions().textEncoding == nil)
+        let loaded = try await ModelIO.load(
+            data: bytes, uri: "memory:/shapes.km3", format: .km3, resourceSet: ResourceSet(),
+            options: ModelIO.LoadOptions(ecoreLoadOptions: options))
+        #expect(await loaded.resource.loadDiagnostics.allSatisfy { $0.code != TextDecodingDiagnostic.decodedAsISOLatin1 })
+        let detected = try await ModelIO.load(
+            data: bytes, uri: "memory:/detected.km3", format: .km3, resourceSet: ResourceSet())
+        #expect(await detected.resource.loadDiagnostics.contains { $0.code == TextDecodingDiagnostic.decodedAsISOLatin1 })
+
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("encoding-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("Shapes.km3")
+        try bytes.write(to: url)
+        let resourceSet = ResourceSet()
+        let packages = try await ModelIO.registerMetamodels(at: [url], in: resourceSet, options: options)
+        #expect(packages.map(\.name) == ["Shapes"])
+        let resource = await resourceSet.getResource(uri: URIReference.canonicalise(url.absoluteString))
+        #expect(await resource?.loadDiagnostics.allSatisfy { $0.code != TextDecodingDiagnostic.decodedAsISOLatin1 } == true)
+        await #expect(throws: TextDecodingError.malformed(.utf8)) {
+            try await ModelIO.registerMetamodels(
+                at: [url], in: ResourceSet(), options: EcoreLoadOptions(textEncoding: .utf8))
+        }
+    }
+
     @Test("bytes that are not valid in an explicit text encoding are rejected")
     func malformedExplicitEncodingThrows() async throws {
         let bytes = Data("sketch package broken http://example.org/broken b\nclass ".utf8) + Data([0xFF, 0x0A])

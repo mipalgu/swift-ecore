@@ -6,8 +6,9 @@ EMOF, and UML models.
 ## Overview
 
 The Eclipse Modeling Framework (EMF) writes XMI 2.0 in a dialect of its own. Other tools, and
-the Object Management Group (OMG) itself, write later versions of XMI, and describe metamodels
-in EMOF or model in UML. ECore reads these documents into the same resources and packages as
+the Object Management Group (OMG) itself, write later versions of
+[XMI](https://www.omg.org/spec/XMI/), and describe metamodels in EMOF
+([MOF](https://www.omg.org/spec/MOF/)) or model in [UML](https://www.omg.org/spec/UML/). ECore reads these documents into the same resources and packages as
 its native formats, so that they can be inspected, queried, validated and written again.
 
 ### OMG XMI

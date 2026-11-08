@@ -32,7 +32,9 @@ public struct SDF3ImportOptions: Sendable, Hashable {
     ///
     /// The abstract syntax that SDF3 defines (its ATerm signature) is
     /// positional, so by default features get generated names that follow the
-    /// convention of the ASDL paper: the argument's sort in lower case followed
+    /// convention of the
+    /// [ASDL paper](https://www.usenix.org/conference/dsl-97/zephyr-abstract-syntax-description-language):
+    /// the argument's sort in lower case followed
     /// by its occurrence, such as `exp1` and `exp2`. With this option a labelled
     /// argument takes its label as its name, and unlabelled arguments keep
     /// generated names.

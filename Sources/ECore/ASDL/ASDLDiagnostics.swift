@@ -94,7 +94,9 @@ public enum ASDLOutlineKind {
 public enum ASDLEnumerationStyle: String, Sendable, Hashable, CaseIterable {
     /// A sum type of constructors without fields and without attributes becomes an `EEnum`.
     ///
-    /// This follows the ASDL paper, which notes that such types are finite
+    /// This follows the
+    /// [ASDL paper](https://www.usenix.org/conference/dsl-97/zephyr-abstract-syntax-description-language),
+    /// which notes that such types are finite
     /// enumerations that tools should represent as enumerations, and CPython,
     /// whose generated C code represents such "simple" sums as enumerations.
     case allNullarySums

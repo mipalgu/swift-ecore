@@ -75,19 +75,62 @@ extension OrderedJSON {
     /// A leading byte order mark and white space around the value are allowed; anything else
     /// after the value is an error.
     ///
-    /// - Parameter data: The UTF-8 text of the document.
+    /// The integer `-0` is read as the integer zero, which has no sign, unless
+    /// `keepingNegativeZero` asks for the floating point number `-0.0` instead.
+    ///
+    /// - Parameters:
+    ///   - data: The UTF-8 text of the document.
+    ///   - keepingNegativeZero: Whether `-0` is read as `-0.0` (default `false`).
     /// - Returns: The value of the document.
     /// - Throws: ``JSONError/invalidFormat(_:)`` naming the line and column of the first error.
-    static func parse(_ data: Data) throws -> OrderedJSON {
-        var parser = OrderedJSONParser(bytes: Array(data))
+    static func parse(_ data: Data, keepingNegativeZero: Bool = false) throws -> OrderedJSON {
+        var parser = OrderedJSONParser(bytes: Array(data), keepsNegativeZero: keepingNegativeZero)
         return try parser.document()
+    }
+
+    /// Whether the text of a document may hold the integer `-0`.
+    ///
+    /// The text is scanned without being parsed: strings are skipped, and a minus sign
+    /// followed by a zero that no further digit, decimal point or exponent follows counts
+    /// as the integer `-0`. The scan takes linear time and allocates nothing, so it can
+    /// decide cheaply whether a document needs a closer look.
+    ///
+    /// - Parameter data: The UTF-8 text of the document.
+    /// - Returns: `true` if the text outside strings holds `-0` as a whole number.
+    static func mayContainNegativeZero(_ data: Data) -> Bool {
+        data.withUnsafeBytes { bytes in
+            var isInString = false
+            var isEscaped = false
+            var index = bytes.startIndex
+            while index < bytes.endIndex {
+                let byte = bytes[index]
+                index += 1
+                if isInString {
+                    if isEscaped {
+                        isEscaped = false
+                    } else if byte == OrderedJSONParser.Byte.backslash {
+                        isEscaped = true
+                    } else if byte == OrderedJSONParser.Byte.quote {
+                        isInString = false
+                    }
+                } else if byte == OrderedJSONParser.Byte.quote {
+                    isInString = true
+                } else if byte == OrderedJSONParser.Byte.minus, index < bytes.endIndex,
+                    bytes[index] == OrderedJSONParser.Byte.zero,
+                    index + 1 == bytes.endIndex || !OrderedJSONParser.Byte.continuesNumber(bytes[index + 1])
+                {
+                    return true
+                }
+            }
+            return false
+        }
     }
 }
 
 /// Reads the bytes of a JSON document.
 private struct OrderedJSONParser {
     /// The bytes that JSON syntax is made of.
-    private enum Byte {
+    enum Byte {
         /// The quotation mark that delimits strings.
         static let quote = UInt8(ascii: "\"")
         /// The backslash that starts an escape sequence.
@@ -136,6 +179,14 @@ private struct OrderedJSONParser {
         ]
         /// The letter of a `\u` escape sequence.
         static let unicodeEscape = UInt8(ascii: "u")
+
+        /// Whether a byte that follows the integer part of a number continues the number.
+        ///
+        /// - Parameter byte: The byte after the integer part.
+        /// - Returns: `true` for a digit, the decimal point, or an exponent marker.
+        static func continuesNumber(_ byte: UInt8) -> Bool {
+            (zero...nine).contains(byte) || byte == point || byte == lowerE || byte == upperE
+        }
     }
 
     /// The literal names and their values.
@@ -160,12 +211,17 @@ private struct OrderedJSONParser {
     private var position = 0
     /// The number of arrays and objects that enclose the current position.
     private var depth = 0
+    /// Whether the integer `-0` is read as the floating point number `-0.0`.
+    private let keepsNegativeZero: Bool
 
     /// Prepares to read a document.
     ///
-    /// - Parameter bytes: The UTF-8 bytes of the document.
-    init(bytes: [UInt8]) {
+    /// - Parameters:
+    ///   - bytes: The UTF-8 bytes of the document.
+    ///   - keepsNegativeZero: Whether `-0` is read as `-0.0` rather than as the integer zero.
+    init(bytes: [UInt8], keepsNegativeZero: Bool = false) {
         self.bytes = bytes
+        self.keepsNegativeZero = keepsNegativeZero
     }
 
     /// Reads the whole document.
@@ -343,7 +399,8 @@ private struct OrderedJSONParser {
     /// Reads a number.
     ///
     /// - Returns: An integer if the number has no fraction or exponent and fits into an `Int`,
-    ///   otherwise a floating point number.
+    ///   otherwise a floating point number; `-0` is the floating point number `-0.0` if the
+    ///   parser keeps negative zero.
     /// - Throws: ``JSONError/invalidFormat(_:)`` if the number is malformed.
     private mutating func number() throws -> OrderedJSON {
         let start = position
@@ -367,7 +424,10 @@ private struct OrderedJSONParser {
             guard digits() > 0 else { throw failure("expected a digit in the exponent") }
         }
         let text = String(decoding: bytes[start..<position], as: UTF8.self)
-        if isInteger, let value = Int(text) { return .integer(value) }
+        if isInteger, let value = Int(text) {
+            let isNegativeZero = value == 0 && bytes[start] == Byte.minus
+            return keepsNegativeZero && isNegativeZero ? .number(-0.0) : .integer(value)
+        }
         guard let value = Double(text) else { throw failure("invalid number") }
         return .number(value)
     }

@@ -10,7 +10,8 @@ import EMFBase
 ///
 /// Langium derives a semantic model (TypeScript types) from a grammar: types
 /// declared with `interface` and `type`, and types inferred from the parser
-/// rules, as the Langium documentation on semantic model inference describes.
+/// rules, as the Langium documentation on
+/// [semantic model inference](https://langium.org/docs/reference/semantic-model/) describes.
 /// The reader parses the grammar and builds the corresponding Ecore package.
 /// Inference follows the same rules as Xtext's, from which Langium's grammar
 /// language descends, adapted to Langium in three ways: fragments are inlined
