@@ -546,17 +546,89 @@ public enum ModelIO {
         registry: ModelFormatRegistry = .shared,
         diagnostics: inout ConversionDiagnostics
     ) async throws {
-        let handler: any ModelFormatHandler
-        if let format {
-            handler = try await registry.requiredHandler(for: format)
-        } else if let claiming = await registry.handler(for: url) {
-            handler = claiming
-        } else {
-            throw ModelFormatError.undetectableFormat(url.absoluteString)
-        }
+        let handler = try await writingHandler(for: url, format: format, registry: registry)
         let text = try await serialise(
             resource, handler: handler, relativeTo: url, xmiOptions: xmiOptions, diagnostics: &diagnostics)
         try text.write(to: url, atomically: FileURIHandler.writesAtomically, encoding: .utf8)
+    }
+
+    /// Saves a resource as a document in a character encoding.
+    ///
+    /// The document is rendered as by ``save(_:to:format:xmiOptions:registry:diagnostics:)``
+    /// and then encoded by the rules of its kind (see
+    /// ``EMFBase/TextEncoding/encode(document:as:)``): an XML document names the encoding in
+    /// its declaration and writes a character that the encoding cannot hold as a numeric
+    /// character reference, a textual notation such as KM3 or Emfatic is encoded as plain
+    /// text, and JSON is always written in UTF-8. In UTF-8, the file has exactly the bytes
+    /// that ``save(_:to:format:xmiOptions:registry:diagnostics:)`` writes. No file is written
+    /// if the resource cannot be rendered or encoded.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource to save.
+    ///   - url: The location of the file to write.
+    ///   - format: The format of the document, or `nil` (the default) to take it from the
+    ///     file extension.
+    ///   - xmiOptions: The options with which XMI is written (default
+    ///     ``XMISerializationOptions/legacy``).
+    ///   - registry: The registry that provides the format handlers (default
+    ///     ``ModelFormatRegistry/shared``).
+    ///   - encoding: The character encoding of the file.
+    ///   - diagnostics: Receives a ``ConversionWarning`` for everything that cannot be kept.
+    /// - Returns: The encoding in which the file was written, which is UTF-8 for JSON and
+    ///   `encoding` otherwise.
+    /// - Throws: The errors of ``save(_:to:format:xmiOptions:registry:diagnostics:)``, and
+    ///   ``EMFBase/TextEncodingError/unrepresentable(_:encoding:position:)`` for a character
+    ///   that the encoding cannot hold where no character reference can stand for it.
+    @discardableResult
+    public static func save(
+        _ resource: Resource,
+        to url: URL,
+        format: ModelFormat? = nil,
+        xmiOptions: XMISerializationOptions = .legacy,
+        registry: ModelFormatRegistry = .shared,
+        encoding: TextEncoding,
+        diagnostics: inout ConversionDiagnostics
+    ) async throws -> TextEncoding {
+        let handler = try await writingHandler(for: url, format: format, registry: registry)
+        let text = try await serialise(
+            resource, handler: handler, relativeTo: url, xmiOptions: xmiOptions, diagnostics: &diagnostics)
+        if encoding == .utf8 {
+            try text.write(to: url, atomically: FileURIHandler.writesAtomically, encoding: .utf8)
+            return .utf8
+        }
+        let kind = documentKind(of: text, identifier: handler.identifier)
+        let encoded = try encoding.encode(document: text, as: kind)
+        try encoded.data.write(to: url, options: FileURIHandler.writingOptions)
+        return encoded.encoding
+    }
+
+    /// The kind of a document in a format, which decides how it is encoded.
+    ///
+    /// - Parameters:
+    ///   - text: The text of the document.
+    ///   - identifier: The identifier of the format, as its handler names it.
+    /// - Returns: ``EMFBase/TextDocumentKind/json`` for JSON, and otherwise the kind that the
+    ///   contents show: XML if the document starts with an XML declaration, else plain text.
+    public static func documentKind(of text: String, identifier: String) -> TextDocumentKind {
+        identifier.lowercased() == ModelFormat.json.rawValue ? .json : TextDocumentKind(detecting: text)
+    }
+
+    /// Finds the handler that writes a document.
+    ///
+    /// - Parameters:
+    ///   - url: The location of the file to write.
+    ///   - format: The format of the document, or `nil` to take it from the file extension.
+    ///   - registry: The registry that provides the format handlers.
+    /// - Returns: The handler of the given format, else the one that claims the file extension.
+    /// - Throws: ``ModelFormatError/undetectableFormat(_:)`` if no format is given and no
+    ///   handler claims the extension, or ``ModelFormatError/unsupportedFormat(_:)`` if the
+    ///   registry has no handler for the given format.
+    private static func writingHandler(for url: URL, format: ModelFormat?, registry: ModelFormatRegistry)
+        async throws -> any ModelFormatHandler
+    {
+        if let format { return try await registry.requiredHandler(for: format) }
+        if let claiming = await registry.handler(for: url) { return claiming }
+        throw ModelFormatError.undetectableFormat(url.absoluteString)
     }
 
     /// Saves a resource as a document and returns what could not be kept.

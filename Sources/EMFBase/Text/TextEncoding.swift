@@ -113,7 +113,7 @@ public enum TextEncoding: String, Sendable, Hashable, CaseIterable, Codable {
     // MARK: Implementation
 
     /// The first byte value outside US-ASCII.
-    private static let asciiLimit: UInt8 = 0x80
+    static let asciiLimit: UInt8 = 0x80
 
     /// The byte order mark of UTF-16 in big-endian order.
     static let bigEndianMark: [UInt8] = [0xFE, 0xFF]
@@ -122,7 +122,7 @@ public enum TextEncoding: String, Sendable, Hashable, CaseIterable, Codable {
     static let littleEndianMark: [UInt8] = [0xFF, 0xFE]
 
     /// The byte order mark as a code point.
-    private static let byteOrderMark: UInt16 = 0xFEFF
+    static let byteOrderMark: UInt16 = 0xFEFF
 
     /// The characters that names may contain but that do not distinguish them.
     private static let ignoredNameCharacters: Set<Character> = ["-", "_", ":", " "]
@@ -131,7 +131,7 @@ public enum TextEncoding: String, Sendable, Hashable, CaseIterable, Codable {
     ///
     /// The bytes that the code page leaves undefined map to the control characters of the
     /// same value, as in the WHATWG encoding standard.
-    private static let windows1252Upper: [UInt32] = [
+    static let windows1252Upper: [UInt32] = [
         0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
         0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
         0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
@@ -139,7 +139,7 @@ public enum TextEncoding: String, Sendable, Hashable, CaseIterable, Codable {
     ]
 
     /// The first byte that ``windows1252Upper`` maps.
-    private static let windows1252UpperStart: UInt8 = 0x80
+    static let windows1252UpperStart: UInt8 = 0x80
 
     /// Normalises a name for comparison with ``aliases``.
     ///
