@@ -37,7 +37,7 @@ Add swift-ecore to the dependencies of your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/mipalgu/swift-ecore.git", from: "0.7.0"),
+    .package(url: "https://github.com/mipalgu/swift-ecore.git", from: "0.8.0"),
 ]
 ```
 
