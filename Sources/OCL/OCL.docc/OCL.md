@@ -60,6 +60,31 @@ let absolute = try OCL.abs(value)
 // Result: 42.7
 ```
 
+## Related Documentation
+
+- [swift-ecore command-line tool](https://mipalgu.github.io/swift-modelling/documentation/swift_ecore/index.html) - the `swift-ecore` tool of [swift-modelling](https://mipalgu.github.io/swift-modelling/)
+
+### Tutorials
+
+- [OCL Constraints and Validation](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/ocl-01-constraints/index.html)
+- [Constraints in OCLinEcore and Complete OCL](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/formats-04-ocl-languages/index.html)
+- [All tutorials](https://mipalgu.github.io/swift-modelling/tutorials/tutorials/index.html)
+
+### Related Packages
+
+- [swift-aql](https://mipalgu.github.io/swift-aql/) - AQL model queries
+- [swift-atl](https://mipalgu.github.io/swift-atl/) - ATL model transformations
+- [swift-modelling](https://mipalgu.github.io/swift-modelling/) - Command-line tools, code generators and tutorials for the whole toolkit
+
+### Standards
+
+- [OMG OCL (Object Constraint Language)](https://www.omg.org/spec/OCL/)
+- [OMG OCL 2.4 Specification](https://www.omg.org/spec/OCL/2.4/PDF)
+- [Eclipse OCL](https://projects.eclipse.org/projects/modeling.mdt.ocl)
+- [The Ultimate OCL Tutorial](https://modeling-languages.com/ocl-tutorial/)
+- [Eclipse Modeling Framework (EMF)](https://eclipse.dev/emf/)
+- [OMG MOF (Meta Object Facility)](https://www.omg.org/mof/)
+
 ## Topics
 
 ### Essentials
@@ -108,12 +133,3 @@ for diagnostic in parsed.diagnostics { print(diagnostic.message) }
 ### Error Handling
 
 - ``OCLError``
-
-## See Also
-
-- [OMG OCL (Object Constraint Language)](https://www.omg.org/spec/OCL/)
-- [OMG OCL 2.4 Specification](https://www.omg.org/spec/OCL/2.4/PDF)
-- [Eclipse OCL](https://projects.eclipse.org/projects/modeling.mdt.ocl)
-- [The Ultimate OCL Tutorial](https://modeling-languages.com/ocl-tutorial/)
-- [Eclipse Modeling Framework (EMF)](https://eclipse.dev/emf/)
-- [OMG MOF (Meta Object Facility)](https://www.omg.org/mof/)

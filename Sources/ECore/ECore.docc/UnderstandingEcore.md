@@ -313,10 +313,26 @@ without a fragment, a dropped value or an unresolved reference, is reported as a
 ## Next Steps
 
 - <doc:GettingStarted> - Practical examples
+- [Creating Your First Ecore Metamodel](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/01-first-metamodel/index.html) - the first tutorial of swift-modelling
+- The [swift-ecore command-line tool](https://mipalgu.github.io/swift-modelling/documentation/swift_ecore/index.html) of [swift-modelling](https://mipalgu.github.io/swift-modelling/)
 - ``EClass`` - API reference for class definition
 - ``Resource`` - Working with model persistence
 
-## See Also
+## Related Documentation
+
+- [swift-ecore command-line tool](https://mipalgu.github.io/swift-modelling/documentation/swift_ecore/index.html) - the `swift-ecore` tool of [swift-modelling](https://mipalgu.github.io/swift-modelling/)
+
+### Tutorials
+
+- [Creating Your First Ecore Metamodel](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/01-first-metamodel/index.html)
+- [Metamodels in KM3](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/formats-01-km3/index.html)
+- [Importing Abstract Syntax](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/grammar-01-abstract-syntax/index.html)
+- [Checking a Metamodel with Alloy](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/verification-01-alloy/index.html)
+- [From Ecore to a Generator Model](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/java-01-ecore-to-genmodel/index.html)
+- [Complete MDE Workflow: From Metamodel to Code](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/01-complete-mde-workflow/index.html)
+- [All tutorials](https://mipalgu.github.io/swift-modelling/tutorials/tutorials/index.html)
+
+### Standards
 
 - [Eclipse Modeling Framework (EMF)](https://eclipse.dev/emf/)
 - [OMG MOF (Meta Object Facility)](https://www.omg.org/mof/)

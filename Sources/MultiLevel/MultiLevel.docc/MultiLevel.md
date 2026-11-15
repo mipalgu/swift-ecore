@@ -60,6 +60,20 @@ checks the structure of a model and evaluates its constraints on the deep instan
 the levels their potencies select, through a ``DeepConstraintEvaluator`` such as the one
 of the AQL package.
 
+## Related Documentation
+
+- [swift-ecore command-line tool](https://mipalgu.github.io/swift-modelling/documentation/swift_ecore/index.html) - the `swift-ecore` tool of [swift-modelling](https://mipalgu.github.io/swift-modelling/)
+
+### Tutorials
+
+- [Multi-Level Modelling with Potency](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/multilevel-01-deep-modelling/index.html)
+- [All tutorials](https://mipalgu.github.io/swift-modelling/tutorials/tutorials/index.html)
+
+### Related Packages
+
+- [AQLMultiLevel](https://mipalgu.github.io/swift-aql/documentation/aqlmultilevel/) - the AQL evaluation of deep constraints and queries ([swift-aql](https://mipalgu.github.io/swift-aql/))
+- [swift-modelling](https://mipalgu.github.io/swift-modelling/) - Command-line tools, code generators and tutorials for the whole toolkit
+
 ## Topics
 
 ### Models

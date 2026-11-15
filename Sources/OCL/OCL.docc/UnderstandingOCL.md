@@ -308,10 +308,26 @@ OCL and AQL are closely related:
 - See ``OCLUnaryMethod``, ``OCLBinaryMethod``, and ``OCLTernaryMethod``
   for complete operation listings
 - Review the OCL source files for detailed function documentation
+- [OCL Constraints and Validation](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/ocl-01-constraints/index.html) - the OCL tutorial of swift-modelling
+- Compare the AQL query language of [swift-aql](https://mipalgu.github.io/swift-aql/)
 
-## See Also
+## Related Documentation
+
+- [swift-ecore command-line tool](https://mipalgu.github.io/swift-modelling/documentation/swift_ecore/index.html) - the `swift-ecore` tool of [swift-modelling](https://mipalgu.github.io/swift-modelling/)
+
+### Tutorials
+
+- [OCL Constraints and Validation](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/ocl-01-constraints/index.html)
+- [All tutorials](https://mipalgu.github.io/swift-modelling/tutorials/tutorials/index.html)
+
+### Related Packages
+
+- [swift-aql](https://mipalgu.github.io/swift-aql/) - AQL model queries
+- [swift-atl](https://mipalgu.github.io/swift-atl/) - ATL model transformations
+
+### Standards
 
 - [OMG OCL (Object Constraint Language)](https://www.omg.org/spec/OCL/)
 - [OMG OCL 2.4 Specification](https://www.omg.org/spec/OCL/2.4/PDF)
-- [The Ultimate OCL Tutorial](https://modeling-languages.com/ocl-tutorial/)
 - [Eclipse OCL](https://projects.eclipse.org/projects/modeling.mdt.ocl)
+- [The Ultimate OCL Tutorial](https://modeling-languages.com/ocl-tutorial/)

@@ -482,6 +482,26 @@ name is given: code that runs on WASI should always pass one.
 ## Next Steps
 
 - <doc:UnderstandingEcore> - Learn about the core concepts
+- [Creating Your First Ecore Metamodel](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/01-first-metamodel/index.html) - the first tutorial of swift-modelling
+- The [swift-ecore command-line tool](https://mipalgu.github.io/swift-modelling/documentation/swift_ecore/index.html) of [swift-modelling](https://mipalgu.github.io/swift-modelling/)
 - ``EClass`` - Defining classes in your metamodel
 - ``EReference`` - Modelling relationships between classes
 - ``Resource`` - Managing model persistence
+
+## Related Documentation
+
+- [swift-ecore command-line tool](https://mipalgu.github.io/swift-modelling/documentation/swift_ecore/index.html) - the `swift-ecore` tool of [swift-modelling](https://mipalgu.github.io/swift-modelling/)
+
+### Tutorials
+
+- [Creating Your First Ecore Metamodel](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/01-first-metamodel/index.html)
+- [Metamodels in KM3](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/formats-01-km3/index.html)
+- [Complete MDE Workflow: From Metamodel to Code](https://mipalgu.github.io/swift-modelling/tutorials/swiftmodelling/01-complete-mde-workflow/index.html)
+- [All tutorials](https://mipalgu.github.io/swift-modelling/tutorials/tutorials/index.html)
+
+### Related Packages
+
+- [swift-aql](https://mipalgu.github.io/swift-aql/) - AQL model queries
+- [swift-atl](https://mipalgu.github.io/swift-atl/) - ATL model transformations
+- [swift-mtl](https://mipalgu.github.io/swift-mtl/) - MTL model-to-text generation
+- [swift-modelling](https://mipalgu.github.io/swift-modelling/) - Command-line tools, code generators and tutorials for the whole toolkit

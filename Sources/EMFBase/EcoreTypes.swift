@@ -80,7 +80,8 @@ public typealias EBigDecimal = Decimal
 
 /// Arbitrary-precision integer type for Ecore models.
 ///
-/// Maps to the BigInt library's `BigInt` type for true arbitrary-precision integers.
+/// Maps to the [`BigInt`](https://github.com/attaswift/BigInt) type of the BigInt library for true
+/// arbitrary-precision integers.
 public typealias EBigInteger = BigInt
 
 // MARK: - EcoreValue Conformances
