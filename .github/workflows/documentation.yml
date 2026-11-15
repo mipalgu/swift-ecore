@@ -38,6 +38,7 @@ jobs:
           docc-static generate \
             --package-path . \
             --output .build/documentation \
+            --external-docs swift-collections=https://swiftpackageindex.com/apple/swift-collections/~ \
             --verbose
 
       - name: Setup Pages
