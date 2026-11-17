@@ -49,8 +49,9 @@ public struct XMISerializer: Sendable {
 
     /// Serialise a Resource to an XMI file
     ///
-    /// With the EMF-style layout, relative URIs of references are computed against the
-    /// location that is written, which need not be the URI of the resource.
+    /// With ``XMISerializationOptions/relativeURIs``, the URIs of other documents are
+    /// written relative to the location that is written, which need not be the URI of the
+    /// resource.
     ///
     /// - Parameters:
     ///   - resource: The Resource containing objects to serialise
@@ -62,8 +63,8 @@ public struct XMISerializer: Sendable {
 
     /// Serialise a Resource to an XMI string for a document at a given location
     ///
-    /// With the EMF-style layout, relative URIs of references are computed against the
-    /// given location, which need not be the URI of the resource.
+    /// With ``XMISerializationOptions/relativeURIs``, the URIs of other documents are
+    /// written relative to the given location, which need not be the URI of the resource.
     ///
     /// - Parameters:
     ///   - resource: The Resource containing objects to serialise
@@ -77,8 +78,8 @@ public struct XMISerializer: Sendable {
 
     /// Serialise a Resource to an XMI string for a document at a given location, recording what cannot be kept
     ///
-    /// With the EMF-style layout, relative URIs of references are computed against the
-    /// given location, which need not be the URI of the resource.
+    /// With ``XMISerializationOptions/relativeURIs``, the URIs of other documents are
+    /// written relative to the given location, which need not be the URI of the resource.
     ///
     /// - Parameters:
     ///   - resource: The Resource containing objects to serialise
@@ -90,11 +91,9 @@ public struct XMISerializer: Sendable {
     public func serialize(
         _ resource: Resource, relativeTo documentURL: URL, diagnostics: inout ConversionDiagnostics
     ) async throws -> String {
-        options != .legacy
-            ? try await serializeEMFStyle(
-                resource, documentURI: URIReference.canonicalise(documentURL.absoluteURL.absoluteString),
-                diagnostics: &diagnostics)
-            : try await serialize(resource, diagnostics: &diagnostics)
+        try await serialize(
+            resource, documentURI: URIReference.canonicalise(documentURL.absoluteURL.absoluteString),
+            diagnostics: &diagnostics)
     }
 
     /// Serialise a Resource to an XMI string
@@ -120,6 +119,8 @@ public struct XMISerializer: Sendable {
     ///
     /// The targets of a reference are written in the order of its value, whether they are
     /// objects of the resource, objects of other resources, proxies, or a mixture of these.
+    /// With ``XMISerializationOptions/relativeURIs``, the URIs of other documents are written
+    /// relative to the URI of the resource.
     ///
     /// - Parameters:
     ///   - resource: The Resource containing objects to serialise
@@ -129,19 +130,37 @@ public struct XMISerializer: Sendable {
     ///   value that a document cannot hold, such as a list that holds identifiers among
     ///   texts, or another `XMIError` if serialisation fails
     public func serialize(_ resource: Resource, diagnostics: inout ConversionDiagnostics) async throws -> String {
+        try await serialize(resource, documentURI: nil, diagnostics: &diagnostics)
+    }
+
+    /// Serialise a Resource to an XMI string for a document with a given URI, recording what cannot be kept
+    ///
+    /// The options select the layout (see ``XMISerializationOptions/usesEMFLayout``).
+    ///
+    /// - Parameters:
+    ///   - resource: The Resource containing objects to serialise
+    ///   - documentURI: The canonical URI against which the URIs of other documents are made
+    ///     relative, or `nil` for the URI of the resource
+    ///   - diagnostics: Receives the warnings, in the order in which they first occur
+    /// - Returns: XMI formatted string
+    /// - Throws: ``XMIError/unsupportedFeature(_:)`` naming the feature and its class for a
+    ///   value that a document cannot hold, or another `XMIError` if serialisation fails
+    func serialize(
+        _ resource: Resource, documentURI: String?, diagnostics: inout ConversionDiagnostics
+    ) async throws -> String {
         #if os(WASI)
         // Bound the cooperative executor's continuation stack across successive documents.
         await Task.yield()
         #endif
-        if options != .legacy {
-            return try await serializeEMFStyle(resource, diagnostics: &diagnostics)
+        if options.usesEMFLayout {
+            return try await serializeEMFStyle(resource, documentURI: documentURI, diagnostics: &diagnostics)
         }
         let roots = await resource.getRootObjects()
 
         guard !roots.isEmpty else { return XMIDocumentSyntax.emptyDocument }
 
         // The writer of references computes the fragments of each resource once
-        var references = EMFDocumentWriter(resource: resource, options: options)
+        var references = EMFDocumentWriter(resource: resource, options: options, documentURI: documentURI)
         await references.prepare()
         defer { diagnostics.merge(references.diagnostics) }
 
@@ -338,9 +357,11 @@ public struct XMISerializer: Sendable {
     ///
     /// A many-valued reference is written as one element per target, in the order of the
     /// value, whether its targets are objects of the written resource, objects of other
-    /// resources, proxies, or a mixture of these. An object of the written resource is
-    /// written as a fragment (`href="#//@tasks.0"`), an object of another resource with the
-    /// URI of that resource, and a proxy with the URI and fragment that it holds.
+    /// resources, proxies, or a mixture of these. An object of the written resource, and a
+    /// proxy into it, is written as a fragment (`href="#//@tasks.0"`), an object of another
+    /// resource with the URI of that resource, and any other proxy with the URI and fragment
+    /// that it holds. With ``XMISerializationOptions/relativeURIs``, the URI of another
+    /// resource is written relative to the written document where possible.
     ///
     /// - Parameters:
     ///   - featureName: The feature name
@@ -369,10 +390,9 @@ public struct XMISerializer: Sendable {
             }
             href = resolved.href
         case let proxy as ResourceProxy:
-            // Cross-resource reference: Use proxy's URI and fragment
+            // A fragment for the written document, else the proxy's URI and fragment
             await writer.checkDangling(proxy)
-            let fragment = proxy.fragment.hasPrefix("#") ? proxy.fragment : "#\(proxy.fragment)"
-            href = "\(proxy.uri)\(fragment)"
+            href = writer.proxyHref(proxy)
         default:
             // Many-valued references are written as one element per target, in order
             guard let targets = ReferenceValues.targets(of: target) else {

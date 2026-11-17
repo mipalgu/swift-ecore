@@ -177,11 +177,9 @@ extension ResourceSet {
     public func save(
         _ resource: Resource, to uri: String, options: XMISerializationOptions = .legacy
     ) async throws {
-        let serializer = XMISerializer(options: options)
-        let text =
-            options != .legacy
-            ? try await serializer.serializeEMFStyle(resource, documentURI: URIReference.canonicalise(uri))
-            : try await serializer.serialize(resource)
+        var diagnostics = ConversionDiagnostics()
+        let text = try await XMISerializer(options: options).serialize(
+            resource, documentURI: URIReference.canonicalise(uri), diagnostics: &diagnostics)
         try await writeDocument(Data(text.utf8), to: uri)
     }
 

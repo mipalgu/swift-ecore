@@ -75,6 +75,19 @@ public enum XMIReferenceStyle: String, Sendable, CaseIterable {
 /// many-valued attributes as repeated child elements, and a deterministic
 /// namespace declaration order. Any other combination of settings also selects the
 /// EMF-style writer, with the individual switches applied.
+///
+/// ``relativeURIs`` is the exception: it does not select a layout, but applies to whichever
+/// layout the other settings select. ``legacy`` with ``relativeURIs`` set keeps the layout
+/// of ``legacy`` and writes the URIs of other documents relative to the written document:
+///
+/// ```swift
+/// var options = XMISerializationOptions.legacy
+/// options.relativeURIs = true
+/// try await ModelIO.save(resource, to: url, xmiOptions: options, diagnostics: &diagnostics)
+/// ```
+///
+/// In every layout, a reference into the written document is written as a fragment alone,
+/// such as `#//@tasks.0`.
 public struct XMISerializationOptions: Sendable, Equatable {
     /// Writes non-containment references as attributes (`ecoreClass="lib.ecore#//Book"`)
     /// instead of `href` child elements.
@@ -87,7 +100,20 @@ public struct XMISerializationOptions: Sendable, Equatable {
     /// Identifies Ecore elements by their names (`#//Book/title`) rather than by position.
     public var nameBasedFragments: Bool
 
-    /// Writes the URI of another resource relative to the URI of the written resource.
+    /// Writes the URI of another resource relative to the location of the written resource.
+    ///
+    /// The location is the one that the document is written to, or the URI of the resource
+    /// if no location is given. As in the Eclipse Modeling Framework, a URI is written
+    /// relative only if it has the same scheme and authority as that location and both have
+    /// a hierarchical path, such as `file:` URIs on the same drive; the result is a relative
+    /// path such as `project.xmi`, `../models/project.xmi` or `sources/project.xmi`. Any
+    /// other URI, such as one of another scheme or host, is written as the reference holds
+    /// it. A relative URI is resolved against the location of the document that is read,
+    /// so a document reads back to the same objects as long as the documents keep their
+    /// relative locations.
+    ///
+    /// Unlike the other switches, this one does not select the EMF-style layout: it applies
+    /// to both layouts.
     public var relativeURIs: Bool
 
     /// Leaves out attributes whose value equals the default of the attribute.
@@ -173,7 +199,21 @@ public struct XMISerializationOptions: Sendable, Equatable {
     }
 
     /// The layout this package has always written (all switches off).
+    ///
+    /// The URIs of other documents are written as the references hold them, which is
+    /// absolute for a document that was loaded from a file. Set ``relativeURIs`` to keep
+    /// this layout and write them relative to the written document instead.
     public static let legacy = XMISerializationOptions()
+
+    /// Whether the options select the EMF-style layout.
+    ///
+    /// Every switch except ``relativeURIs``, which applies to both layouts, selects the
+    /// EMF-style layout when it differs from ``legacy``.
+    var usesEMFLayout: Bool {
+        var layout = self
+        layout.relativeURIs = Self.legacy.relativeURIs
+        return layout != Self.legacy
+    }
 
     /// The layout of the Eclipse Modeling Framework (all switches on).
     public static let emf = XMISerializationOptions(

@@ -412,10 +412,32 @@ same objects in the same order. A value that has no form in a document, such as 
 holds identifiers among texts, is not written: the serialisers throw an error that names the
 feature instead.
 
+A reference to an object of the written document, including one that a reference holds as a
+``ResourceProxy`` into that document, is written as a fragment alone (`#//@tasks.0` in XMI,
+`//@tasks.0` in JSON), so it keeps referring to the same document wherever that document is
+written.
+
 ``XMISerializationOptions/legacy`` writes the URI of another document as the reference holds
 it, which is absolute for a document that was loaded from a file.
 ``XMISerializationOptions/relativeURIs``, which ``XMISerializationOptions/emf`` includes, writes
-it relative to the written document, as EMF does.
+it relative to the location of the written document, as EMF does: `project.xmi` for a sibling,
+`../models/project.xmi` for a document in another directory, `sources/project.xmi` for one in a
+subdirectory. The switch keeps the layout that the other options select, so the default layout
+can write relative URIs too:
+
+```swift
+var options = XMISerializationOptions.legacy
+options.relativeURIs = true
+var diagnostics = ConversionDiagnostics()
+try await ModelIO.save(plan, to: planURL, xmiOptions: options, diagnostics: &diagnostics)
+```
+
+A URI is made relative only if it has the same scheme and authority as the written location
+and both have hierarchical paths, as `file:` URIs on the same drive do. A URI of another
+scheme or host, or one written without a known location, is written as the reference holds
+it. When a document is read, a relative URI is resolved against the location of that
+document, so documents that keep their relative locations read back to the same objects.
+``JSONSerializer`` writes the URIs of other documents relative to the written resource.
 
 ## Models and Metamodels as JSON
 

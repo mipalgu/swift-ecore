@@ -203,7 +203,7 @@ struct EMFDocumentWriter {
     ///
     /// In the EMF-style layout, a classifier of the Ecore metamodel itself yields its URI in
     /// the Ecore namespace (`http://www.eclipse.org/emf/2002/Ecore#//EInt`); the legacy layout
-    /// keeps writing its identifier. Objects of the written resource yield
+    /// keeps writing its identifier, with or without relative URIs. Objects of the written resource yield
     /// a same-document fragment (`#//@entries.0`
     /// in a resource with one root, `#/1/@entries.0` in one with several roots).
     /// Objects of another resource in the same resource set yield the URI of that resource
@@ -216,7 +216,7 @@ struct EMFDocumentWriter {
     ///   resource and the resource set that might hold it has been released;
     ///   ``XMIError/invalidReference(_:)`` if no resource of the set holds the object.
     mutating func reference(to id: EUUID) async throws -> ResolvedReference {
-        if options != .legacy, let classifier = EcorePackage.classifier(id: id) {
+        if options.usesEMFLayout, let classifier = EcorePackage.classifier(id: id) {
             let href = EcorePackage.nsURI + String(CrossReferenceSyntax.fragmentSeparator)
                 + CrossReferenceSyntax.fragmentPathPrefix + classifier.name
             return ResolvedReference(href: href, target: classifier as? any EObject)
@@ -328,10 +328,20 @@ struct EMFDocumentWriter {
     ///   - resource: The resource that holds the proxy.
     /// - Returns: `true` if the proxy refers to the resource and names none of its objects.
     static func isDangling(_ proxy: ResourceProxy, in resource: Resource) async -> Bool {
-        guard proxy.uri.isEmpty || proxy.uri == resource.uri else { return false }
+        guard refersToOwnDocument(proxy, of: resource) else { return false }
         if await JSONFragments.resolve(fragment: proxy.fragment, in: resource) != nil { return false }
         guard let identifier = XPathResolver.identifier(inFragment: proxy.fragment) else { return true }
         return await resource.object(identifiedBy: identifier) == nil
+    }
+
+    /// Whether a proxy refers to the document of a resource.
+    ///
+    /// - Parameters:
+    ///   - proxy: The proxy.
+    ///   - resource: The resource that holds the proxy.
+    /// - Returns: `true` if the proxy has no URI or the URI of the resource.
+    static func refersToOwnDocument(_ proxy: ResourceProxy, of resource: Resource) -> Bool {
+        proxy.uri.isEmpty || proxy.uri == resource.uri
     }
 
     /// Derives a namespace for a class that belongs to no known package.
@@ -811,13 +821,15 @@ struct EMFDocumentWriter {
 
     /// Computes the reference text of an unresolved proxy.
     ///
+    /// Both layouts write a proxy this way.
+    ///
     /// - Parameter proxy: The proxy.
     /// - Returns: `uri#fragment`, with the URI relative to the document if the options ask for it,
     ///   or only `#fragment` for a reference into the written resource.
-    private func proxyHref(_ proxy: ResourceProxy) -> String {
+    func proxyHref(_ proxy: ResourceProxy) -> String {
         let separator = String(CrossReferenceSyntax.fragmentSeparator)
         let fragment = proxy.fragment.hasPrefix(separator) ? proxy.fragment : separator + proxy.fragment
-        if proxy.uri.isEmpty || proxy.uri == resource.uri { return fragment }
+        if Self.refersToOwnDocument(proxy, of: resource) { return fragment }
         let uri = options.relativeURIs ? URIReference.relativise(proxy.uri, against: documentURI) : proxy.uri
         return uri + fragment
     }

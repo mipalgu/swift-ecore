@@ -78,15 +78,34 @@ public enum JSONFragments {
 
     /// Composes the text of a reference to a fragment of a document.
     ///
+    /// A reference into the referring document itself is written in the form that
+    /// ``reference(toFragment:)`` gives, without the document URI.
+    ///
     /// - Parameters:
     ///   - uri: The URI of the referenced document.
     ///   - fragment: The fragment, with or without a leading `#`.
     ///   - base: The URI of the referring document.
-    /// - Returns: The document URI relative to `base`, a `#`, and the fragment.
+    /// - Returns: The document URI relative to `base`, a `#`, and the fragment, or the
+    ///   reference into the same document if `uri` is empty or equals `base`.
     public static func reference(uri: String, fragment: String, from base: String) -> String {
         let bare = fragment.first == CrossReferenceSyntax.fragmentSeparator ? String(fragment.dropFirst()) : fragment
+        guard !uri.isEmpty, uri != base else { return reference(toFragment: bare) }
         let location = URIReference.relativise(uri, against: base)
         return location + String(CrossReferenceSyntax.fragmentSeparator) + bare
+    }
+
+    /// Composes the text of a reference to a fragment of the referring document.
+    ///
+    /// A fragment that is a path, such as `//@authors.0` or `/1/@books.0`, is written as it is,
+    /// as references to objects of the document are. Any other fragment, such as an
+    /// identifier, is preceded by `#`, so that it is not read as the URI of another document.
+    ///
+    /// - Parameter fragment: The fragment, with or without a leading `#`.
+    /// - Returns: The reference text.
+    public static func reference(toFragment fragment: String) -> String {
+        let bare = fragment.first == CrossReferenceSyntax.fragmentSeparator ? String(fragment.dropFirst()) : fragment
+        guard bare.first != CrossReferenceSyntax.segmentSeparator else { return bare }
+        return String(CrossReferenceSyntax.fragmentSeparator) + bare
     }
 
     // MARK: - Resolving
