@@ -66,7 +66,7 @@ struct EMOFWriter {
             ? Array(root.children) : [root]
         var used = Set<String>()
         for (index, package) in packages.enumerated() {
-            let base = packages.count == 1 ? "/" : "/\(index)"
+            let base = PositionalFragments.rootSegment(index, rootCount: packages.count)
             assignIdentifiers(package, prefix: nil, path: [], base: base, alternative: index == 0 ? "/" : nil, used: &used)
         }
         let wrapper = CrossReferenceSyntax.xmiPrefix + ":" + XMIDocumentSyntax.multipleRootElement

@@ -283,7 +283,9 @@ it, as in the Eclipse Modeling Framework:
 
 - **Name-based fragments** address metamodel elements by name: `#/` is the package,
   `#//Book` a class, `#//Book/title` a feature, `#//sub/Class` a class of a subpackage and
-  `#//Colour/RED` an enumeration literal. ``FragmentNavigator`` resolves them.
+  `#//Colour/RED` an enumeration literal. In a resource with several roots, root `n` is
+  `#/n` and its class `#/n/Book`, as for positional fragments. ``FragmentNavigator`` computes
+  and resolves them.
 - **Positional fragments** address objects of a model by their containment: the only root of
   a resource is `#/` and its contents `#//@feature.index`, whereas root `n` of a resource
   with several roots is `#/n` and its contents `#/n/@feature.index` (``PositionalFragments``).

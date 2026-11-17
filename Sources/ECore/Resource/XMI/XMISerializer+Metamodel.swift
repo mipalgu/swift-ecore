@@ -173,8 +173,9 @@ private struct MetamodelWriter {
         self.lineWidth = lineWidth
         self.rootLayout = rootLayout
         for (index, package) in roots.enumerated() {
-            paths[package.id] = roots.count == 1 ? "/" : "/\(index)"
-            indexPaths(of: package, prefix: roots.count == 1 ? "//" : "/\(index)/")
+            let root = PositionalFragments.rootSegment(index, rootCount: roots.count)
+            paths[package.id] = root
+            indexPaths(of: package, prefix: root + String(CrossReferenceSyntax.segmentSeparator))
         }
     }
 

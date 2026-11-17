@@ -125,8 +125,7 @@ struct JSONMetamodelReader {
         }
         guard !rootValues.isEmpty else { throw JSONError.invalidFormat("\(uri) holds no package") }
         for (index, value) in rootValues.enumerated() {
-            let path = rootValues.count == 1
-                ? CrossReferenceSyntax.rootFragment : CrossReferenceSyntax.rootFragment + String(index)
+            let path = PositionalFragments.rootSegment(index, rootCount: rootValues.count)
             guard value.members != nil, let className = value[JSONSyntax.eClassKey]?.text,
                 JSONMetamodelSyntax.metaclass(named: className) == .ePackage
             else {

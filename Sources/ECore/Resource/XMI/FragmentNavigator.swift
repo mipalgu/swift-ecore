@@ -87,18 +87,23 @@ public struct FragmentNavigator: Sendable {
 
     /// Computes the name-based fragment of an object.
     ///
-    /// The fragment is `/` for a root object and `//` followed by the names along the
-    /// containment path otherwise (omitting the root's own name).
+    /// As in EMF, the fragment starts with that of the root that contains the object (see
+    /// ``PositionalFragments/rootSegment(_:rootCount:)``), followed by the names along the
+    /// containment path below that root. The only root of a resource is `/` and its
+    /// contents are `//Book` or `//Book/title`; root `n` of a resource with several roots
+    /// is `/n` and its contents are `/n/Book` or `/n/Book/title`. Each fragment resolves
+    /// back to the same object through ``resolve(_:)``.
     ///
     /// - Parameter target: The identifier of the object within the resource.
     /// - Returns: The fragment without a leading `#`, or `nil` if the object is not
     ///   reachable through named containment from a root of the resource.
     public func fragment(for target: EUUID) async -> String? {
-        for root in await resource.getRootObjects() {
-            if root.id == target { return CrossReferenceSyntax.rootFragment }
+        let roots = await resource.getRootObjects()
+        for (position, root) in roots.enumerated() {
+            let rootFragment = PositionalFragments.rootSegment(position, rootCount: roots.count)
+            if root.id == target { return rootFragment }
             if let path = await path(to: target, from: root) {
-                return CrossReferenceSyntax.fragmentPathPrefix
-                    + path.joined(separator: String(CrossReferenceSyntax.segmentSeparator))
+                return PositionalFragments.path(below: rootFragment, segments: path)
             }
         }
         return nil

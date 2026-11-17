@@ -16,6 +16,11 @@ public import EMFBase
 /// - Root `n` of a resource with several roots is `/n`, and its contents are
 ///   `/n/@feature.index/...`, including for the first root (`/0`).
 ///
+/// The same rule places the fragments that name objects by other segments, such as the
+/// name-based fragments of ``FragmentNavigator`` and ``EcoreFragment``:
+/// ``rootSegment(_:rootCount:)`` gives the fragment of a root, and
+/// ``path(below:segments:)`` the fragment of an object below it.
+///
 /// A segment `@feature.index` selects an element of a many-valued containment
 /// feature, and a segment `@feature` the value of a single-valued one. Only
 /// containment references are followed; the container side of a containment (see
@@ -70,8 +75,35 @@ public enum PositionalFragments {
     /// - Returns: ``CrossReferenceSyntax/rootFragment`` for the only root of a resource,
     ///   otherwise `/` followed by the position of the root.
     public static func rootSegment(_ position: Int, rootCount: Int) -> String {
-        guard rootCount != 1 else { return CrossReferenceSyntax.rootFragment }
+        rootSegment(at: rootCount == 1 ? nil : position)
+    }
+
+    /// The fragment of a root of a resource, given its position among several roots.
+    ///
+    /// - Parameter position: The position of the root among the roots of its resource, or
+    ///   `nil` for the only root of a resource.
+    /// - Returns: ``CrossReferenceSyntax/rootFragment`` for the only root, otherwise `/`
+    ///   followed by the position of the root.
+    static func rootSegment(at position: Int?) -> String {
+        guard let position else { return CrossReferenceSyntax.rootFragment }
         return String(CrossReferenceSyntax.segmentSeparator) + String(position)
+    }
+
+    /// The fragment of an object below a root of a resource.
+    ///
+    /// This is EMF's rule for every kind of segment: the segments of the containment path
+    /// follow the fragment of the root, each preceded by `/`. Below the only root of a
+    /// resource (`/`) this gives `//@tasks.0` or `//Book/title`; below root `n` of several
+    /// (`/n`) it gives `/n/@tasks.0` or `/n/Book/title`.
+    ///
+    /// - Parameters:
+    ///   - root: The fragment of the root, as ``rootSegment(_:rootCount:)`` gives it.
+    ///   - segments: The segments of the path from the root to the object, without `/`;
+    ///     none for the root itself.
+    /// - Returns: The fragment without a leading `#`.
+    public static func path(below root: String, segments: some Sequence<String>) -> String {
+        let separator = String(CrossReferenceSyntax.segmentSeparator)
+        return segments.reduce(root) { $0 + separator + $1 }
     }
 
     /// Records the fragments of an object and of everything it contains.
@@ -88,7 +120,6 @@ public enum PositionalFragments {
         guard result[object.id] == nil else { return }
         result[object.id] = path
         guard let dynamic = object as? DynamicEObject else { return }
-        let separator = String(CrossReferenceSyntax.segmentSeparator)
         let marker = String(CrossReferenceSyntax.positionalMarker)
         for reference in dynamic.eClass.allReferences where reference.containment && !reference.isContainerSide {
             let children = ReferenceValues.identifiers(dynamic.eGet(reference))
@@ -96,7 +127,7 @@ public enum PositionalFragments {
                 guard let child = await resource.resolve(identifier) else { continue }
                 var segment = marker + reference.name
                 if reference.isMany { segment += String(CrossReferenceSyntax.indexSeparator) + String(position) }
-                await collect(child, path: path + separator + segment, in: resource, into: &result)
+                await collect(child, path: Self.path(below: path, segments: [segment]), in: resource, into: &result)
             }
         }
     }

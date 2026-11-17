@@ -263,13 +263,13 @@ public enum EcoreFragment {
     /// - Returns: The fragment of each element, by identifier, without a leading `#`.
     public static func fragments(in root: EPackage, rootIndex: Int? = nil) -> [EUUID: String] {
         var result: [EUUID: String] = [:]
-        let top = CrossReferenceSyntax.rootFragment + (rootIndex.map(String.init) ?? "")
+        let top = PositionalFragments.rootSegment(at: rootIndex)
         result[root.id] = top
         func visit(_ element: EcoreElement, _ fragment: String) {
             let children = element.children
             let segments = segments(of: children)
             for (child, segment) in zip(children, segments) {
-                let path = fragment + String(CrossReferenceSyntax.segmentSeparator) + segment
+                let path = PositionalFragments.path(below: fragment, segments: [segment])
                 result[child.element.id] = path
                 visit(child.element, path)
             }
