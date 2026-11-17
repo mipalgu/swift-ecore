@@ -402,6 +402,21 @@ let text = try await XMISerializer(options: .emf).serialize(resource)
 `.ecore` documents reached through a proxy are loaded as dynamic objects;
 ``ResourceSet/loadEcoreResource(uri:)`` loads one as native packages instead.
 
+A many-valued reference can refer to objects of the written document and of other documents
+at once, as the result of a transformation does that maps only some of the objects a
+reference holds. Its targets are written in the order of the value: by ``XMISerializer`` as
+`href` elements, with `href="#//@tasks.0"` for an object of the written document, or as one
+attribute that lists them all with ``XMISerializationOptions/attributeStyleReferences``, and
+by ``JSONSerializer`` as an array of `$ref` objects. Both read such a reference back to the
+same objects in the same order. A value that has no form in a document, such as a list that
+holds identifiers among texts, is not written: the serialisers throw an error that names the
+feature instead.
+
+``XMISerializationOptions/legacy`` writes the URI of another document as the reference holds
+it, which is absolute for a document that was loaded from a file.
+``XMISerializationOptions/relativeURIs``, which ``XMISerializationOptions/emf`` includes, writes
+it relative to the written document, as EMF does.
+
 ## Models and Metamodels as JSON
 
 ``JSONParser`` builds objects from the metamodels registered with a ``ResourceSet``: `eClass`

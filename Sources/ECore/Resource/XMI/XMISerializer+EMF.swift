@@ -485,7 +485,12 @@ struct EMFDocumentWriter {
                         children: &children, indentation: childIndentation)
                     continue
                 }
-                renderAttribute(
+                if ObjectValues.objects(of: value) != nil {
+                    // An attribute holds objects only in memory; a document cannot hold them
+                    diagnostics.record(.droppedFeature(name: attribute.name, className: object.eClass.name))
+                    continue
+                }
+                try renderAttribute(
                     attribute, value: value, of: object, into: &attributes, children: &children,
                     indentation: childIndentation)
             case let reference as EReference where !reference.transient:
@@ -552,10 +557,12 @@ struct EMFDocumentWriter {
     ///   - attributes: The attribute text of the element being written.
     ///   - children: The child element text of the element being written.
     ///   - indentation: The indentation for child elements.
+    /// - Throws: ``XMIError/unsupportedFeature(_:)`` naming the attribute for a value that is
+    ///   neither a primitive value nor a list of them.
     private func renderAttribute(
         _ attribute: EAttribute, value: any EcoreValue, of object: DynamicEObject,
         into attributes: inout [String], children: inout String, indentation: String
-    ) {
+    ) throws {
         let serialiser = XMISerializer()
         let xmlName = ExtendedMetaDataNames.xmlName(of: attribute)
         if let stored = arrayTexts(of: value) {
@@ -571,6 +578,9 @@ struct EMFDocumentWriter {
             }
             return
         }
+        guard PrimitiveValues.isPrimitive(value) else {
+            throw XMIError.unwritableValue(value, feature: attribute.name, className: object.eClass.name)
+        }
         let text = convertToString(value)
         if options.omitDefaultValues && !attribute.unsettable && isDefault(text, of: attribute) { return }
         let written = (value as? Date).map(EcoreDateCoding.emfString(from:))
@@ -583,15 +593,12 @@ struct EMFDocumentWriter {
     /// Dates are written in the form that EMF writes (see ``EcoreDateCoding/emfString(from:)``).
     ///
     /// - Parameter value: The stored value.
-    /// - Returns: The texts, or `nil` if the value is not an array of primitives.
+    /// - Returns: The texts, or `nil` if the value is not a list of primitives (see
+    ///   ``PrimitiveValues/elements(of:)``).
     private func arrayTexts(of value: any EcoreValue) -> [String]? {
-        switch value {
-        case let strings as [String]: return strings
-        case let ints as [Int]: return ints.map(String.init)
-        case let doubles as [Double]: return doubles.map { "\($0)" }
-        case let bools as [Bool]: return bools.map { $0 ? "true" : "false" }
-        case let dates as [Date]: return dates.map(EcoreDateCoding.emfString(from:))
-        default: return nil
+        if let strings = value as? [String] { return strings }
+        return PrimitiveValues.elements(of: value)?.map { element in
+            (element as? Date).map(EcoreDateCoding.emfString(from:)) ?? convertToString(element)
         }
     }
 
@@ -636,8 +643,7 @@ struct EMFDocumentWriter {
         } else if let many = value as? [EUUID] {
             identifiers = many
         } else {
-            let inline = (value as? [any EObject]) ?? (value as? any EObject).map { [$0] }
-            guard let inline else {
+            guard let inline = ObjectValues.objects(of: value) else {
                 diagnostics.record(.droppedFeature(name: reference.name, className: object.eClass.name))
                 return ""
             }
@@ -689,55 +695,57 @@ struct EMFDocumentWriter {
     /// Whether a stored value refers to objects by identifier or by proxy.
     ///
     /// - Parameter value: The stored value.
-    /// - Returns: `true` for an identifier, a proxy, or a non-empty list of them.
+    /// - Returns: `true` for an identifier, a proxy, or a non-empty list of identifiers,
+    ///   proxies, or both (see ``ReferenceValues/targets(of:)``).
     static func holdsReferences(_ value: any EcoreValue) -> Bool {
-        switch value {
-        case is EUUID, is ResourceProxy: return true
-        case let identifiers as [EUUID]: return !identifiers.isEmpty
-        case let proxies as [ResourceProxy]: return !proxies.isEmpty
-        default: return false
-        }
+        ReferenceValues.targets(of: value)?.isEmpty == false
     }
 
     /// Writes a non-containment reference as an attribute or as `href` child elements.
     ///
-    /// A feature that holds identifiers without being declared as a reference, as the features
-    /// of untyped documents do, is written in the same way, without a type qualifier.
+    /// The targets are written in the order of the value, whether they are objects of the
+    /// written resource, objects of other resources, proxies, or a mixture of these: an
+    /// object of the written resource, and a proxy into it, as a fragment (`#//@tasks.0`),
+    /// and any other target with the URI of its resource. A feature that holds identifiers
+    /// without being declared as a reference, as the features of untyped documents do, is
+    /// written in the same way, without a type qualifier. A value that holds neither
+    /// identifiers nor proxies is recorded as a
+    /// ``ConversionWarning/Kind/droppedFeature(name:className:)`` warning.
     ///
     /// - Parameters:
     ///   - name: The name of the feature.
     ///   - declared: The declared type of the reference, or `nil` for a feature not declared as one.
-    ///   - value: The stored identifier, proxy, or list of either.
+    ///   - value: The stored identifier, proxy, or list of either or both.
     ///   - object: The object that holds the reference.
     ///   - attributes: The attribute text of the element being written.
     ///   - children: The child element text of the element being written.
     ///   - indentation: The indentation for child elements.
+    /// - Throws: ``XMIError/unsupportedFeature(_:)`` naming the feature for a list that holds
+    ///   identifiers or proxies among values of other kinds, or another ``XMIError`` if a
+    ///   target cannot be resolved.
     private mutating func renderReference(
         named name: String, declared: (any EClassifier)?, value: any EcoreValue, of object: DynamicEObject,
         into attributes: inout [String], children: inout String, indentation: String
     ) async throws {
-        var entries: [(qualifier: String?, href: String)] = []
-        let identifiers: [EUUID]
-        let proxies: [ResourceProxy]
-        switch value {
-        case let id as EUUID: (identifiers, proxies) = ([id], [])
-        case let ids as [EUUID]: (identifiers, proxies) = (ids, [])
-        case let proxy as ResourceProxy: (identifiers, proxies) = ([], [proxy])
-        case let list as [ResourceProxy]: (identifiers, proxies) = ([], list)
-        default:
+        guard let targets = ReferenceValues.targets(of: value) else {
+            if ReferenceValues.mixesTargetsWithOtherValues(value) {
+                throw XMIError.unwritableValue(value, feature: name, className: object.eClass.name)
+            }
             diagnostics.record(.droppedFeature(name: name, className: object.eClass.name))
             return
         }
-        for id in identifiers {
-            let resolved = try await self.reference(to: id)
-            if !resolved.located {
-                diagnostics.record(.referenceWithoutFragment(feature: name, className: object.eClass.name))
+        var entries: [(qualifier: String?, href: String)] = []
+        for target in targets {
+            if let id = target as? EUUID {
+                let resolved = try await self.reference(to: id)
+                if !resolved.located {
+                    diagnostics.record(.referenceWithoutFragment(feature: name, className: object.eClass.name))
+                }
+                entries.append((declared.flatMap { qualifier(for: resolved.target, declared: $0) }, resolved.href))
+            } else if let proxy = target as? ResourceProxy {
+                await checkDangling(proxy)
+                entries.append((proxyQualifier(proxy), proxyHref(proxy)))
             }
-            entries.append((declared.flatMap { qualifier(for: resolved.target, declared: $0) }, resolved.href))
-        }
-        for proxy in proxies {
-            await checkDangling(proxy)
-            entries.append((proxyQualifier(proxy), proxyHref(proxy)))
         }
         guard !entries.isEmpty else { return }
 

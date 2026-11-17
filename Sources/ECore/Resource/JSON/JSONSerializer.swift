@@ -91,8 +91,9 @@ public struct JSONSerializer: Sendable {
     ///
     /// Every `eClass` is written as `"<nsURI>#//<Name>"` when the class belongs to a metamodel
     /// registered with the resource's resource set. Non-containment references are written as
-    /// `{"$ref": "<fragment>"}` (an array of such objects for many-valued features), and
-    /// references to objects of other documents as `{"$ref": "<uri>#<fragment>"}`. The
+    /// `{"$ref": "<fragment>"}` (an array of such objects for many-valued features, in the
+    /// order of the value), and references to objects of other documents as
+    /// `{"$ref": "<uri>#<fragment>"}`; one array can hold both. The
     /// container side of a containment reference is implied by the nesting and left out of
     /// nested objects.
     /// Keys are sorted, and a number with a fraction or an exponent is written in its
@@ -128,7 +129,9 @@ public struct JSONSerializer: Sendable {
     ///   - diagnostics: Receives the warnings, in the order in which they first occur
     /// - Returns: JSON string
     /// - Throws: `JSONError` if serialisation fails, such as for a number that is infinite or
-    ///   not a number, which JSON cannot hold
+    ///   not a number, which JSON cannot hold, or a ``JSONError/parseError(_:)`` that names the
+    ///   feature and its class for a value that has no JSON form, such as a list that holds
+    ///   identifiers among texts
     public func serialize(_ resource: Resource, diagnostics: inout ConversionDiagnostics) async throws -> String {
         let roots = await resource.getRootObjects()
 

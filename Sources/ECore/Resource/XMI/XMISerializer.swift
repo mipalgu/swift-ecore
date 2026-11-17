@@ -118,11 +118,16 @@ public struct XMISerializer: Sendable {
     /// of an undeclared feature that is not a primitive. A resource without root objects is
     /// written as ``XMIDocumentSyntax/emptyDocument``.
     ///
+    /// The targets of a reference are written in the order of its value, whether they are
+    /// objects of the resource, objects of other resources, proxies, or a mixture of these.
+    ///
     /// - Parameters:
     ///   - resource: The Resource containing objects to serialise
     ///   - diagnostics: Receives the warnings, in the order in which they first occur
     /// - Returns: XMI formatted string
-    /// - Throws: `XMIError` if serialisation fails
+    /// - Throws: ``XMIError/unsupportedFeature(_:)`` naming the feature and its class for a
+    ///   value that a document cannot hold, such as a list that holds identifiers among
+    ///   texts, or another `XMIError` if serialisation fails
     public func serialize(_ resource: Resource, diagnostics: inout ConversionDiagnostics) async throws -> String {
         #if os(WASI)
         // Bound the cooperative executor's continuation stack across successive documents.
@@ -206,7 +211,7 @@ public struct XMISerializer: Sendable {
         let startTag = "\(indent)<\(elementName)"
 
         // Add attributes
-        var xml = await addAttributes(object, in: resource, references: &writer)
+        var xml = try await addAttributes(object, in: resource, references: &writer)
 
         // Get contained children
         let children = await getContainedChildren(object, in: resource, references: &writer)
@@ -298,7 +303,7 @@ public struct XMISerializer: Sendable {
         }
 
         // Add attributes in insertion order (preserving EMF semantic ordering)
-        xml += await addAttributes(dynamicObject, in: resource, references: &writer)
+        xml += try await addAttributes(dynamicObject, in: resource, references: &writer)
 
         if children.isEmpty && references.isEmpty && valueChildren.isEmpty {
             xml += "/>\n"
@@ -331,48 +336,55 @@ public struct XMISerializer: Sendable {
 
     /// Serialise a cross-reference as href
     ///
+    /// A many-valued reference is written as one element per target, in the order of the
+    /// value, whether its targets are objects of the written resource, objects of other
+    /// resources, proxies, or a mixture of these. An object of the written resource is
+    /// written as a fragment (`href="#//@tasks.0"`), an object of another resource with the
+    /// URI of that resource, and a proxy with the URI and fragment that it holds.
+    ///
     /// - Parameters:
     ///   - featureName: The feature name
-    ///   - target: Target of the reference (EUUID for same-resource, ResourceProxy for cross-resource)
+    ///   - target: Target of the reference: an identifier, a ``ResourceProxy``, or a list of them
     ///   - owner: The object that holds the reference
     ///   - resource: The Resource for context
     ///   - indentLevel: Current indentation level
     ///   - writer: The writer that computes the text of references
     /// - Returns: XML string
-    /// - Throws: `XMIError` if serialisation fails
+    /// - Throws: ``XMIError/unsupportedFeature(_:)`` naming the feature if the value holds
+    ///   anything other than identifiers and proxies, or another `XMIError` if a target cannot
+    ///   be resolved
     private func serializeCrossReference(
         featureName: String, target: any EcoreValue, of owner: any EObject, in resource: Resource, indentLevel: Int,
         references writer: inout EMFDocumentWriter
     ) async throws -> String {
         let indent = String(repeating: "    ", count: indentLevel)
-
-        // Many-valued references are written as one element per target, in order
-        if target is [EUUID] || target is [ResourceProxy] || target is EcoreValueArray {
-            var xml = ""
-            for single in referenceTargets(of: target) {
-                xml += try await serializeCrossReference(
-                    featureName: featureName, target: single, of: owner, in: resource, indentLevel: indentLevel,
-                    references: &writer)
-            }
-            return xml
-        }
-
         let href: String
 
-        if let targetId = target as? EUUID {
+        switch target {
+        case let targetId as EUUID:
             // Positional fragment in this resource or URI and fragment in another resource of the set
             let resolved = try await writer.reference(to: targetId)
             if !resolved.located {
                 writer.diagnostics.record(.referenceWithoutFragment(feature: featureName, className: getClassName(owner)))
             }
             href = resolved.href
-        } else if let proxy = target as? ResourceProxy {
+        case let proxy as ResourceProxy:
             // Cross-resource reference: Use proxy's URI and fragment
             await writer.checkDangling(proxy)
             let fragment = proxy.fragment.hasPrefix("#") ? proxy.fragment : "#\(proxy.fragment)"
             href = "\(proxy.uri)\(fragment)"
-        } else {
-            throw XMIError.invalidReference("Unsupported reference type: \(type(of: target))")
+        default:
+            // Many-valued references are written as one element per target, in order
+            guard let targets = ReferenceValues.targets(of: target) else {
+                throw XMIError.unwritableValue(target, feature: featureName, className: getClassName(owner))
+            }
+            var xml = ""
+            for single in targets {
+                xml += try await serializeCrossReference(
+                    featureName: featureName, target: single, of: owner, in: resource, indentLevel: indentLevel,
+                    references: &writer)
+            }
+            return xml
         }
 
         return "\(indent)<\(featureName) href=\"\(href)\"/>\n"
@@ -481,9 +493,11 @@ public struct XMISerializer: Sendable {
     ///   - resource: The Resource
     ///   - writer: The writer that records the warnings
     /// - Returns: Attributes string
+    /// - Throws: ``XMIError/unsupportedFeature(_:)`` naming the feature for a value that is
+    ///   neither a primitive value, a list of them, a reference, nor an object
     private func addAttributes(
         _ object: any EObject, in resource: Resource, references writer: inout EMFDocumentWriter
-    ) async -> String {
+    ) async throws -> String {
         var attributes = ""
 
         guard let dynamicObject = object as? DynamicEObject else {
@@ -510,8 +524,8 @@ public struct XMISerializer: Sendable {
             }
 
             // Only serialise single primitive values as attributes
-            let holdsObjects = Self.holdsObjects(value)
-            if isReferenceValue(value) || holdsObjects {
+            let holdsObjects = ObjectValues.objects(of: value) != nil
+            if ReferenceValues.targets(of: value) != nil || holdsObjects {
                 // References and contained objects are written as child elements
                 let reference = dynamicObject.eClass.getStructuralFeature(name: featureName) as? EReference
                 if holdsObjects && reference?.containment != true {
@@ -523,25 +537,15 @@ public struct XMISerializer: Sendable {
                 // Many-valued attributes are written as child elements
                 continue
             }
+            guard PrimitiveValues.isPrimitive(value) else {
+                throw XMIError.unwritableValue(value, feature: featureName, className: dynamicObject.eClass.name)
+            }
 
             // Convert value to string and add to attributes in insertion order
             attributes += " \(featureName)=\"\(escapeXML(attributeText(value, feature: featureName, of: dynamicObject)))\""
         }
 
         return attributes
-    }
-
-    /// Whether a stored value holds objects themselves rather than their identifiers.
-    ///
-    /// An empty list holds no objects, whatever its element type, so an empty list of
-    /// identifiers, such as an unused many-valued reference, is not mistaken for one.
-    ///
-    /// - Parameter value: The stored value.
-    /// - Returns: `true` for an object or a non-empty list of objects.
-    private static func holdsObjects(_ value: any EcoreValue) -> Bool {
-        if value is any EObject { return true }
-        guard let objects = value as? [any EObject] else { return false }
-        return !objects.isEmpty
     }
 
     /// Get contained children of an object
@@ -611,7 +615,7 @@ public struct XMISerializer: Sendable {
                 if !childObjects.isEmpty {
                     children.append((featureName, childObjects))
                 }
-            } else if let inline = (value as? [any EObject]) ?? (value as? any EObject).map({ [$0] }) {
+            } else if let inline = ObjectValues.objects(of: value) {
                 for child in inline {
                     writer.diagnostics.record(.unregisteredContainedObject(className: getClassName(child)))
                 }
@@ -652,8 +656,8 @@ public struct XMISerializer: Sendable {
                 if let value = await resource.eGet(objectId: dynamicObject.id, feature: featureName)
                 {
                     // Can be EUUID (same-resource) or ResourceProxy (cross-resource),
-                    // or a list of them for a many-valued reference
-                    if !referenceTargets(of: value).isEmpty {
+                    // or a list of either or both for a many-valued reference
+                    if ReferenceValues.targets(of: value)?.isEmpty == false {
                         references.append((featureName, value))
                     }
                 }
@@ -671,53 +675,14 @@ public struct XMISerializer: Sendable {
 
     // MARK: - Many-Valued Values
 
-    /// Whether a stored value refers to other objects.
-    ///
-    /// - Parameter value: The stored value.
-    /// - Returns: `true` for identifiers, proxies, and lists of them.
-    private func isReferenceValue(_ value: any EcoreValue) -> Bool {
-        value is EUUID || value is [EUUID] || value is ResourceProxy || value is [ResourceProxy]
-    }
-
-    /// The individual targets of a stored reference value.
-    ///
-    /// - Parameter value: The stored value.
-    /// - Returns: The identifiers and proxies the value holds in order; empty if the value is not
-    ///   a reference value.
-    private func referenceTargets(of value: any EcoreValue) -> [any EcoreValue] {
-        switch value {
-        case let identifier as EUUID: return [identifier]
-        case let proxy as ResourceProxy: return [proxy]
-        case let identifiers as [EUUID]: return identifiers
-        case let proxies as [ResourceProxy]: return proxies
-        case let array as EcoreValueArray:
-            let targets = array.values.filter { $0 is EUUID || $0 is ResourceProxy }
-            return targets.count == array.values.count ? targets : []
-        default: return []
-        }
-    }
-
     /// The texts of a many-valued attribute value.
     ///
     /// - Parameter value: The stored value.
-    /// - Returns: The text of each element, or `nil` if the value is not a list of primitives.
+    /// - Returns: The text of each element, or `nil` if the value is not a list of primitives
+    ///   (see ``PrimitiveValues/elements(of:)``).
     private func manyValuedTexts(of value: any EcoreValue) -> [String]? {
-        switch value {
-        case let strings as [String]: return strings
-        case let ints as [Int]: return ints.map(String.init)
-        case let doubles as [Double]: return doubles.map { convertToString($0) }
-        case let bools as [Bool]: return bools.map { convertToString($0) }
-        case let dates as [Date]: return dates.map { convertToString($0) }
-        case let array as EcoreValueArray:
-            let texts = array.values.map { element -> String? in
-                switch element {
-                case is EUUID, is ResourceProxy, is any EObject: return nil
-                default: return convertToString(element)
-                }
-            }
-            return texts.contains(where: { $0 == nil }) ? nil : texts.compactMap { $0 }
-        default: return nil
-        }
+        if let strings = value as? [String] { return strings }
+        return PrimitiveValues.elements(of: value)?.map { convertToString($0) }
     }
 
     /// Gets the many-valued attributes of an object.

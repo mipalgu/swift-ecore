@@ -50,7 +50,8 @@ struct JSONWritingContext {
     ///
     /// - Parameter object: The object to write.
     /// - Returns: The dictionary, with the `eClass` key, the set attributes, and the set references.
-    /// - Throws: ``JSONError`` if a reference cannot be written.
+    /// - Throws: ``JSONError`` if a reference cannot be written, or if a value is neither a
+    ///   primitive value, a list of them, a reference, nor an object.
     mutating func dictionary(for object: DynamicEObject) async throws -> [String: Any] {
         let current = await resource.resolve(object.id) as? DynamicEObject ?? object
         var result: [String: Any] = [JSONSyntax.eClassKey: className(of: current.eClass)]
@@ -59,7 +60,7 @@ struct JSONWritingContext {
             if EMFDocumentWriter.holdsReferences(value) {
                 result[attribute.name] = try await identifierJSON(value, feature: attribute.name, many: attribute.isMany, of: current)
             } else {
-                result[attribute.name] = Self.json(for: value)
+                result[attribute.name] = try Self.json(for: value, feature: attribute.name, of: current)
             }
         }
         let isRoot = roots.contains(current.id)
@@ -114,7 +115,19 @@ struct JSONWritingContext {
     // MARK: - Values
 
     /// The JSON value of an attribute value.
-    private static func json(for value: any EcoreValue) -> Any {
+    ///
+    /// Texts, integers, Boolean values and floating-point numbers become the JSON values of
+    /// their kind, dates their textual form, and lists arrays. Any other value with a textual
+    /// form (see ``PrimitiveValues/isPrimitive(_:)``) is written as its text.
+    ///
+    /// - Parameters:
+    ///   - value: The stored value.
+    ///   - feature: The name of the feature that holds the value.
+    ///   - owner: The object that holds the value.
+    /// - Returns: The JSON value.
+    /// - Throws: ``JSONError/parseError(_:)`` naming the feature for a value, or an element
+    ///   of a list, that has no textual form.
+    private static func json(for value: any EcoreValue, feature: String, of owner: DynamicEObject) throws -> Any {
         switch value {
         case let string as String: return string
         case let int as Int: return int
@@ -122,9 +135,10 @@ struct JSONWritingContext {
         case let double as Double: return double
         case let float as Float: return Double(String(float)) ?? Double(float)
         case let date as Date: return EcoreDateCoding.fractionalString(from: date)
-        case let array as EcoreValueArray: return array.values.map { json(for: $0) }
-        case let array as [any EcoreValue]: return array.map { json(for: $0) }
-        default: return String(describing: value)
+        case let array as EcoreValueArray: return try array.values.map { try json(for: $0, feature: feature, of: owner) }
+        case let array as [any EcoreValue]: return try array.map { try json(for: $0, feature: feature, of: owner) }
+        case let value where PrimitiveValues.isPrimitive(value): return String(describing: value)
+        default: throw JSONError.unwritableValue(value, feature: feature, className: owner.eClass.name)
         }
     }
 
@@ -138,6 +152,8 @@ struct JSONWritingContext {
     ///   - feature: The name of the feature.
     ///   - owner: The object that holds the value.
     /// - Returns: The JSON value.
+    /// - Throws: ``JSONError`` if a reference cannot be written, or if the value is neither a
+    ///   primitive value, a list of them, a reference, nor an object.
     private mutating func dynamicJSON(_ value: any EcoreValue, feature: String, of owner: DynamicEObject) async throws
         -> Any
     {
@@ -148,8 +164,8 @@ struct JSONWritingContext {
             for object in objects { result.append(try await dictionary(for: object)) }
             return result
         case let value where EMFDocumentWriter.holdsReferences(value):
-            return try await identifierJSON(value, feature: feature, many: value is [EUUID] || value is [ResourceProxy], of: owner)
-        default: return Self.json(for: value)
+            return try await identifierJSON(value, feature: feature, many: ValueList.isList(value), of: owner)
+        default: return try Self.json(for: value, feature: feature, of: owner)
         }
     }
 
@@ -205,13 +221,17 @@ struct JSONWritingContext {
     ///
     /// A contained object that the resource does not hold, a reference to a proxy into the
     /// written document, and a reference that has to be written as an object identifier are
-    /// recorded as warnings.
+    /// recorded as warnings. An object held by the value itself is written as a nested
+    /// dictionary, as a list of objects is.
     ///
     /// - Parameters:
-    ///   - target: The identifier or proxy.
+    ///   - target: The identifier, proxy, or object.
     ///   - reference: The declared reference.
     ///   - owner: The object that holds the reference.
     /// - Returns: A nested dictionary, a `$ref` object, or the identifier text.
+    /// - Throws: ``JSONError/parseError(_:)`` naming the reference for a target that is
+    ///   neither an identifier, a proxy, nor an object, or another ``JSONError`` if a nested
+    ///   object cannot be written.
     private mutating func entry(for target: any EcoreValue, reference: EReference, of owner: DynamicEObject)
         async throws -> Any
     {
@@ -222,9 +242,9 @@ struct JSONWritingContext {
             return [JSONSyntax.referenceKey: JSONFragments.reference(
                 uri: proxy.uri, fragment: proxy.fragment, from: resource.uri)]
         }
+        if let object = target as? DynamicEObject { return try await dictionary(for: object) }
         guard let identifier = target as? EUUID else {
-            diagnostics.record(.referenceWithoutFragment(feature: reference.name, className: owner.eClass.name))
-            return String(describing: target)
+            throw JSONError.unwritableValue(target, feature: reference.name, className: owner.eClass.name)
         }
         if reference.containment, let child = await resource.resolve(identifier) as? DynamicEObject {
             return try await dictionary(for: child)
