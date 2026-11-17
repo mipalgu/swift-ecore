@@ -53,8 +53,8 @@ public struct JSONParseOptions: Sendable, Equatable {
 ///
 /// A document whose root objects are all of class
 /// `http://www.eclipse.org/emf/2002/Ecore#//EPackage` is a metamodel (see
-/// ``JSONSerializer/serialize(_:relativeTo:)`` for its format). It is read as native
-/// packages, as ``ResourceSet/loadEcoreResource(uri:)`` reads an `.ecore` document: the
+/// ``JSONSerializer/serialize(_:relativeTo:)-([EPackage],_)`` for its format). It is read
+/// as native packages, as ``ResourceSet/loadEcoreResource(uri:)`` reads an `.ecore` document: the
 /// resource holds ``EPackage`` values whose references and opposites are resolved, and with
 /// a resource set every root package is registered as a metamodel and the classifiers of
 /// other documents are loaded through it.

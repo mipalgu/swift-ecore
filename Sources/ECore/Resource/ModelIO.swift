@@ -462,8 +462,9 @@ public enum ModelIO {
     /// The resource is written by the handler of the format. With the built-in handlers, a
     /// resource whose root objects are all native packages is written as an Ecore document
     /// in the XMI and Ecore formats and as a JSON metamodel (see
-    /// ``JSONSerializer/serialize(_:relativeTo:)``) in the JSON format. Other resources are
-    /// written by an ``XMISerializer`` with the given options or by a ``JSONSerializer``.
+    /// ``JSONSerializer/serialize(_:relativeTo:)-([EPackage],_)``) in the JSON format.
+    /// Other resources are written by an ``XMISerializer`` with the given options or by a
+    /// ``JSONSerializer``.
     ///
     /// - Parameters:
     ///   - resource: The resource to render.

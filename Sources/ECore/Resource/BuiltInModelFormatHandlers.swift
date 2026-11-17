@@ -142,7 +142,8 @@ struct JSONFormatHandler: BuiltInModelFormatHandler, WritableModelFormatHandler 
     ///
     /// - Parameters:
     ///   - resource: The resource to write.
-    ///   - documentURL: The location of the document, or `nil`.
+    ///   - documentURL: The location of the document, against which the URIs of other
+    ///     documents are made relative, or `nil` for the URI of the resource.
     ///   - xmiOptions: Not used.
     ///   - diagnostics: Receives what cannot be kept.
     /// - Returns: The text of the document.
@@ -153,6 +154,9 @@ struct JSONFormatHandler: BuiltInModelFormatHandler, WritableModelFormatHandler 
     ) async throws -> String {
         if let packages = await ModelIO.metamodelPackages(of: resource) {
             return JSONSerializer().serialize(packages, relativeTo: documentURL)
+        }
+        if let documentURL {
+            return try await JSONSerializer().serialize(resource, relativeTo: documentURL, diagnostics: &diagnostics)
         }
         return try await JSONSerializer().serialize(resource, diagnostics: &diagnostics)
     }

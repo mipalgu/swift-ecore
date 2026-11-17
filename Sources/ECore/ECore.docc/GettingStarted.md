@@ -437,7 +437,14 @@ and both have hierarchical paths, as `file:` URIs on the same drive do. A URI of
 scheme or host, or one written without a known location, is written as the reference holds
 it. When a document is read, a relative URI is resolved against the location of that
 document, so documents that keep their relative locations read back to the same objects.
-``JSONSerializer`` writes the URIs of other documents relative to the written resource.
+``JSONSerializer`` always writes the URIs of other documents this way.
+
+The written location is the one that a document is saved to, such as the file that
+``ModelIO/save(_:to:format:xmiOptions:registry:diagnostics:)`` writes, and the URI of the
+resource only when a document is rendered without a location. A model at `output/notes.xmi`
+that refers to `models/tasks.xmi` holds `../models/tasks.xmi`; saved as `notes.json` in the
+directory above, it is written with `models/tasks.xmi`, so the converted document still reads
+back to the same tasks.
 
 ## Models and Metamodels as JSON
 

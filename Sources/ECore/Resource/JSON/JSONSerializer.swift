@@ -38,7 +38,7 @@ import Foundation
 /// ## Metamodels
 ///
 /// Metamodels are written as instances of the Ecore metamodel, following the conventions
-/// of emfjson for Ecore models (see ``serialize(_:relativeTo:)``):
+/// of emfjson for Ecore models (see ``serialize(_:relativeTo:)-([EPackage],_)``):
 ///
 /// ```json
 /// {
@@ -78,12 +78,15 @@ public struct JSONSerializer: Sendable {
 
     /// Serialize a Resource to a JSON file
     ///
+    /// The URIs of other documents are written relative to the file, which need not be the
+    /// URI of the resource (see ``serialize(_:relativeTo:)-(Resource,_)``).
+    ///
     /// - Parameters:
     ///   - resource: The Resource containing objects to serialize
     ///   - url: The URL where the JSON file should be written
     /// - Throws: `JSONError` if serialization fails or I/O errors occur
     public func serialize(_ resource: Resource, to url: URL) async throws {
-        let jsonString = try await serialize(resource)
+        let jsonString = try await serialize(resource, relativeTo: url)
         try jsonString.write(to: url, atomically: FileURIHandler.writesAtomically, encoding: .utf8)
     }
 
@@ -93,17 +96,17 @@ public struct JSONSerializer: Sendable {
     /// registered with the resource's resource set. Non-containment references are written as
     /// `{"$ref": "<fragment>"}` (an array of such objects for many-valued features, in the
     /// order of the value), and references to objects of other documents as
-    /// `{"$ref": "<uri>#<fragment>"}`; one array can hold both. The
-    /// container side of a containment reference is implied by the nesting and left out of
-    /// nested objects.
+    /// `{"$ref": "<uri>#<fragment>"}`, with the URI relative to the URI of the resource; one
+    /// array can hold both. The container side of a containment reference is implied by the
+    /// nesting and left out of nested objects.
     /// Keys are sorted, and a number with a fraction or an exponent is written in its
     /// shortest form that reads back as the same number (`87.2`, `1e-07`), so the same
     /// resource is written as the same text on every platform.
     ///
     /// A resource without root objects is written as an empty array (`[]`). A resource whose
     /// root objects are all native packages is written as a metamodel, as
-    /// ``serialize(_:relativeTo:)`` writes it with references to other documents relative to
-    /// the document from which the first package was loaded.
+    /// ``serialize(_:relativeTo:)-([EPackage],_)`` writes it with references to other
+    /// documents relative to the document from which the first package was loaded.
     ///
     /// - Parameter resource: The Resource containing objects to serialize
     /// - Returns: JSON string
@@ -133,17 +136,70 @@ public struct JSONSerializer: Sendable {
     ///   feature and its class for a value that has no JSON form, such as a list that holds
     ///   identifiers among texts
     public func serialize(_ resource: Resource, diagnostics: inout ConversionDiagnostics) async throws -> String {
+        try await serialize(resource, documentURI: nil, diagnostics: &diagnostics)
+    }
+
+    /// Serialise a Resource to a JSON string for a document at a given location
+    ///
+    /// The document is the one that ``serialize(_:)`` writes, except that the URIs of other
+    /// documents are written relative to the given location, which need not be the URI of
+    /// the resource. A reference into the written document is written as a fragment alone,
+    /// wherever the document is written.
+    ///
+    /// - Parameters:
+    ///   - resource: The Resource containing objects to serialise
+    ///   - documentURL: The location that the document will have
+    /// - Returns: JSON string
+    /// - Throws: `JSONError` if serialisation fails
+    public func serialize(_ resource: Resource, relativeTo documentURL: URL) async throws -> String {
+        var diagnostics = ConversionDiagnostics()
+        return try await serialize(resource, relativeTo: documentURL, diagnostics: &diagnostics)
+    }
+
+    /// Serialise a Resource to a JSON string for a document at a given location, recording what cannot be kept
+    ///
+    /// The document is the one that ``serialize(_:relativeTo:)-(Resource,_)`` writes, and
+    /// the warnings are those that ``serialize(_:diagnostics:)`` records.
+    ///
+    /// - Parameters:
+    ///   - resource: The Resource containing objects to serialise
+    ///   - documentURL: The location that the document will have
+    ///   - diagnostics: Receives the warnings, in the order in which they first occur
+    /// - Returns: JSON string
+    /// - Throws: `JSONError` if serialisation fails, as for ``serialize(_:diagnostics:)``
+    public func serialize(
+        _ resource: Resource, relativeTo documentURL: URL, diagnostics: inout ConversionDiagnostics
+    ) async throws -> String {
+        try await serialize(
+            resource, documentURI: URIReference.canonicalise(documentURL.absoluteURL.absoluteString),
+            diagnostics: &diagnostics)
+    }
+
+    /// Serialise a Resource to a JSON string for a document with a given URI, recording what cannot be kept
+    ///
+    /// - Parameters:
+    ///   - resource: The Resource containing objects to serialise
+    ///   - documentURI: The canonical URI against which the URIs of other documents are made
+    ///     relative, or `nil` for the URI of the resource
+    ///   - diagnostics: Receives the warnings, in the order in which they first occur
+    /// - Returns: JSON string
+    /// - Throws: `JSONError` if serialisation fails, as for ``serialize(_:diagnostics:)``
+    func serialize(
+        _ resource: Resource, documentURI: String?, diagnostics: inout ConversionDiagnostics
+    ) async throws -> String {
         let roots = await resource.getRootObjects()
 
         guard !roots.isEmpty else { return JSONSyntax.emptyDocument }
         let packages = roots.compactMap { $0 as? EPackage }
-        if packages.count == roots.count { return serialize(packages) }
+        if packages.count == roots.count {
+            return JSONMetamodelWriter(roots: packages, documentURI: documentURI).document.document
+        }
         let dynamicRoots = roots.compactMap { $0 as? DynamicEObject }
         guard dynamicRoots.count == roots.count else {
             throw JSONError.unsupportedObjectType
         }
 
-        var context = await JSONWritingContext(resource: resource)
+        var context = await JSONWritingContext(resource: resource, documentURI: documentURI)
         var documents: [[String: Any]] = []
         for root in dynamicRoots {
             documents.append(try await context.dictionary(for: root))
@@ -201,7 +257,7 @@ public struct JSONSerializer: Sendable {
     /// Serialises a native package as a JSON metamodel file.
     ///
     /// References to other documents are written relative to the file; see
-    /// ``serialize(_:relativeTo:)`` for the format.
+    /// ``serialize(_:relativeTo:)-([EPackage],_)`` for the format.
     ///
     /// - Parameters:
     ///   - package: The root package to serialise.

@@ -578,8 +578,8 @@ public actor ResourceSet {
     /// the references that close the cycle to stand-ins.
     ///
     /// A document that starts like JSON (with `{` or `[`) is read as a metamodel in the JSON
-    /// format that ``JSONSerializer/serialize(_:relativeTo:)`` writes, both here and where
-    /// another document refers to it.
+    /// format that ``JSONSerializer/serialize(_:relativeTo:)-([EPackage],_)`` writes, both
+    /// here and where another document refers to it.
     ///
     /// - Parameter uri: The absolute URI of the `.ecore` or JSON document.
     /// - Returns: The resource holding the native package as its root object.

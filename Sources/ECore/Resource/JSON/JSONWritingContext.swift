@@ -10,6 +10,9 @@ import Foundation
 /// The state that the JSON serialiser needs to turn the objects of a resource into JSON values.
 struct JSONWritingContext {
     private let resource: Resource
+
+    /// The URI against which the URIs of other documents are made relative.
+    private let documentURI: String
     private let fragments: [EUUID: String]
     private let packages: [EPackage]
     private var classNames: [EUUID: String] = [:]
@@ -26,9 +29,14 @@ struct JSONWritingContext {
     /// The classes are qualified by the metamodels of the resource's set. If the set has been
     /// released, the metamodels that it held remain available through the resource.
     ///
-    /// - Parameter resource: The resource to write.
-    init(resource: Resource) async {
+    /// - Parameters:
+    ///   - resource: The resource to write.
+    ///   - documentURI: The canonical URI of the location that the document is written to,
+    ///     against which the URIs of other documents are made relative, or `nil` (the
+    ///     default) for the URI of the resource.
+    init(resource: Resource, documentURI: String? = nil) async {
         self.resource = resource
+        self.documentURI = documentURI ?? resource.uri
         fragments = await JSONFragments.index(of: resource)
         roots = Set(await resource.getRootObjects().map(\.id))
         var registered: [EPackage] = []
@@ -219,8 +227,11 @@ struct JSONWritingContext {
 
     /// The JSON value of one target of a reference.
     ///
-    /// A contained object that the resource does not hold, a reference to a proxy into the
-    /// written document, and a reference that has to be written as an object identifier are
+    /// A proxy into the written resource is written as a fragment alone, and a proxy into
+    /// another document and an object of another resource with the URI of that document,
+    /// relative to the location that is written where possible. A contained object that the
+    /// resource does not hold, a reference to a proxy into the written document that names
+    /// no object, and a reference that has to be written as an object identifier are
     /// recorded as warnings. An object held by the value itself is written as a nested
     /// dictionary, as a list of objects is.
     ///
@@ -239,8 +250,11 @@ struct JSONWritingContext {
             if await EMFDocumentWriter.isDangling(proxy, in: resource) {
                 diagnostics.record(.unresolvedProxy(uri: proxy.uri, fragment: proxy.fragment))
             }
+            if EMFDocumentWriter.refersToOwnDocument(proxy, of: resource) {
+                return [JSONSyntax.referenceKey: JSONFragments.reference(toFragment: proxy.fragment)]
+            }
             return [JSONSyntax.referenceKey: JSONFragments.reference(
-                uri: proxy.uri, fragment: proxy.fragment, from: resource.uri)]
+                uri: proxy.uri, fragment: proxy.fragment, from: documentURI)]
         }
         if let object = target as? DynamicEObject { return try await dictionary(for: object) }
         guard let identifier = target as? EUUID else {
@@ -258,6 +272,12 @@ struct JSONWritingContext {
         return identifier.uuidString
     }
 
+    /// The reference text of an object that is not held by a value.
+    ///
+    /// - Parameter identifier: The identifier of the object.
+    /// - Returns: The fragment of an object of the resource, the URI of another resource of
+    ///   the set, relative to the location that is written, with the fragment of an object of
+    ///   that resource, or `nil` if the object cannot be located.
     private mutating func referenceText(to identifier: EUUID) async -> String? {
         if let local = fragments[identifier] { return local }
         guard let resourceSet = await resource.resourceSet,
@@ -266,7 +286,7 @@ struct JSONWritingContext {
         let uri = located.resource.uri
         if remoteFragments[uri] == nil { remoteFragments[uri] = await JSONFragments.index(of: located.resource) }
         guard let fragment = remoteFragments[uri]?[identifier] else { return nil }
-        return JSONFragments.reference(uri: uri, fragment: fragment, from: resource.uri)
+        return JSONFragments.reference(uri: uri, fragment: fragment, from: documentURI)
     }
 
     private static func targets(of value: any EcoreValue) -> [any EcoreValue] {

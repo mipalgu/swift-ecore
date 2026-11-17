@@ -208,12 +208,17 @@ extension ResourceSet {
 
     /// Saves a resource as a JSON document through the handler chain.
     ///
+    /// The URIs of other documents are written relative to the URI of the document that is
+    /// written, as ``JSONSerializer/serialize(_:relativeTo:)-(Resource,_)`` writes them.
+    ///
     /// - Parameters:
     ///   - resource: The resource to save.
     ///   - uri: The URI of the document to write.
     /// - Throws: ``JSONError`` if serialisation fails, or the error of the handler.
     public func saveJSON(_ resource: Resource, to uri: String) async throws {
-        let text = try await JSONSerializer().serialize(resource)
+        var diagnostics = ConversionDiagnostics()
+        let text = try await JSONSerializer().serialize(
+            resource, documentURI: URIReference.canonicalise(uri), diagnostics: &diagnostics)
         try await writeDocument(Data(text.utf8), to: uri)
     }
 }
