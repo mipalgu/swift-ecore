@@ -57,8 +57,7 @@ public struct InstanceChildDescriptor: Sendable, Hashable {
     }
 
     private static func conforms(_ candidate: EClass, to type: EClass) -> Bool {
-        candidate.id == type.id || candidate.eAllSuperTypes.contains { $0.id == type.id }
-            || type.name == EcoreClassifier.eObject.rawValue
+        candidate.conforms(to: type)
     }
 
     private static func concreteClasses(of packages: [EPackage]) -> [EClass] {

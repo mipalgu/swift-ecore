@@ -458,6 +458,27 @@ public struct EClass: EClassifier, ENamedElement {
         return false
     }
 
+    /// Whether this class is Ecore's `EObject`.
+    ///
+    /// Every model element is an `EObject`, so `EObject` is an implicit supertype of every
+    /// class, whether or not the class names it among its supertypes.
+    public var isEObject: Bool {
+        name == EcoreClassifier.eObject.rawValue
+    }
+
+    /// Check whether instances of this class are instances of another class.
+    ///
+    /// An instance of a class is an instance of the class itself, of each of its direct and
+    /// indirect supertypes, and of Ecore's `EObject`. A value conforms to a reference whose
+    /// type is `type` if the class of the value conforms to `type`.
+    ///
+    /// - Parameter type: The class to check against, such as the type of a reference.
+    /// - Returns: `true` if `type` is this class, one of its supertypes, or `EObject`;
+    ///   otherwise, `false`.
+    public func conforms(to type: EClass) -> Bool {
+        type.isEObject || id == type.id || allSuperTypes.contains { $0.id == type.id }
+    }
+
     // MARK: - EObject Protocol Implementation
 
     /// Reflectively retrieve the value of a feature.

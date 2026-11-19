@@ -182,6 +182,32 @@ struct EClassTests {
         #expect(animal.isSuperTypeOf(person) == false)
     }
 
+    @Test func testConformsToItselfAndSupertypes() {
+        let person = EClass(name: personClassName)
+        let employee = EClass(name: employeeClassName, eSuperTypes: [person])
+        let manager = EClass(name: managerClassName, eSuperTypes: [employee])
+
+        #expect(manager.conforms(to: manager))
+        #expect(manager.conforms(to: employee))
+        #expect(manager.conforms(to: person))
+        #expect(!person.conforms(to: manager))
+        #expect(!person.conforms(to: EClass(name: animalClassName)))
+    }
+
+    @Test func testEveryClassConformsToEObject() {
+        let eObject = EcorePackage.metaClass(.eObject)
+        let person = EClass(name: personClassName)
+        let employee = EClass(name: employeeClassName, eSuperTypes: [person])
+
+        #expect(eObject.isEObject)
+        #expect(!person.isEObject)
+        #expect(person.conforms(to: eObject))
+        #expect(employee.conforms(to: eObject))
+        #expect(EcorePackage.metaClass(.eClass).conforms(to: eObject))
+        #expect(!eObject.conforms(to: person))
+        #expect(!eObject.isSuperTypeOf(person))
+    }
+
 // MARK: - Feature Access Tests
 
     @Test func testEmptyStructuralFeatures() {

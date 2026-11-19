@@ -247,8 +247,7 @@ public struct ModelValidator: Sendable {
     // MARK: - Conformance
 
     private static func isInstance(_ candidate: EClass, of expected: EClass) -> Bool {
-        candidate.id == expected.id || expected.name == EcoreClassifier.eObject.rawValue
-            || candidate.eAllSuperTypes.contains { $0.id == expected.id }
+        candidate.conforms(to: expected)
     }
 
     private static func isLiteral(_ value: any EcoreValue, of eEnum: EEnum) -> Bool {
