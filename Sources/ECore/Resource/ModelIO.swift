@@ -521,7 +521,9 @@ public enum ModelIO {
     /// The document is rendered as by
     /// ``serialise(_:format:relativeTo:xmiOptions:registry:diagnostics:)`` with relative
     /// references computed against the location, and is then written in UTF-8. No file is
-    /// written if the resource cannot be rendered.
+    /// written if the resource cannot be rendered. The file is a copy: the resource keeps its
+    /// URI. ``saveAs(_:to:format:xmiOptions:registry:diagnostics:)`` gives the resource the
+    /// URI of the file instead.
     ///
     /// - Parameters:
     ///   - resource: The resource to save.
@@ -601,6 +603,106 @@ public enum ModelIO {
         let encoded = try encoding.encode(document: text, as: kind)
         try encoded.data.write(to: url, options: FileURIHandler.writingOptions)
         return encoded.encoding
+    }
+
+    /// Saves a resource as a document and gives the resource the URI of that document.
+    ///
+    /// This is EMF's save as: the document is written as
+    /// ``save(_:to:format:xmiOptions:registry:diagnostics:)`` writes it, in any format whose
+    /// handler can write, with the URIs of other documents relative to the location, and the
+    /// resource then takes the URI of the location as ``Resource/setURI(_:)`` gives it.
+    /// Thereafter its resource set finds the resource under the new URI only, the other
+    /// resources of the set refer to its objects at the new location when they are saved,
+    /// and rendering the resource without a location renders it for the new location.
+    /// ``save(_:to:format:xmiOptions:registry:diagnostics:)`` writes a copy instead and leaves
+    /// the URI unchanged.
+    ///
+    /// The URI is checked before anything is written. If the document cannot be rendered or
+    /// written, the resource keeps its URI.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource to save.
+    ///   - url: The location of the file to write, whose URI the resource then has.
+    ///   - format: The format of the document, or `nil` (the default) to take it from the
+    ///     file extension.
+    ///   - xmiOptions: The options with which XMI is written (default
+    ///     ``XMISerializationOptions/legacy``).
+    ///   - registry: The registry that provides the format handlers (default
+    ///     ``ModelFormatRegistry/shared``).
+    ///   - diagnostics: Receives a ``ConversionWarning`` for everything that cannot be kept.
+    /// - Throws: ``ResourceSetError/uriInUse(_:)`` if another resource of the resource set of
+    ///   the resource has the URI of the location, or the errors of
+    ///   ``save(_:to:format:xmiOptions:registry:diagnostics:)``.
+    public static func saveAs(
+        _ resource: Resource,
+        to url: URL,
+        format: ModelFormat? = nil,
+        xmiOptions: XMISerializationOptions = .legacy,
+        registry: ModelFormatRegistry = .shared,
+        diagnostics: inout ConversionDiagnostics
+    ) async throws {
+        let uri = try await prepareSaveAs(resource, to: url)
+        try await save(
+            resource, to: url, format: format, xmiOptions: xmiOptions, registry: registry, diagnostics: &diagnostics)
+        try await resource.setURI(uri)
+    }
+
+    /// Saves a resource as a document in a character encoding and gives the resource the URI
+    /// of that document.
+    ///
+    /// The document is written as
+    /// ``save(_:to:format:xmiOptions:registry:encoding:diagnostics:)`` writes it, and the
+    /// resource then takes the URI of the location as
+    /// ``saveAs(_:to:format:xmiOptions:registry:diagnostics:)`` describes.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource to save.
+    ///   - url: The location of the file to write, whose URI the resource then has.
+    ///   - format: The format of the document, or `nil` (the default) to take it from the
+    ///     file extension.
+    ///   - xmiOptions: The options with which XMI is written (default
+    ///     ``XMISerializationOptions/legacy``).
+    ///   - registry: The registry that provides the format handlers (default
+    ///     ``ModelFormatRegistry/shared``).
+    ///   - encoding: The character encoding of the file.
+    ///   - diagnostics: Receives a ``ConversionWarning`` for everything that cannot be kept.
+    /// - Returns: The encoding in which the file was written, which is UTF-8 for JSON and
+    ///   `encoding` otherwise.
+    /// - Throws: ``ResourceSetError/uriInUse(_:)`` if another resource of the resource set of
+    ///   the resource has the URI of the location, or the errors of
+    ///   ``save(_:to:format:xmiOptions:registry:encoding:diagnostics:)``.
+    @discardableResult
+    public static func saveAs(
+        _ resource: Resource,
+        to url: URL,
+        format: ModelFormat? = nil,
+        xmiOptions: XMISerializationOptions = .legacy,
+        registry: ModelFormatRegistry = .shared,
+        encoding: TextEncoding,
+        diagnostics: inout ConversionDiagnostics
+    ) async throws -> TextEncoding {
+        let uri = try await prepareSaveAs(resource, to: url)
+        let used = try await save(
+            resource, to: url, format: format, xmiOptions: xmiOptions, registry: registry, encoding: encoding,
+            diagnostics: &diagnostics)
+        try await resource.setURI(uri)
+        return used
+    }
+
+    /// Checks that a resource can be saved as a document at a location.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource to save.
+    ///   - url: The location of the document.
+    /// - Returns: The canonical URI of the location.
+    /// - Throws: ``ResourceSetError/uriInUse(_:)`` if another resource of the resource set of
+    ///   the resource has the URI.
+    private static func prepareSaveAs(_ resource: Resource, to url: URL) async throws -> String {
+        let uri = URIReference.canonicalise(url.absoluteURL.absoluteString)
+        if let resourceSet = await resource.resourceSet {
+            try await resourceSet.checkURIAvailable(uri, for: resource)
+        }
+        return uri
     }
 
     /// The kind of a document in a format, which decides how it is encoded.

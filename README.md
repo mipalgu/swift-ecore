@@ -92,6 +92,17 @@ for warning in diagnostics.warnings {
 }
 ```
 
+`ModelIO.save` writes a copy and leaves the URI of the resource unchanged. To move a model to a
+new document, as "save as" does in EMF, use `ModelIO.saveAs`, which writes the document and
+then gives the resource its URI, so that other models in the same resource set refer to the
+new location when they are saved:
+
+```swift
+var saveDiagnostics = ConversionDiagnostics()
+try await ModelIO.saveAs(
+    loaded.resource, to: URL(fileURLWithPath: "archive/library.xmi"), diagnostics: &saveDiagnostics)
+```
+
 Explore a metamodel directly:
 
 ```swift

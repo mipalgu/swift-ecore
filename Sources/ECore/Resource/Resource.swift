@@ -8,6 +8,7 @@
 public import EMFBase
 import Foundation
 import OrderedCollections
+import Synchronization
 
 /// A resource manages model objects and provides EMF-compliant reference resolution.
 ///
@@ -42,8 +43,15 @@ public actor Resource {
     /// The URI identifying this resource.
     ///
     /// Resources are identified by URIs following EMF conventions. The URI
-    /// typically indicates the location or logical name of the resource.
-    nonisolated public let uri: String
+    /// typically indicates the location or logical name of the resource. It changes
+    /// when the resource is given a new URI with ``setURI(_:)`` or is saved as a new
+    /// document, for example with ``ModelIO/saveAs(_:to:format:xmiOptions:registry:diagnostics:)``.
+    nonisolated public var uri: String {
+        uriStorage.withLock { $0 }
+    }
+
+    /// The storage of ``uri``, which can be read without awaiting the resource.
+    nonisolated let uriStorage: Mutex<String>
 
     /// Objects contained in this resource, indexed by their unique identifier.
     ///
@@ -197,7 +205,7 @@ public actor Resource {
     ///   - uri: The URI identifying this resource. Defaults to a generated URI.
     ///   - enableDebugging: Whether to enable debug output for this resource
     public init(uri: String = "resource://\(UUID().uuidString)", enableDebugging: Bool = false) {
-        self.uri = uri
+        uriStorage = Mutex(uri)
         objects = ObjectTable()
         rootObjects = []
         debug = enableDebugging
@@ -1160,6 +1168,8 @@ extension Resource: Equatable {
 
 extension Resource: Hashable {
     /// Hashes the resource based on its URI.
+    ///
+    /// The hash changes when the URI of the resource changes (see ``setURI(_:)``).
     ///
     /// - Parameter hasher: The hasher to use for combining hash values.
     nonisolated public func hash(into hasher: inout Hasher) {

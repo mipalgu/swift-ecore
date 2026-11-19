@@ -197,6 +197,7 @@ The other libraries of the toolkit build on ECore:
 
 - ``Resource``
 - ``ResourceSet``
+- ``ResourceSetError``
 - ``ContainerLookupScope``
 - ``ModellingSemantics``
 - ``ModellingSemanticsError``

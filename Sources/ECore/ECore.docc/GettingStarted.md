@@ -446,6 +446,30 @@ that refers to `models/tasks.xmi` holds `../models/tasks.xmi`; saved as `notes.j
 directory above, it is written with `models/tasks.xmi`, so the converted document still reads
 back to the same tasks.
 
+### Saving as a New Document
+
+Saving a resource to a location writes a copy: the resource keeps its URI, and the other
+resources of its set go on referring to it at its previous location. To move a resource to a
+new document, as EMF's "save as" does, save it with
+``ModelIO/saveAs(_:to:format:xmiOptions:registry:diagnostics:)``, which writes the document in
+any format whose handler can write and then gives the resource the URI of the document:
+
+```swift
+var diagnostics = ConversionDiagnostics()
+try await ModelIO.saveAs(notes, to: archiveURL, diagnostics: &diagnostics)
+// notes.uri is now the URI of archiveURL
+```
+
+``ResourceSet/saveAs(_:to:options:)`` and ``ResourceSet/saveJSONAs(_:to:)`` do the same
+through the URI handlers of a resource set, and ``Resource/setURI(_:)`` gives a resource a new
+URI without writing anything. Thereafter the resource set finds the resource under the new URI
+only, and its objects keep their identities and fragments. The resource refers to other
+documents relative to its new location, and the other resources of the set refer to its
+objects at the new location when they are next saved, relative or absolute as the options of
+the writer choose. A proxy in the set that named the previous URI names the new one. Giving a
+resource the URI of another resource of its set throws ``ResourceSetError/uriInUse(_:)`` and
+changes nothing, and a document that cannot be rendered or written leaves the URI as it was.
+
 ## Models and Metamodels as JSON
 
 ``JSONParser`` builds objects from the metamodels registered with a ``ResourceSet``: `eClass`

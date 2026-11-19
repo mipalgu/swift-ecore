@@ -167,7 +167,9 @@ extension ResourceSet {
 
     /// Saves a resource as an XMI document through the handler chain.
     ///
-    /// The document is the one that ``XMISerializer/serialize(_:to:)`` writes to a file.
+    /// The document is the one that ``XMISerializer/serialize(_:to:)`` writes to a file. It is
+    /// a copy: the resource keeps its URI. ``saveAs(_:to:options:)`` gives the resource the
+    /// URI of the document instead.
     ///
     /// - Parameters:
     ///   - resource: The resource to save.
@@ -209,7 +211,9 @@ extension ResourceSet {
     /// Saves a resource as a JSON document through the handler chain.
     ///
     /// The URIs of other documents are written relative to the URI of the document that is
-    /// written, as ``JSONSerializer/serialize(_:relativeTo:)-(Resource,_)`` writes them.
+    /// written, as ``JSONSerializer/serialize(_:relativeTo:)-(Resource,_)`` writes them. The
+    /// document is a copy: the resource keeps its URI. ``saveJSONAs(_:to:)`` gives the
+    /// resource the URI of the document instead.
     ///
     /// - Parameters:
     ///   - resource: The resource to save.
@@ -220,6 +224,76 @@ extension ResourceSet {
         let text = try await JSONSerializer().serialize(
             resource, documentURI: URIReference.canonicalise(uri), diagnostics: &diagnostics)
         try await writeDocument(Data(text.utf8), to: uri)
+    }
+
+    // MARK: - Saving as a new document
+
+    /// Saves a resource of this set as an XMI document and gives the resource the URI of
+    /// that document.
+    ///
+    /// This is EMF's save as: the document is written as
+    /// ``save(_:to:options:)-(Resource,_,_)`` writes it, with the URIs of other documents
+    /// relative to the new URI where the options ask for relative URIs, and the resource then
+    /// takes the new URI as ``Resource/setURI(_:)`` gives it. Thereafter the set finds the
+    /// resource under the new URI only, and the other resources of the set refer to its
+    /// objects at the new location when they are saved.
+    /// ``save(_:to:options:)-(Resource,_,_)`` writes a copy instead and leaves the URI
+    /// unchanged.
+    ///
+    /// The URI is checked before anything is written. If the document cannot be rendered
+    /// or written, the resource keeps its URI.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource to save.
+    ///   - uri: The URI of the document to write, which the resource then has.
+    ///   - options: The layout options (default ``XMISerializationOptions/legacy``).
+    /// - Throws: ``ResourceSetError/notInResourceSet(_:)`` if the resource belongs to another
+    ///   set or none, ``ResourceSetError/uriInUse(_:)`` if another resource of the set has
+    ///   the URI, ``XMIError`` if serialisation fails, or the error of the handler.
+    public func saveAs(
+        _ resource: Resource, to uri: String, options: XMISerializationOptions = .legacy
+    ) async throws {
+        let target = try await prepareSaveAs(resource, to: uri)
+        try await save(resource, to: target, options: options)
+        try await moveResource(resource, to: target)
+    }
+
+    /// Saves a resource of this set as a JSON document and gives the resource the URI of
+    /// that document.
+    ///
+    /// The document is written as ``saveJSON(_:to:)`` writes it, with the URIs of other
+    /// documents relative to the new URI, and the resource then takes the new URI as
+    /// ``saveAs(_:to:options:)`` describes. ``saveJSON(_:to:)`` writes a copy instead and
+    /// leaves the URI unchanged.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource to save.
+    ///   - uri: The URI of the document to write, which the resource then has.
+    /// - Throws: ``ResourceSetError/notInResourceSet(_:)`` if the resource belongs to another
+    ///   set or none, ``ResourceSetError/uriInUse(_:)`` if another resource of the set has
+    ///   the URI, ``JSONError`` if serialisation fails, or the error of the handler.
+    public func saveJSONAs(_ resource: Resource, to uri: String) async throws {
+        let target = try await prepareSaveAs(resource, to: uri)
+        try await saveJSON(resource, to: target)
+        try await moveResource(resource, to: target)
+    }
+
+    /// Checks that a resource of this set can be saved as a document with a URI.
+    ///
+    /// - Parameters:
+    ///   - resource: The resource to save.
+    ///   - uri: The URI of the document.
+    /// - Returns: The canonical form of the URI.
+    /// - Throws: ``ResourceSetError/notInResourceSet(_:)`` if the resource belongs to another
+    ///   set or none, or ``ResourceSetError/uriInUse(_:)`` if another resource of the set has
+    ///   the URI.
+    private func prepareSaveAs(_ resource: Resource, to uri: String) async throws -> String {
+        let target = URIReference.canonicalise(uri)
+        if resources[resource.uri] !== resource, await resource.resourceSet !== self {
+            throw ResourceSetError.notInResourceSet(resource.uri)
+        }
+        try checkURIAvailable(target, for: resource)
+        return target
     }
 }
 
