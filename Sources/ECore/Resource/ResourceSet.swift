@@ -769,19 +769,37 @@ public actor ResourceSet {
 
     /// Resolves an object by its URI across all resources in the set.
     ///
-    /// The URI format is: "resourceURI#objectPath" where objectPath
-    /// identifies the object within the resource.
+    /// The URI has the form `resourceURI#fragment`, where the fragment identifies the object
+    /// within the resource named by `resourceURI`. A URI without a fragment, or with an empty
+    /// one, names the first root of the resource. The fragment may take any form that the
+    /// XMI writer and reader of this package use (see ``XPathResolver`` and
+    /// ``PositionalFragments``):
+    ///
+    /// - `/` is the first (or only) root, and `/n` is root `n` of a resource with several roots.
+    /// - `//@feature.n` is element `n` of a many-valued containment feature of the first root,
+    ///   and `//@feature` the value of a single-valued one; `/n/@feature.m` starts from root
+    ///   `n`. Segments are separated by `/`, as in `//@feature.n/@other.m`.
+    /// - `//Name` and `//Name/feature` name Ecore elements by their names (see
+    ///   ``FragmentNavigator``).
+    /// - Any fragment that does not start with `/` is an identifier: the `xmi:id` of an
+    ///   object, the value of its ID attribute, or its unique identifier.
+    ///
+    /// The forms that ``Resource/resolveByPath(_:)`` accepts are understood as well.
     ///
     /// - Parameter uri: The complete URI to resolve.
-    /// - Returns: The resolved object, or `nil` if not found.
+    /// - Returns: The resolved object, or `nil` if the resource is not in the set or holds
+    ///   no object that the fragment identifies.
     public func resolveByURI(_ uri: String) async -> (any EObject)? {
-        let components = uri.split(separator: "#", maxSplits: 1)
+        let components = uri.split(separator: CrossReferenceSyntax.fragmentSeparator, maxSplits: 1)
         guard !components.isEmpty else { return nil }
 
         let resourceURI = String(components[0])
-        let objectPath = components.count > 1 ? String(components[1]) : "/"
+        let objectPath = components.count > 1 ? String(components[1]) : CrossReferenceSyntax.rootFragment
 
         guard let resource = getResource(uri: resourceURI) else { return nil }
+        if let resolved = await XPathResolver(resource: resource).resolveObject(objectPath) {
+            return resolved
+        }
         return await resource.resolveByPath(objectPath)
     }
 

@@ -71,7 +71,7 @@ struct ModelDependencyTests {
         let extra = DynamicEObject(eClass: w.model.book)
         let impact = try await impact(w) { try await $0.eAdd(objectId: w.lib.id, feature: "items", value: extra) }
         #expect(impact.createdObjects == [extra.id])
-        #expect(impact.affectedExtents == ["Book", "Item"])
+        #expect(impact.affectedExtents == ["Book", "Item", "EObject"])
         #expect(impact.movedObjects.contains(extra.id))
         #expect(impact.changesContainmentStructure)
         var extent = ModelDependencies()

@@ -2413,7 +2413,7 @@ public actor XMIParser {
         // Add containment references
         for (refName, isMultiValued) in info.containmentRefs {
             if eClass.getStructuralFeature(name: refName) == nil {
-                let targetType = EClass(name: "EObject")
+                let targetType = EcorePackage.metaClass(.eObject)
                 var reference = EReference(name: refName, eType: targetType)
                 reference.containment = true
                 reference.upperBound = isMultiValued ? -1 : 1
@@ -2424,7 +2424,7 @@ public actor XMIParser {
         // Add cross-references
         for refName in info.crossRefs {
             if eClass.getStructuralFeature(name: refName) == nil {
-                let targetType = EClass(name: "EObject")
+                let targetType = EcorePackage.metaClass(.eObject)
                 let reference = EReference(name: refName, eType: targetType)
                 // Cross-references are not containment by default
                 eClass.eStructuralFeatures.append(reference)

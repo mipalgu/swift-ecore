@@ -27,7 +27,8 @@ import Foundation
 ///   handlers, it finds the format that ``ModelFormat/detect(data:)`` detects.
 /// - ``handler(for:contents:)`` finds the format of a file as ``ModelIO`` does: by its
 ///   extension, unless the extension names a generic format such as XMI and a handler of
-///   higher priority recognises the contents, and otherwise by its contents.
+///   higher priority recognises the contents, or the contents are those of a more precise
+///   format, such as an Ecore package in an `.xmi` file, and otherwise by its contents.
 ///
 /// ```swift
 /// await ModelFormatRegistry.shared.register(NotationHandler())
@@ -121,9 +122,12 @@ public actor ModelFormatRegistry {
     /// ``ModelFormatPriority/generic`` priority or lower, as the handlers of XMI, JSON and
     /// Ecore have: such a format accepts any document of its syntax, so a handler of higher
     /// priority that recognises the contents is more precise and is chosen instead. This is
-    /// how an EMOF metamodel or an OMG UML model in an `.xmi` file is read as EMOF or UML,
-    /// while every other XMI document is still read as XMI. A file whose extension no
-    /// handler claims is recognised by its contents alone (see ``handler(recognising:)``).
+    /// how an EMOF metamodel or an OMG UML model in an `.xmi` file is read as EMOF or UML.
+    /// Likewise, a document whose root is an Ecore package is read as Ecore whatever the
+    /// extension of its file, so that a metamodel saved as `.xmi` loads as packages, provided
+    /// that the Ecore handler is registered with the priority of the claiming handler. Every
+    /// other XMI document is still read as XMI. A file whose extension no handler claims is
+    /// recognised by its contents alone (see ``handler(recognising:)``).
     ///
     /// - Parameters:
     ///   - url: The location of the file.
@@ -132,10 +136,28 @@ public actor ModelFormatRegistry {
     ///   contents determine one.
     public func handler(for url: URL, contents data: Data) -> (any ModelFormatHandler)? {
         guard let claiming = handler(for: url) else { return handler(recognising: data) }
-        guard claiming.priority <= .generic,
-            let recognising = handler(recognising: data, above: claiming.priority)
-        else { return claiming }
-        return recognising
+        guard claiming.priority <= .generic else { return claiming }
+        if let recognising = handler(recognising: data, above: claiming.priority) { return recognising }
+        return refiningHandler(of: claiming, contents: data) ?? claiming
+    }
+
+    /// The handler of a format that refines the format of a handler and that the contents of a document are in.
+    ///
+    /// - Parameters:
+    ///   - claiming: The handler that claims the document by its file extension.
+    ///   - data: The contents of the document, or at least their beginning.
+    /// - Returns: The handler of the refining format that ``ModelFormat/detect(data:)``
+    ///   detects, if it is registered with the priority of `claiming` and recognises the
+    ///   document; otherwise `nil`.
+    private func refiningHandler(
+        of claiming: any ModelFormatHandler, contents data: Data
+    ) -> (any ModelFormatHandler)? {
+        guard let refinements = claiming.format?.refinements, !refinements.isEmpty,
+            let detected = ModelFormat.detect(data: data), refinements.contains(detected),
+            let refining = handler(for: detected), refining.priority == claiming.priority
+        else { return nil }
+        let prefix = Data(data.prefix(Self.recognitionPrefixLength))
+        return refining.recognises(prefix) ? refining : nil
     }
 
     /// The handler that recognises a document by its start.

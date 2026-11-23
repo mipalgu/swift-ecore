@@ -628,7 +628,8 @@ public enum EClassifierResolver {
 
     /// Resolves a reference type for an EReference.
     ///
-    /// Creates a placeholder EClass with just the name.
+    /// Creates a placeholder EClass with just the name. Without a name the reference type is
+    /// Ecore's `EObject`, so that the reference accepts any object.
     ///
     /// - Note: In a full implementation, this would use two-pass conversion to
     ///         resolve to the actual EClass from the package.
@@ -639,7 +640,7 @@ public enum EClassifierResolver {
         guard let dynamicObj = object as? DynamicEObject,
             let className: String = dynamicObj.eGet(.name)
         else {
-            return EClass(name: EcoreClassifier.eObject.rawValue)
+            return EcorePackage.metaClass(.eObject)
         }
 
         return EClass(name: className)

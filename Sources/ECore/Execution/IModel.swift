@@ -45,7 +45,9 @@ public protocol IModel: Sendable {
     /// Returns all elements matching the given type.
     ///
     /// This method performs type-based querying across the entire model,
-    /// returning both direct instances and instances of subtypes.
+    /// returning both direct instances and instances of subtypes. As every element is an
+    /// instance of Ecore's `EObject` (see ``EClass/conforms(to:)``), asking for `EObject`
+    /// returns every element of the model.
     ///
     /// - Parameter metaElement: The EClass to match against
     /// - Returns: An ordered set of all matching element IDs
@@ -117,13 +119,20 @@ public struct EcoreModel: IModel, Sendable, Equatable, Hashable {
         return DynamicEObject(eClass: metaElement)
     }
 
+    /// Returns all elements of the model whose class conforms to a type.
+    ///
+    /// An element matches if its class conforms to the type (see ``EClass/conforms(to:)``),
+    /// so every element matches Ecore's `EObject`.
+    ///
+    /// - Parameter metaElement: The EClass to match against.
+    /// - Returns: The identifiers of the matching elements, in the order of
+    ///   ``Resource/getAllObjectsIncludingContents()``.
     public func getElementsByType(_ metaElement: EClass) async -> OrderedSet<EUUID> {
         let allObjects = await resource.getAllObjectsIncludingContents()
         return OrderedSet(
             allObjects.compactMap { obj in
                 guard let objClass = obj.eClass as? EClass else { return nil }
-                return objClass == metaElement || objClass.allSuperTypes.contains(metaElement)
-                    ? obj.id : nil
+                return objClass.conforms(to: metaElement) ? obj.id : nil
             })
     }
 
@@ -326,6 +335,9 @@ public struct ResourceModelWrapper: IModel, Sendable {
 
     /// Returns all elements matching the given type.
     ///
+    /// An element matches if its class conforms to the type (see ``EClass/conforms(to:)``),
+    /// so every element matches Ecore's `EObject`.
+    ///
     /// - Parameter metaElement: The EClass to match against.
     /// - Returns: An ordered set of matching element IDs.
     public func getElementsByType(_ metaElement: EClass) async -> OrderedSet<EUUID> {
@@ -333,8 +345,7 @@ public struct ResourceModelWrapper: IModel, Sendable {
         return OrderedSet(
             allObjects.compactMap { obj in
                 guard let objClass = obj.eClass as? EClass else { return nil }
-                return objClass == metaElement || objClass.allSuperTypes.contains(metaElement)
-                    ? obj.id : nil
+                return objClass.conforms(to: metaElement) ? obj.id : nil
             })
     }
 

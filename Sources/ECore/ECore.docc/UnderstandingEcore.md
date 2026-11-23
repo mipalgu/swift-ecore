@@ -248,6 +248,22 @@ of a model: ``Resource/eContainer(of:scope:)`` finds the container of an object,
 ``Resource/eSet(objectId:feature:value:)`` changes a feature and keeps opposite references
 in step.
 
+As in EMF, Ecore's `EObject` is the implicit supertype of every class, whether or not a
+class names it among its supertypes. ``EClass/conforms(to:)`` checks conformance in this way,
+and the queries for the instances of a class follow it: ``Resource/getAllInstancesOf(_:)``
+and ``ECoreExecutionEngine/allInstancesOf(_:)`` return every object for `EObject`, and the
+creation or deletion of any object affects the extent of `EObject` in a
+``ModelChangeImpact``.
+
+Only Ecore's own `EObject` has this role. ``EClass/isEObject`` and
+``EcorePackage/isEObject(_:in:)`` recognise it: it is the `EObject` class of
+``EcorePackage``, to which loading also resolves every reference into the Ecore metamodel,
+such as `http://www.eclipse.org/emf/2002/Ecore#//EObject`. Given its package, the `EObject`
+class of a separately loaded copy of the Ecore metamodel is recognised by the Ecore namespace
+URI. A class called `EObject` that another metamodel declares for itself is an ordinary
+class: it is a supertype only of the classes that extend it, and its instances are the
+instances of that class and of its subclasses.
+
 ## The Ecore Metamodel
 
 Ecore describes itself. ``EcorePackage`` provides the Ecore metamodel as an ``EPackage``,
@@ -295,6 +311,10 @@ it, as in the Eclipse Modeling Framework:
 As in EMF, a reference within the same document may omit the `#`, so `/1/Bed/plants` and
 `#/1/Bed/plants` name the same object, whether they are the type, the supertype or the
 opposite of a metamodel element.
+
+``ResourceSet/resolveByURI(_:)`` resolves a URI with any of these fragments, such as
+`library.xmi#//@items.1/@author` or `library.ecore#//Book/title`, to the object it names
+among the resources of the set.
 
 ### Proxies and Containers
 

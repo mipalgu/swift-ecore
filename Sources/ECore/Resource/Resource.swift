@@ -792,15 +792,22 @@ public actor Resource {
 
     /// Gets all instances of a specific EClass in this resource.
     ///
-    /// This method is used by ATL virtual machine to find all elements
-    /// that match a specific type for transformation rules.
+    /// Transformation and query engines use this method to find the elements that match a
+    /// type. An object is an instance of a class if its class conforms to that class (see
+    /// ``EClass/conforms(to:)``), so every object is an instance of Ecore's `EObject`. A
+    /// class also counts as the same class, or as a supertype, if it has the same name, so
+    /// that a class of a separately loaded copy of a metamodel finds the same instances.
+    /// Ecore's `EObject` and a class called `EObject` that a metamodel declares for itself
+    /// never count as the same class, so the instances of the declared class are the
+    /// instances of that class and of the classes that extend it.
     ///
-    /// - Parameter eClass: The EClass to find instances of
-    /// - Returns: Array of objects that are instances of the specified EClass
+    /// - Parameter eClass: The EClass to find instances of.
+    /// - Returns: The objects that are instances of the class, in the order of
+    ///   ``getAllObjectsIncludingContents()``.
     public func getAllInstancesOf(_ eClass: EClass) -> [any EObject] {
         return getAllObjectsIncludingContents().filter { object in
             if let objectClass = object.eClass as? EClass {
-                return objectClass.name == eClass.name
+                return objectClass.conforms(to: eClass) || Self.isNamesake(objectClass, of: eClass)
                     || isSubclassOf(objectClass, superclass: eClass)
             }
             return false
@@ -853,6 +860,20 @@ public actor Resource {
         }
     }
 
+    /// Whether two classes count as the same class because they have the same name.
+    ///
+    /// Ecore's `EObject` and a class called `EObject` that a metamodel declares for itself
+    /// are never namesakes.
+    ///
+    /// - Parameters:
+    ///   - eClass: The class to compare.
+    ///   - other: The class to compare it with.
+    /// - Returns: `true` if both classes have the same name and either both or neither are
+    ///   Ecore's `EObject`.
+    private static func isNamesake(_ eClass: EClass, of other: EClass) -> Bool {
+        eClass.name == other.name && eClass.isEObject == other.isEObject
+    }
+
     /// Checks if one EClass is a subclass of another.
     ///
     /// - Parameters:
@@ -862,7 +883,7 @@ public actor Resource {
     private func isSubclassOf(_ subclass: EClass, superclass: EClass) -> Bool {
         // Check direct superclasses
         for superType in subclass.eSuperTypes {
-            if superType.name == superclass.name {
+            if Self.isNamesake(superType, of: superclass) {
                 return true
             }
             // Recursive check for inheritance hierarchy

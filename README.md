@@ -17,10 +17,13 @@ macOS, Linux, Windows and WebAssembly.
 - **Faithful Ecore documents**: `.ecore` files load with every construct intact and can be
   written back in the layout that EMF writes
 - **XMI and JSON**: models and metamodels in either format, with cross-document references,
-  proxies and the fragment forms of EMF; JSON metamodels follow the emfjson conventions
+  proxies and the fragment forms of EMF; a metamodel is recognised by its contents, so one
+  saved as `.xmi` loads back as packages; JSON metamodels follow the emfjson conventions
 - **UML class models as metamodels**: converted into Ecore as Eclipse UML2 converts them
 - **EMF semantics**: dates, identifiers, many-valued attributes and validation of
-  multiplicities and data values behave as in EMF
+  multiplicities and data values behave as in EMF, and Ecore's `EObject` is the implicit
+  supertype of every class, so asking for all instances of `EObject` returns every object;
+  a class called `EObject` that a metamodel declares for itself is an ordinary class
 - **Libraries for tools**: OCL constraints and queries, generator models (`.genmodel`), and
   value-based metamodel editing with undo and redo
 - **Incremental evaluation**: change observers and dependency records for incremental engines
