@@ -36,6 +36,10 @@ public struct ModelChangeImpact: Sendable, Equatable {
     public private(set) var deletedObjects: Set<EUUID> = []
 
     /// The names of the classes whose sets of instances changed, including superclasses.
+    ///
+    /// Every object is an instance of Ecore's `EObject` (see ``EClass/conforms(to:)``), so
+    /// the creation or deletion of any object of a known class also affects the extent of
+    /// `EObject`.
     public private(set) var affectedExtents: Set<String> = []
 
     /// The objects whose container changed, including deleted objects.
@@ -155,11 +159,14 @@ public struct ModelChangeImpact: Sendable, Equatable {
         isUnbounded = isUnbounded || other.isUnbounded
     }
 
-    /// Adds the names of a class and of all its superclasses to the affected extents.
+    /// Adds the names of a class, of all its superclasses and of `EObject` to the affected extents.
+    ///
+    /// - Parameter eClass: The class of a created or deleted object, or `nil` if unknown.
     private mutating func addExtents(of eClass: EClass?) {
         guard let eClass else { return }
         affectedExtents.insert(eClass.name)
         for superType in eClass.allSuperTypes { affectedExtents.insert(superType.name) }
+        affectedExtents.insert(EcoreClassifier.eObject.rawValue)
     }
 
     /// The object identifiers held by a change value.

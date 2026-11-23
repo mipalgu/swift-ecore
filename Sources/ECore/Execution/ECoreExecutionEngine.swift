@@ -279,6 +279,10 @@ public actor ECoreExecutionEngine: Sendable {
 
     /// Find all objects of a given type across all models.
     ///
+    /// An object is an instance of a type if its class conforms to the type (see
+    /// ``EClass/conforms(to:)``), so asking for Ecore's `EObject` finds every object of the
+    /// models.
+    ///
     /// - Parameter type: The EClass to search for
     /// - Returns: Array of all instances (including subtype instances)
     public func allInstancesOf(_ type: EClass) async -> [any EObject] {
@@ -317,6 +321,8 @@ public actor ECoreExecutionEngine: Sendable {
     }
 
     /// Find the first object of a given type.
+    ///
+    /// The type is matched as by ``allInstancesOf(_:)``.
     ///
     /// - Parameter type: The EClass to search for
     /// - Returns: The first matching instance, or `nil` if none found

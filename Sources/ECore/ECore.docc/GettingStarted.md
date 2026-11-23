@@ -181,7 +181,8 @@ ignoring case, or by the start of its contents, where `{` or `[` starts a JSON d
 XML in an EMOF or UML namespace an EMOF metamodel or a UML model (see
 <doc:DialectsEMOFAndUML>), any other XML an XMI document, and text that starts with
 `package Name {` a KM3 document. When the extension names a generic format, such as `.xmi`,
-contents in a more specific format take precedence. An Ecore, KM3 or EMOF input is loaded as native packages and registered as a metamodel too. ``ModelIO/LoadOptions`` chooses how XMI references are read and whether the
+contents in a more specific format take precedence, so a metamodel saved as `.xmi` loads back
+as packages, just as it does from an `.ecore` file. An Ecore, KM3 or EMOF input is loaded as native packages and registered as a metamodel too. ``ModelIO/LoadOptions`` chooses how XMI references are read and whether the
 classes of a JSON document must come from a registered metamodel, and
 ``ModelIO/serialise(_:format:relativeTo:xmiOptions:registry:diagnostics:)`` returns the text
 of a document instead of writing a file.

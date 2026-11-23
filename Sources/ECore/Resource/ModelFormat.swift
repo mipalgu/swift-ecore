@@ -123,6 +123,18 @@ public enum ModelFormat: String, CaseIterable, Sendable {
     /// The conventional file extension of the format, without the leading dot.
     public var fileExtension: String { rawValue }
 
+    /// The formats whose documents are also documents of this format, distinguished by their contents.
+    ///
+    /// An Ecore document is an XMI document whose root is an Ecore package, so ``ecore``
+    /// refines ``xmi``. A file whose extension names this format is read in a refining format
+    /// when ``detect(data:)`` detects that format in its contents.
+    var refinements: [ModelFormat] {
+        switch self {
+        case .xmi: return [.ecore]
+        default: return []
+        }
+    }
+
     /// Creates the format that a file extension or format name denotes, ignoring case.
     ///
     /// The prose name of a format (its ``description``) is accepted where it differs from

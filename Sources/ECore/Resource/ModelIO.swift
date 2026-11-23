@@ -326,8 +326,9 @@ public enum ModelIO {
     /// else the one whose handler recognises the contents of the document (see
     /// ``ModelFormatRegistry/handler(for:contents:)``). A file whose extension names a
     /// generic format, such as `.xmi`, is read in a more specific format whose handler
-    /// recognises its contents, so that an OMG UML model in an `.xmi` file is read as UML. The document is read through the URI handlers of the
-    /// resource set and its resource is added to the set.
+    /// recognises its contents, so that an OMG UML model in an `.xmi` file is read as UML and
+    /// a document whose root is an Ecore package is read as Ecore. The document is read
+    /// through the URI handlers of the resource set and its resource is added to the set.
     ///
     /// - Parameters:
     ///   - url: The location of the document.

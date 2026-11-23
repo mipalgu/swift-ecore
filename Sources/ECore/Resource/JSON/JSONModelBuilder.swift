@@ -101,9 +101,10 @@ struct MetamodelClasses: JSONClassResolver {
     ///   - name: The name of the class.
     ///   - expected: The declared type of the reference.
     ///   - package: The package to search.
-    /// - Returns: The class of that name if it is `expected` or one of its subclasses, otherwise `nil`.
+    /// - Returns: The class of that name if it conforms to `expected` (see
+    ///   ``EClass/conforms(to:)``), otherwise `nil`.
     private static func subclass(named name: String, of expected: EClass, in package: EPackage) -> EClass? {
-        if let found = package.getEClass(name), found.id == expected.id || expected.isSuperTypeOf(found) {
+        if let found = package.getEClass(name), found.conforms(to: expected) {
             return found
         }
         for sub in package.eSubpackages {
