@@ -103,6 +103,31 @@ public enum EcorePackage {
         registry.classByID[classifier.id] != nil
     }
 
+    /// Reports whether a class is Ecore's `EObject`, the supertype of every class.
+    ///
+    /// As in EMF, only Ecore's own `EObject` is an implicit supertype of every class. A
+    /// class called `EObject` that another metamodel declares for itself is an ordinary
+    /// class: its instances are the instances of the class and of its declared subclasses.
+    ///
+    /// A class is Ecore's `EObject` if it is the `EObject` class of this package, which is
+    /// also what loading resolves a reference into the Ecore metamodel to. A class of a
+    /// separately loaded copy of the Ecore metamodel is recognised as well when the package
+    /// that contains it is given and has the Ecore namespace URI (``nsURI``). A class called
+    /// `EObject` that belongs to no package, or to a package with a different namespace URI,
+    /// is not Ecore's `EObject`.
+    ///
+    /// - Parameters:
+    ///   - eClass: The class to test.
+    ///   - package: The package that contains `eClass`, if known (default `nil`).
+    /// - Returns: `true` if `eClass` is Ecore's `EObject`; otherwise, `false`.
+    public static func isEObject(_ eClass: EClass, in package: EPackage? = nil) -> Bool {
+        let descriptor = metaClass(.eObject)
+        guard eClass.name == descriptor.name else { return false }
+        if eClass.id == descriptor.id { return true }
+        guard let package, package.nsURI == nsURI else { return false }
+        return package.eClassifiers.contains { $0.id == eClass.id }
+    }
+
     // MARK: - Internal Lookups
 
     /// The name of the Ecore feature that has the given identifier.

@@ -697,7 +697,7 @@ extension DynamicEObject: Codable {
             } else if let arrayValue = value as? [Any] {
                 // Array - inspect first element to determine if it's containment
                 var isContainment = false
-                var targetClassName = "EObject"
+                var targetType = EcorePackage.metaClass(.eObject)
 
                 if let firstElement = arrayValue.first as? [String: Any],
                     let firstEClass = firstElement["eClass"] as? String
@@ -707,17 +707,16 @@ extension DynamicEObject: Codable {
                     // Extract class name from the eClass URI
                     if let hashIndex = firstEClass.lastIndex(of: "#") {
                         let fragment = String(firstEClass[firstEClass.index(after: hashIndex)...])
-                        targetClassName = fragment.replacingOccurrences(of: "//", with: "")
+                        targetType = EClass(name: fragment.replacingOccurrences(of: "//", with: ""))
                     }
                 }
 
-                let targetType = EClass(name: targetClassName)
                 let reference = EReference(
                     name: key, eType: targetType, upperBound: -1, containment: isContainment)
                 features.append(reference)
             } else if value is [String: Any] {
                 // Nested object - containment reference
-                let targetType = EClass(name: "EObject")  // Default target type
+                let targetType = EcorePackage.metaClass(.eObject)
                 let reference = EReference(name: key, eType: targetType, containment: true)
                 features.append(reference)
             } else {

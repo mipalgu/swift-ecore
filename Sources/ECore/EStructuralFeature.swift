@@ -705,7 +705,7 @@ extension EReference {
     /// Initialise an EReference from a DynamicEObject.
     ///
     /// Extracts reference metadata including type, multiplicity, containment, and flags from a dynamic object.
-    /// Uses a fallback EClass when type information cannot be resolved.
+    /// Uses Ecore's `EObject` as the type when type information cannot be resolved.
     ///
     /// - Parameter object: The DynamicEObject representing an EReference.
     /// - Returns: A new EReference instance, or `nil` if the object is invalid or missing required attributes.
@@ -727,9 +727,9 @@ extension EReference {
         // Resolve eType
         let eType: any EClassifier
         if dynamicObj.eGet(.eType) != nil {
-            eType = EClass(name: EcoreClassifier.eObject.rawValue)  // Fallback for non-resource context
+            eType = EcorePackage.metaClass(.eObject)  // Fallback for non-resource context
         } else {
-            eType = EClass(name: EcoreClassifier.eObject.rawValue)
+            eType = EcorePackage.metaClass(.eObject)
         }
 
         // Resolve eOpposite - try eOpposite first, then fall back to opposite

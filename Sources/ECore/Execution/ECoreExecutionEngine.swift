@@ -60,8 +60,25 @@ public actor ECoreExecutionEngine: Sendable {
     /// ``invalidateCaches(for:)`` reports any change.
     private var computedNavigationEntries: [EUUID: Set<String>] = [:]
 
+    /// The key under which the instances of a type are cached.
+    private struct TypeCacheKey: Hashable {
+        /// The name of the type.
+        let name: String
+
+        /// Whether the type is Ecore's `EObject` rather than a class of the same name.
+        let isEObject: Bool
+
+        /// Creates the key for a type.
+        ///
+        /// - Parameter type: The type whose instances are cached.
+        init(_ type: EClass) {
+            name = type.name
+            isEObject = type.isEObject
+        }
+    }
+
     /// Type instance cache for frequent queries.
-    private var typeCache: [String: OrderedSet<EUUID>] = [:]
+    private var typeCache: [TypeCacheKey: OrderedSet<EUUID>] = [:]
 
     /// Cross-reference resolution cache.
     private var resolutionCache: [EUUID: any EObject] = [:]
@@ -281,12 +298,13 @@ public actor ECoreExecutionEngine: Sendable {
     ///
     /// An object is an instance of a type if its class conforms to the type (see
     /// ``EClass/conforms(to:)``), so asking for Ecore's `EObject` finds every object of the
-    /// models.
+    /// models, whereas asking for a class called `EObject` that a metamodel declares for
+    /// itself finds only the instances of that class and of the classes that extend it.
     ///
     /// - Parameter type: The EClass to search for
     /// - Returns: Array of all instances (including subtype instances)
     public func allInstancesOf(_ type: EClass) async -> [any EObject] {
-        let cacheKey = type.name
+        let cacheKey = TypeCacheKey(type)
 
         if let cached = typeCache[cacheKey] {
             var results: [any EObject] = []

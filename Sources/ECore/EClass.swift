@@ -460,21 +460,26 @@ public struct EClass: EClassifier, ENamedElement {
 
     /// Whether this class is Ecore's `EObject`.
     ///
-    /// Every model element is an `EObject`, so `EObject` is an implicit supertype of every
-    /// class, whether or not the class names it among its supertypes.
+    /// Every model element is an `EObject`, so Ecore's `EObject` is an implicit supertype of
+    /// every class, whether or not the class names it among its supertypes. A class called
+    /// `EObject` that a metamodel declares for itself is an ordinary class and is not Ecore's
+    /// `EObject`. See ``EcorePackage/isEObject(_:in:)``, which also recognises the `EObject`
+    /// class of a separately loaded copy of the Ecore metamodel when its package is known.
     public var isEObject: Bool {
-        name == EcoreClassifier.eObject.rawValue
+        EcorePackage.isEObject(self)
     }
 
     /// Check whether instances of this class are instances of another class.
     ///
     /// An instance of a class is an instance of the class itself, of each of its direct and
-    /// indirect supertypes, and of Ecore's `EObject`. A value conforms to a reference whose
-    /// type is `type` if the class of the value conforms to `type`.
+    /// indirect supertypes, and of Ecore's `EObject` (see ``isEObject``). A class called
+    /// `EObject` that a metamodel declares for itself is a supertype only of the classes that
+    /// extend it. A value conforms to a reference whose type is `type` if the class of the
+    /// value conforms to `type`.
     ///
     /// - Parameter type: The class to check against, such as the type of a reference.
-    /// - Returns: `true` if `type` is this class, one of its supertypes, or `EObject`;
-    ///   otherwise, `false`.
+    /// - Returns: `true` if `type` is this class, one of its supertypes, or Ecore's
+    ///   `EObject`; otherwise, `false`.
     public func conforms(to type: EClass) -> Bool {
         type.isEObject || id == type.id || allSuperTypes.contains { $0.id == type.id }
     }

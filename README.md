@@ -21,8 +21,9 @@ macOS, Linux, Windows and WebAssembly.
   saved as `.xmi` loads back as packages; JSON metamodels follow the emfjson conventions
 - **UML class models as metamodels**: converted into Ecore as Eclipse UML2 converts them
 - **EMF semantics**: dates, identifiers, many-valued attributes and validation of
-  multiplicities and data values behave as in EMF, and `EObject` is the implicit supertype
-  of every class, so asking for all instances of `EObject` returns every object
+  multiplicities and data values behave as in EMF, and Ecore's `EObject` is the implicit
+  supertype of every class, so asking for all instances of `EObject` returns every object;
+  a class called `EObject` that a metamodel declares for itself is an ordinary class
 - **Libraries for tools**: OCL constraints and queries, generator models (`.genmodel`), and
   value-based metamodel editing with undo and redo
 - **Incremental evaluation**: change observers and dependency records for incremental engines
